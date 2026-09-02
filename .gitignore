@@ -36,6 +36,9 @@ crashlytics-build.properties
 *.p12
 keystore.properties
 
+# ---- Generated build inputs ------------------------------------------------
+desktop/win-launcher/game_data.h
+
 # ---- Node / Electron -------------------------------------------------------
 node_modules/
 desktop/game/

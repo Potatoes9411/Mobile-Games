@@ -9,27 +9,36 @@ The repository ships **two complete implementations of the same design**:
 | Build | Where it lives | Runs on |
 | --- | --- | --- |
 | Unity 3D project | `Assets/` | Android (APK), Windows 11 (EXE), WebGL |
-| Canvas/JS build | `web/index.html` | Any browser, no install; wrappable as a Windows `.exe` via `desktop/` |
+| Canvas/JS build | `web/index.html` | Any browser, and shipped as a 104 KB Windows `.exe` in `dist/` |
 
 Both share the same pacing math, the same economy curves and the same three-phase loop, so tuning
 one and porting the numbers to the other is a copy-paste job.
 
 ---
 
-## Play it right now (Windows 11, no toolchain)
+## Play it right now on Windows 11
 
-1. Download the repo (green **Code → Download ZIP**) and unzip it.
-2. Open `web\index.html` — double-click it, or double-click `web\PlayOnWindows.bat`.
+**Option 1 — the executable.** Download [`dist/MobClashGateSiege.exe`](dist/MobClashGateSiege.exe)
+and double-click it. 104 KB, no installer, no dependencies, nothing to unpack.
 
-That is the whole install. Mouse drag or `A` / `D` steers, `Space` starts, clicking a tower room
-attacks it. Progress saves to `localStorage`.
+The whole game is embedded inside the executable. On launch it writes itself to
+`%LOCALAPPDATA%\MobClashGateSiege\` and opens in a chrome-less app window — no tabs, no address
+bar, its own taskbar entry — using the Edge that ships with Windows 11 (or Chrome, if you have it).
+Saves live in a private profile beside it, so progress survives restarts and does not touch your
+normal browser.
 
-**Want a real `.exe`?** Two options, both in `docs/WINDOWS_AND_WEB_BUILD.md`:
+> Windows SmartScreen will warn about an unsigned executable the first time: **More info → Run
+> anyway**. Signing it requires a code-signing certificate; see `docs/WINDOWS_AND_WEB_BUILD.md`.
 
-* *Edge/Chrome PWA* — open the page, `⋯ → Apps → Install this site as an app`. You get a Start-menu
-  entry and a desktop shortcut with no build step at all.
-* *Electron package* — `cd desktop && npm install && npm run dist` produces
-  `MobClashGateSiege-1.0.0-portable.exe` plus an NSIS installer under `desktop/dist/`.
+**Option 2 — no download.** Open `web/index.html` in any browser, or double-click
+`web/PlayOnWindows.bat`.
+
+Drag with the mouse (or `A` / `D`) to steer, `Space` to start, click a tower room to attack it.
+Progress is stored locally.
+
+**Option 3 — a fully native app.** `cd desktop && npm install && npm run dist` packages an Electron
+build with an NSIS installer, or push to GitHub and let `.github/workflows/build-windows.yml` build
+both executables for you.
 
 ## Build the Unity version
 
@@ -88,7 +97,9 @@ Assets/Scripts/Ads/       AdManager (mock mediation, real call shape)
 Assets/Scripts/UI/        UIManager, UIFactory, UpgradeRowUI (uGUI built in code)
 Assets/Editor/            ProjectSetup, SceneBootstrapper, BuildScript
 web/index.html            Complete browser build, single file, zero dependencies
-desktop/                  Electron shell for a Windows .exe
+desktop/win-launcher/     C source for the single-file Windows .exe (mingw-w64 cross build)
+desktop/                  Electron shell for a fully native Windows app
+dist/MobClashGateSiege.exe  Prebuilt Windows executable, game embedded
 docs/                     Scene setup, Android pipeline, Windows/web pipeline, pacing math
 ```
 

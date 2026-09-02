@@ -4,14 +4,56 @@ Four ways to run the game on a Windows 11 machine, ordered from "zero setup" to 
 
 | Route | Toolchain | Output |
 | --- | --- | --- |
-| A. Open the file | none | plays in Edge/Chrome/Firefox |
-| B. Install as an app | Edge or Chrome | Start-menu entry, own window, offline |
-| C. Electron package | Node.js | real `.exe` + NSIS installer |
-| D. Unity standalone | Unity | native `.exe` sharing code with the Android build |
+| A. Run the prebuilt `.exe` | none | 104 KB executable, already in `dist/` |
+| B. Open the HTML file | none | plays in Edge/Chrome/Firefox |
+| C. Install as a PWA | Edge or Chrome | Start-menu entry, own window, offline |
+| D. Electron package | Node.js | fully native app + NSIS installer |
+| E. Unity standalone | Unity | native `.exe` sharing code with the Android build |
 
 ---
 
-## A. Just open it
+## A. The prebuilt executable
+
+`dist\MobClashGateSiege.exe` — double-click it. That is the whole install.
+
+### How it works
+
+The launcher is a 104 KB native Win32 program (`desktop/win-launcher/main.c`) with the entire game
+embedded in its data section as a byte array. On launch it:
+
+1. Creates `%LOCALAPPDATA%\MobClashGateSiege\` and writes `game.html` there (overwriting each run,
+   so the shipped version is always what runs).
+2. Looks for `msedge.exe`, then `chrome.exe`, under `%ProgramFiles(x86)%`, `%ProgramFiles%` and
+   `%LOCALAPPDATA%`.
+3. Launches it with `--app=file:///…`, which gives a chrome-less window — no tabs, no address bar,
+   its own taskbar entry — plus `--user-data-dir` pointing at a private profile so saves persist and
+   stay out of your normal browsing profile.
+4. Falls back to `ShellExecuteW` on the HTML file if no Chromium browser is installed, so the game
+   always starts.
+
+It imports only `kernel32`, `shell32` and `user32`. No runtime, no installer, no registry writes.
+
+### Rebuilding it
+
+```bash
+sudo apt-get install mingw-w64      # Debian/Ubuntu; brew install mingw-w64 on macOS
+./desktop/win-launcher/build.sh     # embeds web/index.html and cross-compiles
+```
+
+On Windows use MSYS2 and swap `x86_64-w64-mingw32-gcc` for `gcc` in `build.sh`.
+
+> **Toolchain gotcha, already handled:** mingw-w64 maps bare `swprintf()` to the non-conforming
+> MSVC variant that takes no buffer-size argument. Passing one shifts every following argument and
+> the program wanders off before doing any work — it compiles clean and hangs at launch. All string
+> building goes through the `FormatW` helper (`_vsnwprintf`) to avoid it.
+
+### SmartScreen
+
+An unsigned executable downloaded from the internet triggers "Windows protected your PC" on first
+run: **More info → Run anyway**. To remove the warning permanently you need an OV or EV
+code-signing certificate and `signtool sign /fd SHA256 /tr <timestamp-url> /td SHA256 MobClashGateSiege.exe`.
+
+## B. Just open the HTML
 
 1. `web\index.html` → double-click.
 2. Or double-click `web\PlayOnWindows.bat`, which opens it in your default browser.
@@ -25,7 +67,7 @@ fonts and plays identically — there is no other network dependency, no bundler
 > Serving over `file://` is fine here. If you would rather serve it over HTTP (needed only if you
 > later add `fetch`-based assets): `npx serve web` or `python -m http.server -d web 8080`.
 
-## B. Install it as a Windows app (no build tools)
+## C. Install it as a Windows app (no build tools)
 
 Open the page in Edge, then `⋯ ▸ Apps ▸ Install this site as an app`. In Chrome it is
 `⋮ ▸ Cast, save and share ▸ Install page as app`.
@@ -34,7 +76,7 @@ You get a desktop shortcut and a Start-menu entry, the game runs in its own chro
 Windows treats it like any other installed app (including uninstall via Settings ▸ Apps). This is
 the fastest path to something that *feels* like an `.exe` without producing one.
 
-## C. Build a real `.exe` with Electron
+## D. Build a fully native app with Electron
 
 Requires [Node.js 18+](https://nodejs.org).
 
@@ -67,7 +109,7 @@ certificate to `desktop/package.json`:
 }
 ```
 
-## D. Unity Windows standalone
+## E. Unity Windows standalone
 
 The Unity project targets Windows too — same C#, same pacing, real 3D.
 
@@ -105,8 +147,16 @@ multi-megabyte download and a several-second Wasm warm-up.
 * **Playtesting the design, ad-network playables, sharing a link** → `web/index.html`. Instant, tiny,
   and the pacing math is a line-for-line port of `LevelGenerator.cs`.
 * **Shipping to players** → the Unity Android APK.
-* **A desktop build for a demo machine or a games night** → Electron (route C) or the Unity
-  standalone (route D).
+* **A desktop build for a demo machine or a games night** → the prebuilt launcher (route A) for
+  something you can hand over on a USB stick, Electron (route D) for a self-contained app that does
+  not depend on an installed browser, or the Unity standalone (route E) for the real 3D build.
+
+## Continuous builds
+
+`.github/workflows/build-windows.yml` builds both Windows targets on every push and on demand
+(**Actions → Build Windows → Run workflow**): the mingw launcher on an Ubuntu runner and the
+Electron installer plus portable build on a Windows runner. Both land as downloadable run
+artifacts.
 
 ## Keeping the two implementations in sync
 

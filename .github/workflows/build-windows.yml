@@ -1,0 +1,52 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'web/**'
+      - 'desktop/**'
+      - '.github/workflows/build-windows.yml'
+
+jobs:
+  launcher:
+    name: Single-file launcher (.exe)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install mingw-w64
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mingw-w64
+      - name: Build
+        run: ./desktop/win-launcher/build.sh
+      - name: Verify the payload is embedded
+        run: |
+          test -f dist/MobClashGateSiege.exe
+          grep -q "MOB CLASH" dist/MobClashGateSiege.exe
+          ls -lh dist/MobClashGateSiege.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MobClashGateSiege-launcher
+          path: dist/MobClashGateSiege.exe
+
+  electron:
+    name: Electron desktop app (installer + portable)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm install
+      - name: Package
+        working-directory: desktop
+        run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MobClashGateSiege-electron
+          path: |
+            desktop/dist/*.exe
