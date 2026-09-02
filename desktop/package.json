@@ -1,0 +1,45 @@
+{
+  "name": "mob-clash-gate-siege",
+  "productName": "Mob Clash Gate Siege",
+  "version": "1.0.0",
+  "description": "Hybrid-casual runner, math gates and tower siege. Windows desktop shell.",
+  "main": "main.js",
+  "author": "ViralGames",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "prestart": "node sync.js",
+    "start": "electron .",
+    "predist": "node sync.js",
+    "dist": "electron-builder --win nsis portable",
+    "dist:dir": "node sync.js && electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.viralgames.mobclash",
+    "productName": "Mob Clash Gate Siege",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "game/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "MobClashGateSiege-${version}-${target}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Mob Clash Gate Siege"
+    }
+  }
+}

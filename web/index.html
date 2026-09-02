@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mob Clash: Gate Siege</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap">
+<style>
+/* ---------------------------------------------------------------------------
+   Mob Clash: Gate Siege - browser build
+   Single visual world: a dark arcade cabinet. Deliberately one theme.
+   --------------------------------------------------------------------------- */
+:root{
+  --void:#0B0E17;
+  --pit:#070912;
+  --steel:#161C2B;
+  --steel-2:#1F2739;
+  --rally:#3FA9FF;
+  --surge:#33E08A;
+  --siege:#FF4D5A;
+  --bullion:#FFC24B;
+  --haze:#8A93AD;
+  --ink:#F2F5FF;
+  --display:"Archivo Black","Arial Black",system-ui,sans-serif;
+  --body:"Barlow Semi Condensed","Segoe UI",Roboto,system-ui,sans-serif;
+  --frame-w:min(520px,100vw);
+  --frame-h:min(940px,100vh);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(120% 80% at 50% -10%, #16203a 0%, transparent 60%),
+    var(--pit);
+  color:var(--ink);
+  font-family:var(--body);
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+.stage{
+  height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:28px;
+}
+.rail{
+  width:206px;
+  display:none;
+  flex-direction:column;
+  gap:18px;
+  font-size:13px;
+  color:var(--haze);
+  letter-spacing:.04em;
+}
+@media (min-width:1120px){ .rail{display:flex} }
+.rail h2{
+  font-family:var(--display);
+  font-size:11px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  color:var(--rally);
+  margin:0 0 8px;
+}
+.rail section{
+  border-left:2px solid var(--steel-2);
+  padding-left:14px;
+}
+.rail dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0}
+.rail dt{color:#5f6884}
+.rail dd{margin:0;color:var(--ink);font-variant-numeric:tabular-nums}
+.rail kbd{
+  font-family:var(--body);font-weight:700;font-size:12px;
+  background:var(--steel-2);border:1px solid #2b3448;border-bottom-width:2px;
+  border-radius:4px;padding:1px 6px;color:var(--ink);
+}
+
+/* the phone ---------------------------------------------------------------- */
+.frame{
+  position:relative;
+  width:var(--frame-w);
+  height:var(--frame-h);
+  background:var(--void);
+  border-radius:26px;
+  overflow:hidden;
+  box-shadow:0 0 0 1px #262f45, 0 40px 90px -30px #000, inset 0 0 120px -60px #4a86ff;
+  touch-action:none;
+  user-select:none;
+}
+canvas{display:block;width:100%;height:100%}
+
+/* HUD ---------------------------------------------------------------------- */
+.hud{position:absolute;inset:0;pointer-events:none;padding:18px 20px;display:flex;flex-direction:column}
+.hud-top{display:flex;justify-content:space-between;align-items:flex-start}
+.chip{
+  font-family:var(--display);font-size:15px;letter-spacing:.10em;
+  background:rgba(11,14,23,.62);border:1px solid #2a3349;border-radius:999px;
+  padding:7px 14px;backdrop-filter:blur(6px);
+}
+.chip.gold{color:var(--bullion)}
+#crowd{
+  font-family:var(--display);
+  font-size:66px;line-height:1;text-align:center;margin-top:14px;
+  text-shadow:0 4px 0 rgba(0,0,0,.45),0 0 34px rgba(63,169,255,.55);
+  font-variant-numeric:tabular-nums;
+}
+#rush{
+  text-align:center;font-family:var(--display);font-size:19px;letter-spacing:.16em;
+  color:var(--bullion);margin-top:6px;opacity:0;transition:opacity .25s
+}
+#rush.on{opacity:1}
+#hint{
+  margin-top:auto;text-align:center;font-size:16px;font-weight:600;
+  letter-spacing:.16em;text-transform:uppercase;color:#aab3c9;padding-bottom:26px;
+}
+
+/* sheets ------------------------------------------------------------------- */
+.sheet{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:flex-end;gap:14px;padding:36px 26px 44px;
+  background:linear-gradient(180deg,rgba(7,9,18,.10) 0%,rgba(7,9,18,.86) 46%,rgba(7,9,18,.96) 100%);
+  transition:opacity .22s ease, transform .28s cubic-bezier(.2,.9,.3,1);
+}
+.sheet[hidden]{display:none}
+.sheet.enter{opacity:0;transform:translateY(18px)}
+.title{font-family:var(--display);font-size:46px;line-height:.94;text-align:center;text-wrap:balance;margin:0}
+.title .sub{display:block;font-size:20px;letter-spacing:.34em;color:var(--rally);margin-top:12px}
+.tagline{margin:0;color:var(--haze);font-size:16px;text-align:center;max-width:34ch;line-height:1.45}
+.spacer{flex:1}
+.btn{
+  pointer-events:auto;appearance:none;border:0;cursor:pointer;
+  font-family:var(--display);font-size:19px;letter-spacing:.10em;
+  color:#08111c;background:var(--rally);
+  border-radius:14px;padding:17px 26px;width:100%;max-width:380px;
+  box-shadow:0 5px 0 #1b6fb5;transition:transform .06s, box-shadow .06s, filter .15s;
+}
+.btn:active{transform:translateY(3px);box-shadow:0 2px 0 #1b6fb5}
+.btn:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.btn.go{background:var(--surge);box-shadow:0 5px 0 #17945a}
+.btn.ad{background:var(--bullion);box-shadow:0 5px 0 #b07f1c}
+.btn.ghost{background:var(--steel-2);color:var(--ink);box-shadow:0 5px 0 #0d1220}
+.btn[disabled]{filter:grayscale(.7) brightness(.7);cursor:default}
+.pulse{animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{50%{transform:scale(1.035)}}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none}.sheet{transition:none}}
+
+.result-num{font-family:var(--display);font-size:64px;color:var(--bullion);margin:0;font-variant-numeric:tabular-nums}
+.result-note{margin:0;color:var(--haze);font-size:15px;letter-spacing:.08em;text-transform:uppercase}
+
+/* upgrades ----------------------------------------------------------------- */
+#shop{justify-content:flex-start;background:rgba(7,9,18,.97);gap:12px}
+#shop .title{font-size:34px;margin-bottom:4px}
+.wallet{font-family:var(--display);font-size:26px;color:var(--bullion);font-variant-numeric:tabular-nums}
+.row{
+  pointer-events:auto;width:100%;display:grid;grid-template-columns:1fr auto;
+  align-items:center;gap:14px;background:var(--steel);border:1px solid #232c40;
+  border-radius:16px;padding:14px 14px 14px 18px;
+}
+.row h3{margin:0;font-size:17px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+.row p{margin:3px 0 0;color:var(--haze);font-size:13px;line-height:1.35}
+.row .val{font-family:var(--display);font-size:23px;color:var(--rally);font-variant-numeric:tabular-nums}
+.row .lv{font-size:12px;color:#5f6884;letter-spacing:.12em}
+.buy{
+  appearance:none;border:0;cursor:pointer;min-width:104px;
+  font-family:var(--display);font-size:17px;color:#08111c;background:var(--surge);
+  border-radius:12px;padding:14px 12px;box-shadow:0 4px 0 #17945a;font-variant-numeric:tabular-nums;
+}
+.buy:active{transform:translateY(2px);box-shadow:0 2px 0 #17945a}
+.buy[disabled]{background:#2b3448;color:#6C7690;box-shadow:0 4px 0 #171d2b;cursor:default}
+.buy:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+
+/* mock ad ------------------------------------------------------------------ */
+#advert{
+  position:absolute;inset:0;background:#05070d;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:10px;z-index:9;
+}
+#advert[hidden]{display:none}
+#advert .label{font-family:var(--display);letter-spacing:.24em;font-size:15px;color:var(--haze)}
+#advert .big{font-family:var(--display);font-size:34px;color:var(--bullion)}
+#advert .count{font-variant-numeric:tabular-nums;color:var(--haze)}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <aside class="rail">
+    <section>
+      <h2>Controls</h2>
+      <dl>
+        <dt>Steer</dt><dd>Drag / <kbd>A</kbd><kbd>D</kbd></dd>
+        <dt>Start</dt><dd><kbd>Space</kbd></dd>
+        <dt>Siege</dt><dd>Click a room</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Loop</h2>
+      <dl>
+        <dt>1</dt><dd>Swerve</dd>
+        <dt>2</dt><dd>Math gates</dd>
+        <dt>3</dt><dd>Tower siege</dd>
+        <dt>4</dt><dd>Upgrade</dd>
+      </dl>
+    </section>
+  </aside>
+
+  <div class="frame" id="frame">
+    <canvas id="c"></canvas>
+
+    <div class="hud">
+      <div class="hud-top">
+        <div class="chip" id="lvl">LEVEL 1</div>
+        <div class="chip gold" id="gold">0</div>
+      </div>
+      <div id="crowd">0</div>
+      <div id="rush">GOLD RUSH &times;2</div>
+      <div id="hint"></div>
+    </div>
+
+    <div class="sheet" id="menu">
+      <h1 class="title">MOB CLASH<span class="sub">GATE SIEGE</span></h1>
+      <p class="tagline">Grow the mob through the gates, then storm the tower one room at a time.</p>
+      <div class="spacer"></div>
+      <button class="btn go pulse" id="play">TAP TO START</button>
+      <button class="btn ghost" id="openShop">UPGRADES</button>
+    </div>
+
+    <div class="sheet" id="win" hidden>
+      <div class="spacer"></div>
+      <h2 class="title" style="font-size:38px">TOWER CLEARED</h2>
+      <p class="result-note">Gold earned</p>
+      <p class="result-num" id="winGold">+0</p>
+      <div class="spacer"></div>
+      <button class="btn ad" id="watchAd">WATCH AD &nbsp;&times;3 GOLD</button>
+      <button class="btn go" id="next">CONTINUE</button>
+    </div>
+
+    <div class="sheet" id="fail" hidden>
+      <div class="spacer"></div>
+      <h2 class="title" style="font-size:38px;color:var(--siege)">SIEGE FAILED</h2>
+      <p class="result-note" id="failWhy">The mob ran out of numbers</p>
+      <p class="result-num" id="failGold">+0</p>
+      <div class="spacer"></div>
+      <button class="btn" id="retry">TRY AGAIN</button>
+    </div>
+
+    <div class="sheet" id="shop" hidden>
+      <h2 class="title">UPGRADES</h2>
+      <div class="wallet" id="shopGold">0</div>
+      <div class="row" data-up="crowd">
+        <div>
+          <h3>Starting mob</h3>
+          <p>Runners you bring to the start line.</p>
+          <span class="val" id="v-crowd">20</span> <span class="lv" id="l-crowd">LV 1</span>
+        </div>
+        <button class="buy" id="b-crowd">50</button>
+      </div>
+      <div class="row" data-up="gold">
+        <div>
+          <h3>Gold multiplier</h3>
+          <p>Applies to every payout, ads included.</p>
+          <span class="val" id="v-gold">1.00&times;</span> <span class="lv" id="l-gold">LV 1</span>
+        </div>
+        <button class="buy" id="b-gold">120</button>
+      </div>
+      <div class="row" data-up="gate">
+        <div>
+          <h3>Gate bonus</h3>
+          <p>Every + gate gives more, every &times; gate multiplies harder.</p>
+          <span class="val" id="v-gate">+0 / +0.00&times;</span> <span class="lv" id="l-gate">LV 1</span>
+        </div>
+        <button class="buy" id="b-gate">200</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="closeShop">BACK</button>
+    </div>
+
+    <div id="advert" hidden>
+      <div class="label" id="adKind">REWARDED VIDEO</div>
+      <div class="big">MOCK PLACEMENT</div>
+      <div class="count" id="adCount">2.0s</div>
+    </div>
+  </div>
+
+  <aside class="rail">
+    <section>
+      <h2>Run telemetry</h2>
+      <dl>
+        <dt>FPS</dt><dd id="t-fps">60</dd>
+        <dt>Units</dt><dd id="t-units">0</dd>
+        <dt>Phase</dt><dd id="t-phase">menu</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Level design</h2>
+      <dl>
+        <dt>Band</dt><dd id="t-band">hook</dd>
+        <dt>Gates</dt><dd id="t-gates">0</dd>
+        <dt>Hazards</dt><dd id="t-haz">0</dd>
+        <dt>Tower</dt><dd id="t-tower">0</dd>
+        <dt>Ratio</dt><dd id="t-ratio">0.35</dd>
+      </dl>
+    </section>
+  </aside>
+
+</div>
+
+<script>
+"use strict";
+/* ===========================================================================
+   MOB CLASH: GATE SIEGE - browser / Windows build
+   A faithful port of the Unity project's pacing math, economy curves and
+   three phase loop, rendered with a hand rolled pinhole projection on canvas.
+   =========================================================================== */
+
+/* --------------------------------------------------------------- 1. SAVE  */
+const SAVE_KEY = "mobclash.save.v1";
+
+const DEFAULT_SAVE = {
+  version: "1.0.0",
+  gold: 0,
+  levelIndex: 1,
+  startingCrowdLevel: 0,
+  goldMultiplierLevel: 0,
+  gateBonusLevel: 0,
+  totalRuns: 0,
+  totalWins: 0,
+  consecutiveFails: 0,
+  bestCrowd: 0,
+  soundEnabled: true
+};
+
+let save = loadSave();
+
+function loadSave() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return Object.assign({}, DEFAULT_SAVE);
+    return Object.assign({}, DEFAULT_SAVE, JSON.parse(raw));
+  } catch (e) {
+    return Object.assign({}, DEFAULT_SAVE);
+  }
+}
+
+function writeSave() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ }
+}
+
+/* Economy curves, identical to EconomyManager.cs */
+const ECON = {
+  crowdBase: 20, crowdPerLevel: 2, crowdCost: 120, crowdGrowth: 1.35,
+  goldPerLevel: 0.15, goldCost: 300, goldGrowth: 1.45,
+  gateFlatPerLevel: 1, gateMulPerLevel: 0.05, gateCost: 500, gateGrowth: 1.5,
+  maxLevel: 50,
+  ddsReliefPerFail: 0.08, ddsMin: 0.60
+};
+
+const startingCrowd = () => ECON.crowdBase + ECON.crowdPerLevel * save.startingCrowdLevel;
+const goldMultiplier = () => 1 + ECON.goldPerLevel * save.goldMultiplierLevel;
+const gateFlatBonus = () => ECON.gateFlatPerLevel * save.gateBonusLevel;
+const gateMulBonus = () => ECON.gateMulPerLevel * save.gateBonusLevel;
+const ddsBias = () => clamp(1 - ECON.ddsReliefPerFail * save.consecutiveFails, ECON.ddsMin, 1);
+
+const UPGRADES = {
+  crowd: { key: "startingCrowdLevel", base: ECON.crowdCost, growth: ECON.crowdGrowth,
+           value: () => String(startingCrowd()) },
+  gold:  { key: "goldMultiplierLevel", base: ECON.goldCost, growth: ECON.goldGrowth,
+           value: () => goldMultiplier().toFixed(2) + "×" },
+  gate:  { key: "gateBonusLevel", base: ECON.gateCost, growth: ECON.gateGrowth,
+           value: () => "+" + gateFlatBonus() + " / +" + gateMulBonus().toFixed(2) + "×" }
+};
+
+function upgradeCost(id) {
+  const u = UPGRADES[id];
+  const lv = save[u.key];
+  if (lv >= ECON.maxLevel) return Infinity;
+  return Math.round(u.base * Math.pow(u.growth, lv));
+}
+
+function buyUpgrade(id) {
+  const cost = upgradeCost(id);
+  if (!isFinite(cost) || save.gold < cost) { blip("bad"); vibrate(60); return false; }
+  save.gold -= cost;
+  save[UPGRADES[id].key]++;
+  writeSave();
+  blip("coin");
+  vibrate(18);
+  paintShop();
+  paintHud();
+  return true;
+}
+
+/* ----------------------------------------------------- 2. MATHS HELPERS  */
+const TAU = Math.PI * 2;
+const MAX_CROWD = 99999;
+
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const clamp01 = v => clamp(v, 0, 1);
+const lerp = (a, b, t) => a + (b - a) * t;
+const invLerp = (a, b, v) => a === b ? 0 : clamp01((v - a) / (b - a));
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Unity's SmoothDamp, scalar form. Returns [value, velocity]. */
+function smoothDamp(current, target, velocity, smoothTime, maxSpeed, dt) {
+  smoothTime = Math.max(0.0001, smoothTime);
+  const omega = 2 / smoothTime;
+  const x = omega * dt;
+  const exp = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  let change = current - target;
+  const maxChange = maxSpeed * smoothTime;
+  change = clamp(change, -maxChange, maxChange);
+  const temp = (velocity + omega * change) * dt;
+  let newVel = (velocity - omega * temp) * exp;
+  let output = (current - change) + (change + temp) * exp;
+  if ((target - current > 0) === (output > target)) {
+    output = target;
+    newVel = (output - target) / dt;
+  }
+  return [output, newVel];
+}
+
+/** Gate arithmetic, identical to GateMath.cs. */
+function applyGate(crowd, type, value) {
+  let r;
+  if (type === "add") r = crowd + value;
+  else if (type === "sub") r = crowd - value;
+  else if (type === "mul") r = value <= 0 ? crowd : crowd * value;
+  else r = value <= 1 ? crowd : Math.round(crowd / value);
+  return clamp(Math.round(r), 0, MAX_CROWD);
+}
+
+const gateLabel = (type, value) =>
+  type === "add" ? "+" + value :
+  type === "sub" ? "−" + value :
+  type === "mul" ? "×" + value : "÷" + value;
+
+const gateIsGood = (type, value) =>
+  (type === "add" && value > 0) || (type === "mul" && value > 1);
+
+/* ------------------------------------------------- 3. LEVEL GENERATOR    */
+const TUNE = {
+  tutorialLevels: 3, masteryLevels: 10, feederInterval: 4, seed: 90211,
+  baseTrackLength: 110, trackLengthPerLevel: 6, maxTrackLength: 300, trackHalfWidth: 6,
+  baseRunSpeed: 12, runSpeedPerLevel: 0.11, maxRunSpeed: 18,
+  tutorialRows: 3, masteryRows: 4, feederRows: 4, maxRows: 6,
+  gateLane: 0.55, firstRowDistance: 26, finalRowPadding: 20,
+  safeAddFraction: 0.65, trapSubtractFraction: 0.35,
+  maxScatteredObstacles: 14, obstacleKillRadius: 1.15, attritionPerObstacle: 0.10,
+  maxFloors: 6, tutorialDifficulty: 0.35, feederDifficulty: 0.30,
+  coreStart: 0.55, coreEnd: 0.95, plateau: 40,
+  floorWeightGrowth: 0.75, maxCasualty: 0.25,
+  towerGap: 18
+};
+
+/** Greedy solver, mirrors LevelData.IsSolvable. */
+function isSolvable(nodes, crowd, casualtyRatio) {
+  if (!nodes.length) return true;
+  const cleared = nodes.map(() => false);
+  const topFloor = nodes.reduce((m, n) => Math.max(m, n.floor), 0);
+  let remaining = nodes.length, guard = 0;
+
+  while (remaining > 0 && guard++ < 4096) {
+    let unlocked = 0;
+    for (let f = 0; f <= topFloor; f++) {
+      const done = nodes.every((n, i) => n.floor !== f || cleared[i]);
+      if (!done) { unlocked = f; break; }
+      unlocked = f + 1;
+    }
+    let best = -1;
+    nodes.forEach((n, i) => {
+      if (cleared[i] || n.floor !== unlocked || n.power >= crowd) return;
+      if (best < 0 || n.power < nodes[best].power) best = i;
+    });
+    if (best < 0) return false;
+    const p = nodes[best].power;
+    crowd += p - Math.round(p * casualtyRatio);
+    cleared[best] = true;
+    remaining--;
+  }
+  return remaining === 0;
+}
+
+function generateLevel(levelIndex, crowdAtStart, bias) {
+  levelIndex = Math.max(1, levelIndex);
+  crowdAtStart = clamp(crowdAtStart, 5, 500);
+  bias = clamp(bias, 0.55, 1.25);
+
+  const rand = mulberry32(TUNE.seed + levelIndex * 7919);
+  const rf = (a, b) => a + rand() * (b - a);
+  const chance = p => rand() < p;
+
+  const isTutorial = levelIndex <= TUNE.tutorialLevels;
+  const isFeeder = !isTutorial && levelIndex % TUNE.feederInterval === 0;
+
+  const level = {
+    index: levelIndex, isTutorial, isFeeder,
+    startingCrowd: crowdAtStart,
+    halfWidth: TUNE.trackHalfWidth,
+    speed: Math.min(TUNE.maxRunSpeed, TUNE.baseRunSpeed + TUNE.runSpeedPerLevel * (levelIndex - 1)),
+    gates: [], obstacles: [], nodes: [], floorCount: 2,
+    casualtyRatio: 0, goldPerUnit: 1, goldMultiplier: isFeeder ? 2 : 1,
+    floorClearBonus: 20 + 5 * levelIndex,
+    band: isTutorial ? "hook" : (isFeeder ? "gold rush" : (levelIndex <= TUNE.masteryLevels ? "mastery" : "core"))
+  };
+
+  const rawLength = TUNE.baseTrackLength + TUNE.trackLengthPerLevel * (levelIndex - 1);
+  level.length = Math.min(TUNE.maxTrackLength, rawLength) * (isFeeder ? 0.92 : 1);
+  level.towerDistance = level.length + TUNE.towerGap;
+
+  /* --- hazards scattered along the track ------------------------------- */
+  if (!isTutorial && !isFeeder) {
+    const count = Math.round(lerp(1, TUNE.maxScatteredObstacles, invLerp(4, 30, levelIndex)));
+    const from = TUNE.firstRowDistance - 8;
+    const to = level.length - TUNE.finalRowPadding - 6;
+    for (let i = 0; i < count && to > from; i++) {
+      const o = { z: rf(from, to), lane: rf(-0.85, 0.85), r: TUNE.obstacleKillRadius, kind: "static", amp: 0, spd: 0, phase: rf(0, TAU) };
+      if (levelIndex >= 16 && chance(0.30)) { o.kind = "spinner"; o.amp = rf(2.0, 3.2); o.spd = rf(0.45, 0.85); }
+      else if (levelIndex >= 11 && chance(0.45)) { o.kind = "sweeper"; o.amp = rf(1.8, 3.4); o.spd = rf(0.35, 0.70); }
+      level.obstacles.push(o);
+    }
+  }
+
+  /* --- decision rows ---------------------------------------------------- */
+  const rows = isTutorial ? TUNE.tutorialRows
+    : isFeeder ? TUNE.feederRows
+    : levelIndex <= TUNE.masteryLevels ? TUNE.masteryRows
+    : clamp(TUNE.masteryRows + Math.floor((levelIndex - TUNE.masteryLevels) / 6), TUNE.masteryRows, TUNE.maxRows);
+
+  const skill = isTutorial ? 0.99
+    : isFeeder ? 0.95
+    : levelIndex <= TUNE.masteryLevels ? 0.86
+    : lerp(0.86, 0.70, invLerp(TUNE.masteryLevels, TUNE.plateau, levelIndex));
+
+  const firstZ = TUNE.firstRowDistance;
+  const lastZ = Math.max(firstZ + 12, level.length - TUNE.finalRowPadding);
+  let expected = crowdAtStart;
+  let previousZ = 0;
+  let trapUsed = false;
+
+  const riskyMotion = spec => {
+    if (levelIndex >= 9 && chance(0.4)) { spec.motion = "rotate"; spec.amp = rf(2.2, 3.0); spec.spd = rf(0.30, 0.55); }
+    else if (levelIndex >= 6) { spec.motion = "slide"; spec.amp = rf(1.8, 2.8); spec.spd = rf(0.35, 0.60); }
+  };
+
+  for (let row = 0; row < rows; row++) {
+    const t = rows <= 1 ? 0.5 : row / (rows - 1);
+    const z = lerp(firstZ, lastZ, t) + rf(-2, 2);
+
+    let left = { type: "add", value: 10, motion: "static", amp: 0, spd: 0, risky: false };
+    let right = { type: "mul", value: 2, motion: "static", amp: 0, spd: 0, risky: false };
+
+    if (isTutorial) {
+      /* The hook: both halves are gifts, so the win rate stays at 100%.
+         The ladder ramps the finale crowd 600 -> 900 -> 1500 across levels 1-3. */
+      const ladder = [[2, 3, 5], [3, 3, 5], [3, 5, 5]][clamp(levelIndex - 1, 0, 2)];
+      let li = clamp(row, 0, 2);
+      if (row === rows - 1) li = 2;
+      left = { type: "mul", value: ladder[li], motion: "static", amp: 0, spd: 0, risky: false };
+      right = { type: "add", value: Math.max(10, Math.round(expected * 0.6)), motion: "static", amp: 0, spd: 0, risky: false };
+    } else if (isFeeder) {
+      /* Gold rush. Multiplier rows alternate with additive rows: four stacked multipliers
+         would compound into a five figure crowd and wreck the gold curve. */
+      if (row % 2 === 0) {
+        left = { type: "mul", value: 3, motion: "static", amp: 0, spd: 0, risky: false };
+        right = { type: "mul", value: 2, motion: "static", amp: 0, spd: 0, risky: false };
+      } else {
+        left = { type: "add", value: Math.max(25, Math.round(expected * 1.2)), motion: "static", amp: 0, spd: 0, risky: false };
+        right = { type: "add", value: Math.max(15, Math.round(expected * 0.7)), motion: "static", amp: 0, spd: 0, risky: false };
+      }
+    } else if (levelIndex <= TUNE.masteryLevels) {
+      const safeAdd = Math.max(10, Math.round(expected * TUNE.safeAddFraction));
+      const makeTrap = !trapUsed && levelIndex >= 7 && chance(0.35);
+      if (makeTrap) { trapUsed = true; left = { type: "sub", value: Math.max(5, Math.round(expected * TUNE.trapSubtractFraction)), motion: "static", amp: 0, spd: 0, risky: false }; }
+      else left = { type: "add", value: safeAdd, motion: "static", amp: 0, spd: 0, risky: false };
+      right = { type: "mul", value: (levelIndex >= 8 && chance(0.4)) ? 3 : 2, motion: "static", amp: 0, spd: 0, risky: true };
+      riskyMotion(right);
+    } else {
+      const roll = rand();
+      if (roll < 0.45) {
+        left = { type: "add", value: Math.max(12, Math.round(expected * TUNE.safeAddFraction)), motion: "static", amp: 0, spd: 0, risky: false };
+        right = { type: "mul", value: chance(0.35) ? 3 : 2, motion: "static", amp: 0, spd: 0, risky: true };
+        riskyMotion(right);
+      } else if (roll < 0.75) {
+        left = { type: "mul", value: 2, motion: "static", amp: 0, spd: 0, risky: false };
+        right = { type: "mul", value: chance(0.30) ? 4 : 3, motion: "static", amp: 0, spd: 0, risky: true };
+        riskyMotion(right);
+      } else if (!trapUsed && expected > 40) {
+        trapUsed = true;
+        left = { type: "div", value: 2, motion: "static", amp: 0, spd: 0, risky: false };
+        right = { type: "sub", value: Math.max(10, Math.round(expected * TUNE.trapSubtractFraction)), motion: chance(0.5) ? "slide" : "static", amp: 2.2, spd: 0.45, risky: false };
+      } else {
+        left = { type: "add", value: Math.max(15, Math.round(expected * 0.5)), motion: "slide", amp: 2.0, spd: 0.40, risky: false };
+        right = { type: "mul", value: 2, motion: "static", amp: 0, spd: 0, risky: true };
+        riskyMotion(right);
+      }
+    }
+
+    if (chance(0.5)) { const s = left; left = right; right = s; }
+
+    left.lane = -TUNE.gateLane; right.lane = TUNE.gateLane;
+
+    [left, right].forEach(half => {
+      half.z = z;
+      half.row = row;
+      half.phase = rf(0, TAU);
+      if (half.risky && !isTutorial && !isFeeder) {
+        const guards = levelIndex >= 12 ? 2 : 1;
+        for (let g = 0; g < guards; g++) {
+          const gz = z - 6 - g * 4.5;
+          if (gz <= 8) continue;
+          level.obstacles.push({
+            z: gz, lane: half.lane + rf(-0.12, 0.12), r: TUNE.obstacleKillRadius, phase: rf(0, TAU),
+            kind: levelIndex >= 10 ? "sweeper" : "static",
+            amp: levelIndex >= 10 ? rf(1.2, 2.2) : 0,
+            spd: levelIndex >= 10 ? rf(0.45, 0.80) : 0
+          });
+        }
+      }
+      level.gates.push(half);
+    });
+
+    /* simulate the reference run so the tower can be sized to the player */
+    const a = applyGate(expected, left.type, left.value);
+    const b = applyGate(expected, right.type, right.value);
+    expected = Math.max(1, Math.round(lerp(Math.min(a, b), Math.max(a, b), skill)));
+
+    const hazards = level.obstacles.filter(o => o.z > previousZ && o.z <= z).length;
+    if (hazards > 0) expected = Math.max(1, Math.round(expected * Math.pow(1 - TUNE.attritionPerObstacle * (1 - skill), hazards)));
+    previousZ = z;
+  }
+
+  const trailing = level.obstacles.filter(o => o.z > previousZ && o.z <= level.length).length;
+  if (trailing > 0) expected = Math.max(1, Math.round(expected * Math.pow(1 - TUNE.attritionPerObstacle * (1 - skill), trailing)));
+
+  level.expectedCrowd = clamp(expected, 5, MAX_CROWD);
+
+  /* --- tower ------------------------------------------------------------ */
+  const floors = (isTutorial || isFeeder) ? 2 : clamp(2 + Math.floor(levelIndex / 6), 2, TUNE.maxFloors);
+  level.floorCount = floors;
+
+  let ratio = isTutorial ? TUNE.tutorialDifficulty
+    : isFeeder ? TUNE.feederDifficulty
+    : lerp(TUNE.coreStart, TUNE.coreEnd, invLerp(4, TUNE.plateau, levelIndex));
+  ratio *= bias;
+  level.difficultyRatio = ratio;
+  level.casualtyRatio = (isTutorial || isFeeder) ? 0 : lerp(0, TUNE.maxCasualty, invLerp(8, 30, levelIndex));
+
+  const totalPower = Math.max(floors * 3, Math.round(level.expectedCrowd * ratio));
+  const weights = [];
+  let weightSum = 0;
+  for (let f = 0; f < floors; f++) { weights[f] = 1 + TUNE.floorWeightGrowth * f; weightSum += weights[f]; }
+
+  const nodes = [];
+  for (let f = 0; f < floors; f++) {
+    const floorPower = Math.max(2, Math.round(totalPower * (weights[f] / weightSum)));
+    if (f === floors - 1) { nodes.push({ floor: f, slot: 0, power: floorPower, boss: true }); continue; }
+
+    const slots = (levelIndex >= 15 && chance(0.45)) ? 3 : 2;
+    const shares = [];
+    let sum = 0;
+    for (let s = 0; s < slots; s++) { shares[s] = (0.6 + s * 0.35) * rf(0.9, 1.1); sum += shares[s]; }
+    for (let s = 0; s < slots; s++) {
+      nodes.push({ floor: f, slot: s, power: Math.max(1, Math.round(floorPower * shares[s] / sum)), boss: false });
+    }
+  }
+
+  /* Guarantee the tower is solvable by a reference crowd, and non trivial. */
+  const scaleNodes = k => nodes.forEach(n => { n.power = clamp(Math.round(n.power * k), 1, MAX_CROWD); });
+  const margin = (isTutorial || isFeeder) ? 0.70 : 0.90;
+  const reference = Math.max(3, Math.round(level.expectedCrowd * margin));
+  const trivial = Math.max(2, Math.round(level.expectedCrowd * 0.40));
+
+  if (!isTutorial && !isFeeder) {
+    let tighten = 0;
+    while (tighten++ < 12 && isSolvable(nodes, trivial, level.casualtyRatio)) scaleNodes(1.08);
+  }
+  let relax = 0;
+  while (relax++ < 32 && !isSolvable(nodes, reference, level.casualtyRatio)) scaleNodes(0.88);
+  if (!isSolvable(nodes, reference, level.casualtyRatio)) {
+    nodes.forEach(n => { n.power = Math.max(1, Math.round(reference * 0.35) + n.floor * 2); });
+  }
+
+  level.nodes = nodes;
+  level.totalTowerPower = nodes.reduce((a, n) => a + n.power, 0);
+  return level;
+}
+</script>
+
+<script>
+"use strict";
+/* =========================================================== 4. RUNTIME  */
+
+const frameEl = document.getElementById("frame");
+const CV = document.getElementById("c");
+const X = CV.getContext("2d");
+
+let W = 0, H = 0, DPR = 1, FOCAL = 500, HORIZON = 0;
+
+function resize() {
+  const r = frameEl.getBoundingClientRect();
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = Math.max(240, Math.round(r.width));
+  H = Math.max(360, Math.round(r.height));
+  CV.width = Math.round(W * DPR);
+  CV.height = Math.round(H * DPR);
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  FOCAL = H * 0.55;
+  HORIZON = H * 0.27;
+}
+window.addEventListener("resize", resize);
+
+const MAX_VISUAL_UNITS = 380;
+const GOLDEN_ANGLE = 2.39996323;
+
+const G = {
+  phase: "menu",          // menu | running | transition | siege | win | fail
+  level: null,
+  time: 0,
+  player: { x: 0, z: 0, targetX: 0, vx: 0, lean: 0 },
+  crowd: 0,
+  units: [],
+  texts: [],
+  shake: 0,
+  shakeTime: 0,
+  transitionT: 0,
+  transitionFrom: 0,
+  siege: null,
+  reward: 0,
+  rewardClaimed: false,
+  rewardBoosted: false,
+  failReason: "The mob ran out of numbers",
+  levelsSinceAd: 0,
+  lastAdTime: -999,
+  adPlaying: false
+};
+
+const cam = { x: 0, y: 9.5, z: -13.5 };
+
+/* ---------------------------------------------------------- crowd ------ */
+function crowdRadius() {
+  return Math.min(4.6, 0.42 * Math.sqrt(Math.max(1, G.units.length)));
+}
+
+function spawnUnit() {
+  G.units.push({
+    x: G.player.x + (Math.random() - 0.5) * 1.2,
+    z: G.player.z + (Math.random() - 0.5) * 1.2,
+    vx: 0, vz: 0,
+    phase: Math.random() * TAU,
+    damp: 0.11 + (Math.random() - 0.5) * 0.10,
+    jx: (Math.random() - 0.5) * 0.36,
+    jz: (Math.random() - 0.5) * 0.36
+  });
+}
+
+function setCrowd(n) {
+  G.crowd = clamp(Math.round(n), 0, MAX_CROWD);
+  const wanted = Math.min(G.crowd, MAX_VISUAL_UNITS);
+  while (G.units.length < wanted) spawnUnit();
+  if (G.units.length > wanted) G.units.length = wanted;
+  paintHud();
+}
+
+/** Gate resolution including the purchased Gate Bonus upgrade. */
+function resolveGate(half) {
+  const before = G.crowd;
+  let after;
+  if (half.type === "add") after = applyGate(before, "add", half.value + gateFlatBonus());
+  else if (half.type === "mul") after = clamp(Math.round(before * (half.value + gateMulBonus())), 0, MAX_CROWD);
+  else after = applyGate(before, half.type, half.value);
+
+  setCrowd(after);
+
+  const delta = after - before;
+  const good = delta >= 0;
+  pushText(half.x, 3.4, half.z, (delta >= 0 ? "+" : "") + delta, good ? "#33E08A" : "#FF4D5A");
+  shake(good ? 0.30 : 0.55);
+  blip(good ? "good" : "bad");
+  vibrate(good ? 14 : 32);
+  G.units.forEach(u => { u.punch = 0.22; });
+}
+
+/* ---------------------------------------------------------- juice ------ */
+function shake(amount) { G.shake = Math.max(G.shake, amount); G.shakeTime = 0.26; }
+function pushText(x, y, z, text, color) { G.texts.push({ x, y, z, text, color, t: 0, life: 0.9 }); }
+
+let AC = null;
+function audio() {
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+  if (AC && AC.state === "suspended") AC.resume();
+  return AC;
+}
+
+function tone(freq, endFreq, duration, type, gain) {
+  const ac = audio();
+  if (!ac || !save.soundEnabled) return;
+  const osc = ac.createOscillator();
+  const amp = ac.createGain();
+  osc.type = type || "triangle";
+  osc.frequency.setValueAtTime(freq, ac.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(40, endFreq), ac.currentTime + duration);
+  amp.gain.setValueAtTime(0.0001, ac.currentTime);
+  amp.gain.exponentialRampToValueAtTime(gain || 0.16, ac.currentTime + 0.012);
+  amp.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + duration);
+  osc.connect(amp).connect(ac.destination);
+  osc.start();
+  osc.stop(ac.currentTime + duration + 0.02);
+}
+
+function blip(kind) {
+  switch (kind) {
+    case "good":   tone(520, 1180, 0.16, "triangle", 0.15); break;
+    case "bad":    tone(420, 150, 0.22, "sawtooth", 0.12); break;
+    case "impact": tone(160, 60, 0.18, "square", 0.14); break;
+    case "coin":   tone(880, 1760, 0.11, "triangle", 0.12); break;
+    case "select": tone(680, 700, 0.07, "sine", 0.10); break;
+    case "win":    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, f, 0.12, "triangle", 0.13), i * 95)); break;
+    case "lose":   [440, 349, 262].forEach((f, i) => setTimeout(() => tone(f, f, 0.16, "sawtooth", 0.11), i * 130)); break;
+  }
+}
+
+function vibrate(ms) { if (navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) { /* ignore */ } } }
+
+/* ---------------------------------------------------------- flow ------- */
+function prepareLevel() {
+  const level = generateLevel(save.levelIndex, startingCrowd(), ddsBias());
+  G.level = level;
+  G.player = { x: 0, z: 0, targetX: 0, vx: 0, lean: 0 };
+  G.units = [];
+  G.texts = [];
+  G.siege = null;
+  G.reward = 0;
+  G.rewardClaimed = false;
+  G.rewardBoosted = false;
+  G.transitionT = 0;
+
+  level.gates.forEach(g => { g.consumed = false; });
+
+  setCrowd(level.startingCrowd);
+  cam.z = -13.5;
+  cam.x = 0;
+  paintHud();
+  paintTelemetry();
+}
+
+function startRun() {
+  if (G.phase !== "menu") return;
+  audio();
+  save.totalRuns++;
+  writeSave();
+  setPhase("running");
+  blip("select");
+}
+
+function setPhase(phase) {
+  G.phase = phase;
+  const hint = document.getElementById("hint");
+  hint.textContent = phase === "running" ? "Drag to steer"
+    : phase === "siege" ? "Tap a room you outnumber" : "";
+
+  show("menu", phase === "menu");
+  show("win", phase === "win");
+  show("fail", phase === "fail");
+  if (phase !== "menu") show("shop", false);
+
+  document.getElementById("crowd").style.visibility = (phase === "menu") ? "hidden" : "visible";
+  paintTelemetry();
+}
+
+function finishRun(win, reason) {
+  const level = G.level;
+  const cleared = G.siege ? G.siege.nodes.filter(n => n.state === "cleared").length : 0;
+  const raw = G.crowd * level.goldPerUnit + cleared * level.floorClearBonus;
+  let total = raw * level.goldMultiplier * goldMultiplier();
+  if (!win) total *= 0.25;
+
+  G.reward = Math.max(win ? 1 : 0, Math.round(total));
+  G.rewardClaimed = false;
+  G.rewardBoosted = false;
+  G.failReason = reason || "No room left that you outnumber";
+
+  save.bestCrowd = Math.max(save.bestCrowd, G.crowd);
+  if (win) { save.totalWins++; save.consecutiveFails = 0; save.levelIndex++; }
+  else save.consecutiveFails++;
+  writeSave();
+
+  if (win) { blip("win"); vibrate([18, 40, 24]); shake(0.6); } else { blip("lose"); vibrate(90); }
+
+  document.getElementById("winGold").textContent = "+" + G.reward;
+  document.getElementById("failGold").textContent = "+" + G.reward;
+  document.getElementById("failWhy").textContent = G.failReason;
+  document.getElementById("watchAd").disabled = !(win && G.reward > 0);
+
+  setPhase(win ? "win" : "fail");
+}
+
+function claimReward() {
+  if (G.rewardClaimed) return;
+  G.rewardClaimed = true;
+  save.gold += G.reward;
+  writeSave();
+  paintHud();
+}
+
+function continueAfterResult() {
+  const won = G.phase === "win";
+  claimReward();
+  if (won) G.levelsSinceAd++;
+
+  const eligible = won && save.levelIndex >= 3 &&
+                   G.levelsSinceAd >= 2 &&
+                   (performance.now() / 1000 - G.lastAdTime) > 45;
+
+  const proceed = () => { prepareLevel(); setPhase("menu"); };
+
+  if (eligible) {
+    G.levelsSinceAd = 0;
+    G.lastAdTime = performance.now() / 1000;
+    playMockAd("INTERSTITIAL AD", 1.6, proceed);
+  } else {
+    proceed();
+  }
+}
+
+/* ---------------------------------------------------------- siege ------ */
+function buildSiege() {
+  G.siege = {
+    nodes: G.level.nodes.map(n => Object.assign({}, n, {
+      state: n.floor === 0 ? "available" : "locked",
+      rect: null, pulse: 0, reject: 0
+    })),
+    floor: 0,
+    battle: null,
+    deadlock: 0
+  };
+}
+
+function siegeFloorCleared(floor) {
+  return G.siege.nodes.every(n => n.floor !== floor || n.state === "cleared");
+}
+
+function attackNode(node) {
+  if (!G.siege || G.siege.battle || node.state !== "available") return;
+
+  if (G.crowd <= node.power) {
+    node.reject = 0.32;
+    shake(0.3);
+    blip("bad");
+    vibrate(70);
+    pushScreenText(node, "TOO STRONG", "#FF4D5A");
+    return;
+  }
+
+  const casualties = Math.round(node.power * G.level.casualtyRatio);
+  G.siege.battle = {
+    node,
+    t: 0,
+    stage: "charge",
+    start: G.crowd,
+    trough: Math.max(1, G.crowd - node.power),
+    final: Math.max(1, G.crowd + node.power - casualties),
+    gain: node.power - casualties
+  };
+  blip("select");
+  vibrate(20);
+}
+
+function pushScreenText(node, text, color) {
+  G.texts.push({ screen: true, sx: node.rect ? node.rect.x + node.rect.w / 2 : W / 2,
+                 sy: node.rect ? node.rect.y : H / 2, text, color, t: 0, life: 0.9 });
+}
+
+function updateSiege(dt) {
+  const s = G.siege;
+  if (!s) return;
+
+  s.nodes.forEach(n => {
+    if (n.pulse > 0) n.pulse -= dt;
+    if (n.reject > 0) n.reject -= dt;
+  });
+
+  if (s.battle) {
+    const b = s.battle;
+    b.t += dt;
+    if (b.stage === "charge") {
+      const k = clamp01(b.t / 0.26);
+      setCrowd(Math.round(lerp(b.start, b.trough, k)));
+      if (k >= 1) {
+        b.stage = "absorb";
+        b.t = 0;
+        b.node.pulse = 0.35;
+        shake(0.55);
+        blip("impact");
+        vibrate(30);
+        pushScreenText(b.node, "+" + b.gain, "#33E08A");
+      }
+    } else {
+      const k = clamp01(b.t / 0.30);
+      setCrowd(Math.round(lerp(b.trough, b.final, k)));
+      if (k >= 1) {
+        setCrowd(b.final);
+        b.node.state = "cleared";
+        blip("coin");
+        if (siegeFloorCleared(s.floor) && s.floor + 1 < G.level.floorCount) {
+          s.floor++;
+          s.nodes.forEach(n => { if (n.floor === s.floor && n.state === "locked") n.state = "available"; });
+        }
+        s.battle = null;
+        if (s.nodes.every(n => n.state === "cleared")) finishRun(true);
+      }
+    }
+    return;
+  }
+
+  const anyMove = s.nodes.some(n => n.state === "available" && G.crowd > n.power);
+  if (!anyMove && !s.nodes.every(n => n.state === "cleared")) {
+    s.deadlock += dt;
+    if (s.deadlock > 1.1) finishRun(false, "No room left that you outnumber");
+  } else {
+    s.deadlock = 0;
+  }
+}
+
+/* ---------------------------------------------------------- input ------ */
+let dragging = false, lastPointerX = 0, keyDir = 0;
+
+frameEl.addEventListener("pointerdown", e => {
+  audio();
+  if (G.adPlaying) return;
+  frameEl.setPointerCapture(e.pointerId);
+  dragging = true;
+  lastPointerX = e.clientX;
+
+  if (G.phase === "siege" && G.siege && !G.siege.battle) {
+    const rect = frameEl.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    const hit = G.siege.nodes.find(n => n.rect && n.state !== "cleared" &&
+      px >= n.rect.x && px <= n.rect.x + n.rect.w && py >= n.rect.y && py <= n.rect.y + n.rect.h);
+    if (hit) attackNode(hit);
+  }
+});
+
+frameEl.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastPointerX;
+  lastPointerX = e.clientX;
+  if (G.phase === "running") G.player.targetX += (dx / W) * 14;
+});
+
+const endDrag = () => { dragging = false; };
+frameEl.addEventListener("pointerup", endDrag);
+frameEl.addEventListener("pointercancel", endDrag);
+frameEl.addEventListener("pointerleave", endDrag);
+
+window.addEventListener("keydown", e => {
+  if (e.repeat) return;
+  const k = e.key.toLowerCase();
+  if (k === "a" || k === "arrowleft") keyDir = -1;
+  else if (k === "d" || k === "arrowright") keyDir = 1;
+  else if (k === " " || k === "enter") {
+    e.preventDefault();
+    if (G.phase === "menu") startRun();
+    else if (G.phase === "win" || G.phase === "fail") continueAfterResult();
+  }
+});
+
+window.addEventListener("keyup", e => {
+  const k = e.key.toLowerCase();
+  if ((k === "a" || k === "arrowleft") && keyDir === -1) keyDir = 0;
+  if ((k === "d" || k === "arrowright") && keyDir === 1) keyDir = 0;
+});
+</script>
+
+<script>
+"use strict";
+/* ======================================================= 5. SIMULATION  */
+
+function gateX(g) {
+  const base = g.lane * (G.level.halfWidth * 0.5);
+  if (g.motion === "slide") return base + Math.sin(G.time * g.spd * TAU + g.phase) * g.amp;
+  if (g.motion === "rotate") return base + Math.sin(G.time * g.spd * Math.PI + g.phase) * g.amp * 0.5;
+  return base;
+}
+
+function obstaclePos(o) {
+  const base = o.lane * (G.level.halfWidth - o.r);
+  if (o.kind === "sweeper") return { x: base + Math.sin(G.time * o.spd * TAU + o.phase) * o.amp, z: o.z };
+  if (o.kind === "spinner") {
+    const a = (G.time * o.spd + o.phase) * TAU;
+    return { x: base + Math.cos(a) * o.amp, z: o.z + Math.sin(a) * o.amp * 0.35 };
+  }
+  return { x: base, z: o.z };
+}
+
+function checkGates(prevZ, z) {
+  const crossed = G.level.gates.filter(g => !g.consumed && g.z > prevZ && g.z <= z);
+  if (!crossed.length) return;
+
+  let taken = null;
+  for (const g of crossed) {
+    if (Math.abs(G.player.x - gateX(g)) < 2.7) { taken = g; break; }
+  }
+  if (taken) resolveGate(taken);
+  G.level.gates.forEach(g => { if (crossed.includes(g) || (taken && g.row === taken.row)) g.consumed = true; });
+}
+
+function shaveObstacles() {
+  const near = G.level.obstacles.filter(o => Math.abs(o.z - G.player.z) < 14);
+  if (!near.length || !G.units.length) return;
+
+  const positions = near.map(obstaclePos);
+  let killed = 0;
+
+  for (let i = G.units.length - 1; i >= 0; i--) {
+    const u = G.units[i];
+    for (let k = 0; k < positions.length; k++) {
+      const dx = u.x - positions[k].x, dz = u.z - positions[k].z, r = near[k].r;
+      if (dx * dx + dz * dz <= r * r) { G.units.splice(i, 1); killed++; break; }
+    }
+  }
+
+  if (!killed) return;
+  const perVisual = G.units.length > 0 && G.crowd > G.units.length
+    ? Math.max(1, Math.round(G.crowd / G.units.length)) : 1;
+  const loss = Math.min(G.crowd, killed * perVisual);
+  G.crowd = Math.max(0, G.crowd - loss);
+  shake(0.28);
+  blip("impact");
+  vibrate(16);
+  pushText(G.player.x, 2.6, G.player.z + 1, "-" + loss, "#FF4D5A");
+  paintHud();
+}
+
+function updateUnits(dt) {
+  const radius = crowdRadius();
+  const n = G.units.length;
+  const cx = G.player.x, cz = G.player.z;
+
+  for (let i = 0; i < n; i++) {
+    const u = G.units[i];
+    const slot = (i + 0.5) / n;
+    const angle = i * GOLDEN_ANGLE;
+    const r = radius * Math.sqrt(slot);
+    const tx = cx + Math.cos(angle) * r + u.jx;
+    const tz = cz + Math.sin(angle) * r + u.jz;
+
+    const [nx, nvx] = smoothDamp(u.x, tx, u.vx, u.damp, 60, dt);
+    const [nz, nvz] = smoothDamp(u.z, tz, u.vz, u.damp, 60, dt);
+    u.x = nx; u.vx = nvx; u.z = nz; u.vz = nvz;
+    if (u.punch > 0) u.punch -= dt;
+  }
+}
+
+function updateCamera(dt) {
+  const k = 1 - Math.exp(-9 * dt);
+  cam.z += ((G.player.z - 13.5) - cam.z) * k;
+  cam.x += ((G.player.x * 0.55) - cam.x) * k;
+}
+
+function updateTexts(dt) {
+  for (let i = G.texts.length - 1; i >= 0; i--) {
+    const t = G.texts[i];
+    t.t += dt;
+    if (t.screen) t.sy -= 42 * dt; else t.y += 2.4 * dt;
+    if (t.t >= t.life) G.texts.splice(i, 1);
+  }
+}
+
+function update(dt) {
+  G.time += dt;
+  if (G.shakeTime > 0) { G.shakeTime -= dt; if (G.shakeTime <= 0) G.shake = 0; }
+
+  const level = G.level;
+  if (!level) return;
+
+  if (G.phase === "running") {
+    if (keyDir !== 0) G.player.targetX += keyDir * 11 * dt;
+    const limit = Math.max(0.5, level.halfWidth - crowdRadius() * 0.45);
+    G.player.targetX = clamp(G.player.targetX, -limit, limit);
+
+    const prevZ = G.player.z;
+    const [nx, nv] = smoothDamp(G.player.x, G.player.targetX, G.player.vx, 0.085, 26, dt);
+    G.player.x = nx; G.player.vx = nv;
+    G.player.z += level.speed * dt;
+
+    checkGates(prevZ, G.player.z);
+    shaveObstacles();
+
+    if (G.crowd <= 0) finishRun(false, "The mob was wiped out on the track");
+    else if (G.player.z >= level.length) {
+      buildSiege();
+      G.transitionFrom = G.player.z;
+      G.transitionT = 0;
+      setPhase("transition");
+    }
+  } else if (G.phase === "transition") {
+    G.transitionT += dt;
+    const k = clamp01(G.transitionT / 0.95);
+    const sm = k * k * (3 - 2 * k);
+    G.player.z = lerp(G.transitionFrom, level.towerDistance - 8.5, sm);
+    G.player.x += (0 - G.player.x) * (1 - Math.exp(-6 * dt));
+    G.player.targetX = G.player.x;
+    if (k >= 1) setPhase("siege");
+  } else if (G.phase === "siege") {
+    updateSiege(dt);
+  }
+
+  updateUnits(dt);
+  updateCamera(dt);
+  updateTexts(dt);
+}
+
+/* ========================================================== 6. RENDER  */
+
+function proj(x, y, z) {
+  const dz = z - cam.z;
+  if (dz <= 1.2) return null;
+  const s = FOCAL / dz;
+  return { x: W / 2 + (x - cam.x) * s, y: HORIZON + (cam.y - y) * s, s };
+}
+
+function poly(points, fill, stroke, lineWidth) {
+  X.beginPath();
+  X.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) X.lineTo(points[i].x, points[i].y);
+  X.closePath();
+  if (fill) { X.fillStyle = fill; X.fill(); }
+  if (stroke) { X.strokeStyle = stroke; X.lineWidth = lineWidth || 2; X.stroke(); }
+}
+
+function drawSky() {
+  X.fillStyle = "#0B0E17";
+  X.fillRect(0, 0, W, H);
+
+  const sky = X.createLinearGradient(0, 0, 0, HORIZON + 8);
+  sky.addColorStop(0, "#101a35");
+  sky.addColorStop(1, "#263a6b");
+  X.fillStyle = sky;
+  X.fillRect(0, 0, W, HORIZON + 8);
+
+  const glow = X.createRadialGradient(W / 2, HORIZON, 0, W / 2, HORIZON, W * 0.9);
+  glow.addColorStop(0, "rgba(63,169,255,0.30)");
+  glow.addColorStop(1, "rgba(63,169,255,0)");
+  X.fillStyle = glow;
+  X.fillRect(0, 0, W, HORIZON + 60);
+}
+
+function drawGround() {
+  const hw = G.level.halfWidth;
+  const nearZ = cam.z + 1.6, farZ = cam.z + 95;
+  const nl = proj(-hw, 0, nearZ), nr = proj(hw, 0, nearZ);
+  const fl = proj(-hw, 0, farZ), fr = proj(hw, 0, farZ);
+  if (!nl || !nr || !fl || !fr) return;
+
+  poly([nl, nr, fr, fl], "#1B2233");
+
+  /* speed stripes */
+  const step = 6;
+  const start = Math.floor(nearZ / step) * step;
+  X.globalAlpha = 0.55;
+  for (let z = start; z < farZ; z += step) {
+    const a = proj(-hw, 0.01, z), b = proj(hw, 0.01, z);
+    const c = proj(hw, 0.01, z + 1.4), d = proj(-hw, 0.01, z + 1.4);
+    if (!a || !b || !c || !d) continue;
+    poly([a, b, c, d], (Math.round(z / step) % 2 === 0) ? "#212A3E" : "#1E2637");
+  }
+  X.globalAlpha = 1;
+
+  /* rails */
+  for (const side of [-1, 1]) {
+    const x = side * (hw + 0.35);
+    const a = proj(x, 0, nearZ), b = proj(x, 1.1, nearZ);
+    const c = proj(x, 1.1, farZ), d = proj(x, 0, farZ);
+    if (!a || !b || !c || !d) continue;
+    poly([a, b, c, d], "#2C3856");
+  }
+}
+
+function drawFinish() {
+  const hw = G.level.halfWidth, z = G.level.length;
+  const cols = 10;
+  for (let i = 0; i < cols; i++) {
+    const x0 = -hw + (i * 2 * hw) / cols, x1 = -hw + ((i + 1) * 2 * hw) / cols;
+    const a = proj(x0, 0.02, z), b = proj(x1, 0.02, z);
+    const c = proj(x1, 0.02, z + 2.2), d = proj(x0, 0.02, z + 2.2);
+    if (!a || !b || !c || !d) continue;
+    poly([a, b, c, d], i % 2 === 0 ? "#F2F5FF" : "#0B0E17");
+  }
+}
+
+function drawGate(g) {
+  if (g.consumed) return;
+  const gx = gateX(g);
+  const bl = proj(gx - 2.7, 0, g.z), br = proj(gx + 2.7, 0, g.z);
+  const tl = proj(gx - 2.7, 3.5, g.z), tr = proj(gx + 2.7, 3.5, g.z);
+  if (!bl || !br || !tl || !tr) return;
+
+  const good = gateIsGood(g.type, g.value);
+  poly([bl, br, tr, tl],
+    good ? "rgba(51,224,138,0.20)" : "rgba(255,77,90,0.20)",
+    good ? "#33E08A" : "#FF4D5A",
+    Math.max(1.5, bl.s * 0.05));
+
+  const size = Math.max(11, bl.s * 0.95);
+  X.font = "700 " + size + "px 'Archivo Black', sans-serif";
+  X.textAlign = "center";
+  X.textBaseline = "middle";
+  X.fillStyle = good ? "#CFFBE4" : "#FFD9DC";
+  X.fillText(gateLabel(g.type, g.value), (tl.x + tr.x) / 2, (tl.y + bl.y) / 2);
+}
+
+function drawObstacle(o) {
+  const p = obstaclePos(o);
+  const base = proj(p.x, 0.02, p.z);
+  const top = proj(p.x, 1.5, p.z);
+  if (!base || !top) return;
+
+  const r = o.r * base.s;
+  X.fillStyle = "rgba(0,0,0,0.35)";
+  X.beginPath(); X.ellipse(base.x, base.y, r, r * 0.40, 0, 0, TAU); X.fill();
+
+  X.fillStyle = "#FF4D5A";
+  X.beginPath(); X.ellipse(top.x, top.y, r * 0.85, r * 0.34, 0, 0, TAU); X.fill();
+
+  X.strokeStyle = "#8E1B24";
+  X.lineWidth = Math.max(1, base.s * 0.05);
+  X.beginPath(); X.moveTo(base.x, base.y); X.lineTo(top.x, top.y); X.stroke();
+}
+
+function drawUnit(u) {
+  const bob = Math.abs(Math.sin(G.time * 13 + u.phase)) * 0.16;
+  const ground = proj(u.x, 0.01, u.z);
+  const p = proj(u.x, bob + 0.34, u.z);
+  if (!p || !ground) return;
+
+  const punch = u.punch > 0 ? 1 + u.punch * 1.2 : 1;
+  const r = 0.30 * p.s * punch;
+
+  X.fillStyle = "rgba(0,0,0,0.30)";
+  X.beginPath(); X.ellipse(ground.x, ground.y, r * 0.85, r * 0.32, 0, 0, TAU); X.fill();
+
+  X.fillStyle = "#3FA9FF";
+  X.beginPath(); X.ellipse(p.x, p.y, r * 0.82, r * 1.18, 0, 0, TAU); X.fill();
+
+  X.fillStyle = "#B9DEFF";
+  X.beginPath(); X.arc(p.x, p.y - r * 1.05, r * 0.55, 0, TAU); X.fill();
+}
+
+function drawWorld() {
+  const items = [];
+  G.level.gates.forEach(g => items.push({ z: g.z, fn: () => drawGate(g) }));
+  G.level.obstacles.forEach(o => items.push({ z: o.z, fn: () => drawObstacle(o) }));
+  G.units.forEach(u => items.push({ z: u.z, fn: () => drawUnit(u) }));
+  items.push({ z: G.level.length, fn: drawFinish });
+  items.sort((a, b) => b.z - a.z);
+  items.forEach(i => i.fn());
+}
+
+function drawTower() {
+  const s = G.siege;
+  if (!s) return;
+
+  const floors = G.level.floorCount;
+  const areaTop = H * 0.13, areaBottom = H * 0.72;
+  const fh = Math.min(118, (areaBottom - areaTop) / floors);
+  const towerW = W * 0.86, towerX = (W - towerW) / 2;
+
+  X.fillStyle = "rgba(7,9,18,0.55)";
+  X.fillRect(towerX - 10, areaBottom - fh * floors - 14, towerW + 20, fh * floors + 26);
+  X.strokeStyle = "#2A3349";
+  X.lineWidth = 2;
+  X.strokeRect(towerX - 10, areaBottom - fh * floors - 14, towerW + 20, fh * floors + 26);
+
+  for (let f = 0; f < floors; f++) {
+    const onFloor = s.nodes.filter(n => n.floor === f).sort((a, b) => a.slot - b.slot);
+    const gap = 12;
+    const w = (towerW - gap * (onFloor.length - 1)) / onFloor.length;
+    const y = areaBottom - (f + 1) * fh + 8;
+    const h = fh - 16;
+
+    onFloor.forEach((n, i) => {
+      const x = towerX + i * (w + gap);
+      const pulse = n.pulse > 0 ? 1 + Math.sin(clamp01(n.pulse / 0.35) * Math.PI) * 0.08 : 1;
+      const jitter = n.reject > 0 ? Math.sin(G.time * 55) * 6 * clamp01(n.reject / 0.32) : 0;
+      const rw = w * pulse, rh = h * pulse;
+      const rx = x + (w - rw) / 2 + jitter, ry = y + (h - rh) / 2;
+      n.rect = { x, y, w, h };
+
+      let fill = "#262E42", stroke = "#333D57", label = "#8A93AD";
+      if (n.state === "cleared") { fill = "#173A62"; stroke = "#3FA9FF"; label = "#BEE0FF"; }
+      else if (n.state === "available") {
+        if (G.crowd > n.power) {
+          fill = n.boss ? "#40204F" : "#5A2418";
+          stroke = n.boss ? "#B36BD4" : "#FF7A45";
+          label = "#FFE3D2";
+        } else { fill = "#3A1116"; stroke = "#6E2029"; label = "#FF9AA1"; }
+      }
+
+      X.fillStyle = fill;
+      X.strokeStyle = stroke;
+      X.lineWidth = n.state === "available" && G.crowd > n.power ? 3 : 1.5;
+      roundRect(rx, ry, rw, rh, 12);
+      X.fill();
+      X.stroke();
+
+      X.fillStyle = label;
+      X.textAlign = "center";
+      X.textBaseline = "middle";
+      X.font = "700 " + Math.round(Math.min(34, rh * 0.42)) + "px 'Archivo Black', sans-serif";
+      X.fillText(n.state === "cleared" ? "✓" : String(n.power), rx + rw / 2, ry + rh / 2);
+
+      if (n.boss && n.state !== "cleared") {
+        X.fillStyle = "#B36BD4";
+        X.font = "600 12px 'Barlow Semi Condensed', sans-serif";
+        X.fillText("BOSS", rx + rw / 2, ry + 14);
+      }
+    });
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  X.beginPath();
+  X.moveTo(x + r, y);
+  X.arcTo(x + w, y, x + w, y + h, r);
+  X.arcTo(x + w, y + h, x, y + h, r);
+  X.arcTo(x, y + h, x, y, r);
+  X.arcTo(x, y, x + w, y, r);
+  X.closePath();
+}
+
+function drawTexts() {
+  X.textAlign = "center";
+  X.textBaseline = "middle";
+  for (const t of G.texts) {
+    const k = clamp01(t.t / t.life);
+    const alpha = 1 - Math.max(0, (k - 0.55) / 0.45);
+    let px, py, size;
+
+    if (t.screen) { px = t.sx; py = t.sy; size = 30; }
+    else {
+      const p = proj(t.x, t.y, t.z);
+      if (!p) continue;
+      px = p.x; py = p.y; size = clamp(p.s * 0.8, 13, 46);
+    }
+
+    X.globalAlpha = alpha;
+    X.font = "700 " + Math.round(size * (1 + (1 - k) * 0.25)) + "px 'Archivo Black', sans-serif";
+    X.lineWidth = 4;
+    X.strokeStyle = "rgba(7,9,18,0.75)";
+    X.strokeText(t.text, px, py);
+    X.fillStyle = t.color;
+    X.fillText(t.text, px, py);
+    X.globalAlpha = 1;
+  }
+}
+
+function render() {
+  X.save();
+  if (G.shake > 0) {
+    const k = G.shake * clamp01(G.shakeTime / 0.26);
+    X.translate((Math.random() - 0.5) * 16 * k, (Math.random() - 0.5) * 12 * k);
+  }
+  drawSky();
+  if (G.level) { drawGround(); drawWorld(); }
+  if (G.phase === "siege" || G.phase === "win" || G.phase === "fail") drawTower();
+  drawTexts();
+  X.restore();
+}
+</script>
+
+<script>
+"use strict";
+/* ============================================================== 7. UI  */
+
+const $ = id => document.getElementById(id);
+
+function show(id, visible) {
+  const el = $(id);
+  if (!el) return;
+  el.hidden = !visible;
+}
+
+function paintHud() {
+  $("gold").textContent = save.gold.toLocaleString();
+  $("crowd").textContent = G.crowd.toLocaleString();
+  $("lvl").textContent = "LEVEL " + save.levelIndex;
+  $("rush").classList.toggle("on", !!(G.level && G.level.isFeeder));
+  $("shopGold").textContent = save.gold.toLocaleString();
+}
+
+function paintShop() {
+  for (const id of ["crowd", "gold", "gate"]) {
+    const u = UPGRADES[id];
+    const level = save[u.key];
+    const cost = upgradeCost(id);
+    const maxed = !isFinite(cost);
+
+    $("v-" + id).textContent = u.value();
+    $("l-" + id).textContent = "LV " + (level + 1);
+
+    const btn = $("b-" + id);
+    btn.textContent = maxed ? "MAX" : cost.toLocaleString();
+    btn.disabled = maxed || save.gold < cost;
+  }
+  $("shopGold").textContent = save.gold.toLocaleString();
+}
+
+function paintTelemetry() {
+  $("t-phase").textContent = G.phase;
+  $("t-units").textContent = G.units.length;
+  if (!G.level) return;
+  $("t-band").textContent = G.level.band;
+  $("t-gates").textContent = G.level.gates.length;
+  $("t-haz").textContent = G.level.obstacles.length;
+  $("t-tower").textContent = G.level.totalTowerPower;
+  $("t-ratio").textContent = G.level.difficultyRatio.toFixed(2);
+}
+
+/* mock ad framework: same call shape as a mediation SDK */
+function playMockAd(kind, seconds, done) {
+  G.adPlaying = true;
+  $("adKind").textContent = kind;
+  show("advert", true);
+
+  const started = performance.now();
+  const tick = () => {
+    const remaining = seconds - (performance.now() - started) / 1000;
+    $("adCount").textContent = Math.max(0, remaining).toFixed(1) + "s";
+    if (remaining > 0) requestAnimationFrame(tick);
+    else {
+      show("advert", false);
+      G.adPlaying = false;
+      done();
+    }
+  };
+  tick();
+}
+
+/* buttons ----------------------------------------------------------------- */
+$("play").addEventListener("click", startRun);
+
+$("openShop").addEventListener("click", () => { paintShop(); show("shop", true); blip("select"); });
+$("closeShop").addEventListener("click", () => { show("shop", false); blip("select"); });
+
+$("b-crowd").addEventListener("click", () => buyUpgrade("crowd"));
+$("b-gold").addEventListener("click", () => buyUpgrade("gold"));
+$("b-gate").addEventListener("click", () => buyUpgrade("gate"));
+
+$("next").addEventListener("click", continueAfterResult);
+$("retry").addEventListener("click", continueAfterResult);
+
+$("watchAd").addEventListener("click", () => {
+  if (G.rewardClaimed || G.rewardBoosted) return;
+  $("watchAd").disabled = true;
+  playMockAd("REWARDED VIDEO", 2.2, () => {
+    G.rewardBoosted = true;
+    G.reward *= 3;
+    $("winGold").textContent = "+" + G.reward;
+    blip("coin");
+    vibrate(24);
+  });
+});
+
+/* ============================================================ 8. BOOT  */
+
+let lastFrame = performance.now();
+let fpsAccum = 0, fpsFrames = 0;
+
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastFrame) / 1000);
+  lastFrame = now;
+
+  if (!G.adPlaying) update(dt);
+  render();
+
+  fpsAccum += dt; fpsFrames++;
+  if (fpsAccum >= 0.5) {
+    $("t-fps").textContent = Math.round(fpsFrames / fpsAccum);
+    $("t-units").textContent = G.units.length;
+    fpsAccum = 0; fpsFrames = 0;
+  }
+
+  requestAnimationFrame(loop);
+}
+
+resize();
+prepareLevel();
+setPhase("menu");
+paintShop();
+paintHud();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

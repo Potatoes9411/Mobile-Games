@@ -1,0 +1,49 @@
+# ---- Unity ----------------------------------------------------------------
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/Assets/AssetStoreTools*
+/Assets/Plugins/Editor/JetBrains*
+.vs/
+.gradle/
+ExportedObj/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+sysinfo.txt
+crashlytics-build.properties
+
+# ---- Signing (never commit) ------------------------------------------------
+*.keystore
+*.jks
+*.pfx
+*.p12
+keystore.properties
+
+# ---- Node / Electron -------------------------------------------------------
+node_modules/
+desktop/game/
+desktop/dist/
+npm-debug.log*
+package-lock.json
+
+# ---- OS --------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
