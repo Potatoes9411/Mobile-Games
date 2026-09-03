@@ -37,6 +37,7 @@ namespace MobClash.Track
         private float _phase;
         private float _bounceTimer;
         private Vector3 _slabBaseScale = Vector3.one;
+        private float _travelLimit = 2.5f;
         private MaterialPropertyBlock _propertyBlock;
 
         public bool Consumed { get { return _consumed; } }
@@ -109,6 +110,10 @@ namespace MobClash.Track
         {
             float span = halfWidth;
             float inner = span - 0.24f;
+
+            // Cap the sway so a moving half can never wander across the centre line and end up
+            // on its sibling's side of the road.
+            _travelLimit = span * 0.62f;
 
             if (slabTransform != null)
             {
@@ -192,13 +197,15 @@ namespace MobClash.Track
             {
                 case GateMotion.Horizontal:
                 {
-                    float x = _origin.x + Mathf.Sin(t * motionSpeed * 6.2831853f + _phase) * motionAmplitude;
+                    float travel = Mathf.Min(motionAmplitude, _travelLimit);
+                    float x = _origin.x + Mathf.Sin(t * motionSpeed * 6.2831853f + _phase) * travel;
                     transform.position = new Vector3(x, _origin.y, _origin.z);
                     break;
                 }
                 case GateMotion.Rotating:
                 {
-                    float x = _origin.x + Mathf.Sin(t * motionSpeed * 3.1415926f + _phase) * motionAmplitude * 0.5f;
+                    float travel = Mathf.Min(motionAmplitude, _travelLimit);
+                    float x = _origin.x + Mathf.Sin(t * motionSpeed * 3.1415926f + _phase) * travel * 0.5f;
                     transform.position = new Vector3(x, _origin.y, _origin.z);
                     transform.rotation = Quaternion.Euler(0f, Mathf.Sin(t * motionSpeed * 6.2831853f) * 35f, 0f);
                     break;
