@@ -22,6 +22,13 @@ namespace MobClash.Level
         public Transform contentRoot;
         public FinishLine finishLine;
 
+        [Header("Scenery")]
+        [Tooltip("Roadside dressing. Parallax past the camera is most of the speed read.")]
+        public bool spawnScenery = true;
+        public float sceneryStep = 5.5f;
+        public float sceneryInnerMargin = 3.5f;
+        public float sceneryOuterMargin = 26f;
+
         private readonly List<GameObject> _spawned = new List<GameObject>(64);
         private LevelData _current;
 
@@ -46,6 +53,7 @@ namespace MobClash.Level
             _current = data;
 
             BuildGround(data);
+            BuildScenery(data);
             BuildGates(data);
             BuildObstacles(data);
             BuildFinishLine(data);
@@ -87,6 +95,42 @@ namespace MobClash.Level
             }
 
             Register(ground);
+        }
+
+        /// <summary>
+        /// Deterministic roadside dressing: seeded on the level index, so a level always looks the
+        /// same on a retry without any of it being authored.
+        /// </summary>
+        private void BuildScenery(LevelData data)
+        {
+            if (!spawnScenery) return;
+
+            System.Random rng = new System.Random(data.levelIndex * 104729 + 17);
+            float from = -20f;
+            float to = data.TowerDistance + 60f;
+            float halfWidth = data.trackHalfWidth;
+
+            for (float z = from; z < to; z += sceneryStep + (float)rng.NextDouble() * 6f)
+            {
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    if (rng.NextDouble() < 0.34) continue;
+
+                    double roll = rng.NextDouble();
+                    GameObject item = roll < 0.62
+                        ? PrimitiveFactory.CreateTree()
+                        : (roll < 0.85 ? PrimitiveFactory.CreateRock() : PrimitiveFactory.CreateBanner());
+
+                    item.transform.SetParent(contentRoot, false);
+
+                    float x = side * (halfWidth + sceneryInnerMargin + (float)rng.NextDouble() * sceneryOuterMargin);
+                    item.transform.localPosition = new Vector3(x, 0f, z + (float)rng.NextDouble() * 3f);
+                    item.transform.localRotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
+                    item.transform.localScale = Vector3.one * (0.75f + (float)rng.NextDouble() * 0.7f);
+
+                    Register(item);
+                }
+            }
         }
 
         private void BuildGates(LevelData data)

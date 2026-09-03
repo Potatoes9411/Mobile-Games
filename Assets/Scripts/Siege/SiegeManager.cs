@@ -29,7 +29,8 @@ namespace MobClash.Siege
         public float floorHeight = 3.4f;
         public float slotSpacing = 4.4f;
         public float baseHeight = 1.2f;
-        public bool buildFloorSlabs = true;
+        [Tooltip("Build the castle mass the rooms are cut into. Turn off when using a real tower prefab.")]
+        public bool buildCastleShell = true;
 
         [Header("Battle pacing")]
         public float chargeDuration = 0.26f;
@@ -43,6 +44,7 @@ namespace MobClash.Siege
         private readonly List<TowerNode> _nodes = new List<TowerNode>(16);
         private readonly List<GameObject> _spawned = new List<GameObject>(24);
         private LevelData _level;
+        private GameObject _flag;
         private int _unlockedFloor;
         private bool _active;
         private bool _resolving;
@@ -81,20 +83,26 @@ namespace MobClash.Siege
                 if (level.nodes[i].power > maxPower) maxPower = level.nodes[i].power;
             }
 
-            if (buildFloorSlabs)
+            int maxSlots = 1;
+            for (int f = 0; f < level.floorCount; f++)
             {
-                for (int f = 0; f < level.floorCount; f++)
-                {
-                    float width = Mathf.Max(6f, slotSpacing * 3.1f);
-                    Color color = f % 2 == 0
-                        ? new Color(0.16f, 0.18f, 0.26f, 1f)
-                        : new Color(0.20f, 0.22f, 0.31f, 1f);
+                maxSlots = Mathf.Max(maxSlots, level.CountNodesOnFloor(f));
+            }
 
-                    GameObject slab = PrimitiveFactory.CreateFloorSlab(width, 5.2f, color);
-                    slab.transform.SetParent(towerRoot, false);
-                    slab.transform.localPosition = new Vector3(0f, baseHeight + f * floorHeight - 0.2f, 0f);
-                    _spawned.Add(slab);
-                }
+            float shellWidth = maxSlots * slotSpacing + 3.2f;
+            float shellHeight = baseHeight + level.floorCount * floorHeight + 1.4f;
+
+            if (buildCastleShell)
+            {
+                GameObject shell = PrimitiveFactory.CreateCastleShell(shellWidth, shellHeight, 2.6f);
+                shell.transform.SetParent(towerRoot, false);
+                shell.transform.localPosition = Vector3.zero;
+                _spawned.Add(shell);
+
+                _flag = PrimitiveFactory.CreateFlag(Palette.Red);
+                _flag.transform.SetParent(towerRoot, false);
+                _flag.transform.localPosition = new Vector3(0f, shellHeight + 0.6f, 1.0f);
+                _spawned.Add(_flag);
             }
 
             for (int i = 0; i < level.nodes.Length; i++)
@@ -116,7 +124,7 @@ namespace MobClash.Siege
                 float centreOffset = (slotsOnFloor - 1) * 0.5f;
                 float x = (spec.slot - centreOffset) * slotSpacing;
 
-                instance.transform.localPosition = new Vector3(x, baseHeight + spec.floor * floorHeight, 0f);
+                instance.transform.localPosition = new Vector3(x, baseHeight + spec.floor * floorHeight, -0.9f);
                 instance.transform.localRotation = Quaternion.identity;
 
                 _nodes.Add(node);
@@ -133,6 +141,7 @@ namespace MobClash.Siege
 
             _spawned.Clear();
             _nodes.Clear();
+            _flag = null;
             _active = false;
             _resolving = false;
             _unlockedFloor = 0;
@@ -230,7 +239,7 @@ namespace MobClash.Siege
                     JuiceManager.Instance.SpawnFloatingText(
                         node.transform.position + Vector3.up * 2.2f,
                         "TOO STRONG",
-                        new Color(1f, 0.45f, 0.42f));
+                        Palette.Red);
                 }
 
                 return;
@@ -276,7 +285,7 @@ namespace MobClash.Siege
                 JuiceManager.Instance.SpawnFloatingText(
                     node.transform.position + Vector3.up * 2.4f,
                     "+" + (power - casualties),
-                    new Color(0.4f, 1f, 0.6f));
+                    Palette.Jade);
             }
 
             elapsed = 0f;
@@ -310,9 +319,28 @@ namespace MobClash.Siege
 
             if (AllCleared())
             {
+                RaiseVictoryBanner();
                 _active = false;
                 if (GameManager.Instance != null) GameManager.Instance.OnSiegeResolved(true);
             }
+        }
+
+        /// <summary>Swaps the keep's banner to the player's colours the moment the last room falls.</summary>
+        private void RaiseVictoryBanner()
+        {
+            if (_flag == null) return;
+
+            Transform banner = _flag.transform.Find("Banner");
+            if (banner == null) return;
+
+            Renderer renderer = banner.GetComponent<Renderer>();
+            if (renderer == null) return;
+
+            MaterialPropertyBlock block = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(block);
+            block.SetColor("_BaseColor", Palette.Blue);
+            block.SetColor("_Color", Palette.Blue);
+            renderer.SetPropertyBlock(block);
         }
 
         private bool IsFloorCleared(int floor)

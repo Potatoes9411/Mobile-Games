@@ -14,12 +14,14 @@ namespace MobClash.UI
     {
         public static readonly Vector2 ReferenceResolution = new Vector2(1080f, 1920f);
 
+        // Driven by the same palette as the 3D world so the HUD never fights the art direction.
         public static readonly Color Ink = new Color(0.99f, 0.99f, 1f, 1f);
-        public static readonly Color Accent = new Color(0.20f, 0.72f, 1f, 1f);
-        public static readonly Color Positive = new Color(0.18f, 0.80f, 0.42f, 1f);
-        public static readonly Color Warning = new Color(1f, 0.72f, 0.16f, 1f);
-        public static readonly Color Danger = new Color(0.92f, 0.28f, 0.30f, 1f);
-        public static readonly Color PanelBackground = new Color(0.05f, 0.06f, 0.11f, 0.88f);
+        public static readonly Color Accent = Palette.Blue;
+        public static readonly Color Positive = Palette.Jade;
+        public static readonly Color Warning = Palette.Gold;
+        public static readonly Color Danger = Palette.Red;
+        public static readonly Color PanelBackground = new Color(
+            Palette.Ink.r, Palette.Ink.g, Palette.Ink.b, 0.88f);
 
         /// <summary>Creates a screen space canvas that scales with the device resolution.</summary>
         public static Canvas CreateCanvas(string name, int sortOrder, Transform parent)

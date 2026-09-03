@@ -53,21 +53,38 @@ namespace MobClash.EditorTools
             Debug.Log("[MobClash] Scene generated at " + ScenePath + ". Press Play to run the game.");
         }
 
+        /// <summary>
+        /// Golden hour lighting to match the palette: a low warm key light, a violet sky bounce and
+        /// linear fog in the horizon colour so distant geometry dissolves instead of popping.
+        /// </summary>
         private static void CreateEnvironment()
         {
-            GameObject lightObject = new GameObject("Directional Light");
+            GameObject lightObject = new GameObject("Sun");
             Light light = lightObject.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.color = new Color(1f, 0.97f, 0.9f);
-            light.intensity = 1.05f;
+            light.color = Palette.Sun;
+            light.intensity = 1.15f;
             light.shadows = LightShadows.None;
-            lightObject.transform.rotation = Quaternion.Euler(52f, -35f, 0f);
+            lightObject.transform.rotation = Quaternion.Euler(24f, 12f, 0f);
+
+            GameObject fillObject = new GameObject("Sky Fill");
+            Light fill = fillObject.AddComponent<Light>();
+            fill.type = LightType.Directional;
+            fill.color = Palette.SkyMid;
+            fill.intensity = 0.35f;
+            fill.shadows = LightShadows.None;
+            fillObject.transform.rotation = Quaternion.Euler(140f, -40f, 0f);
 
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.42f, 0.48f, 0.62f);
-            RenderSettings.ambientEquatorColor = new Color(0.26f, 0.29f, 0.38f);
-            RenderSettings.ambientGroundColor = new Color(0.12f, 0.13f, 0.18f);
-            RenderSettings.fog = false;
+            RenderSettings.ambientSkyColor = Palette.SkyMid;
+            RenderSettings.ambientEquatorColor = Palette.Fog;
+            RenderSettings.ambientGroundColor = Palette.GrassDark;
+
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogColor = Palette.Fog;
+            RenderSettings.fogStartDistance = 45f;
+            RenderSettings.fogEndDistance = 210f;
         }
 
         private static CameraRig CreateCameraRig()
@@ -77,7 +94,7 @@ namespace MobClash.EditorTools
             Camera camera = rig.AddComponent<Camera>();
             camera.tag = "MainCamera";
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.07f, 0.09f, 0.15f);
+            camera.backgroundColor = Palette.Fog;
             camera.fieldOfView = 58f;
             camera.nearClipPlane = 0.3f;
             camera.farClipPlane = 400f;

@@ -27,6 +27,10 @@ namespace MobClash.Track
         public TextMesh label;
         public Renderer slabRenderer;
         public Transform slabTransform;
+        public Transform postLeft;
+        public Transform postRight;
+        public Transform lintel;
+        public Renderer bannerRenderer;
 
         private bool _consumed;
         private Vector3 _origin;
@@ -57,6 +61,16 @@ namespace MobClash.Track
                 slabRenderer = slabTransform.GetComponent<Renderer>();
             }
 
+            if (postLeft == null) postLeft = transform.Find("PostLeft");
+            if (postRight == null) postRight = transform.Find("PostRight");
+            if (lintel == null) lintel = transform.Find("Lintel");
+
+            if (bannerRenderer == null)
+            {
+                Transform bannerTransform = transform.Find("Banner");
+                if (bannerTransform != null) bannerRenderer = bannerTransform.GetComponent<Renderer>();
+            }
+
             if (label == null) label = GetComponentInChildren<TextMesh>();
             if (slabTransform != null) _slabBaseScale = slabTransform.localScale;
         }
@@ -73,36 +87,92 @@ namespace MobClash.Track
             motionSpeed = spec.motionSpeed;
             _consumed = false;
 
-            float x = Mathf.Clamp(spec.lane, -1f, 1f) * (halfWidth * 0.5f);
+            // A row's two halves each own half the road and tile it edge to edge. Centring them
+            // on the lane value instead would overlap them in the middle of the track, which makes
+            // the choice unreadable and lets either collider claim the pass.
+            float x = (spec.lane < 0f ? -1f : 1f) * (halfWidth * 0.5f);
             transform.position = new Vector3(x, 0f, spec.distance);
             transform.rotation = Quaternion.identity;
             _origin = transform.position;
             _phase = Random.Range(0f, 6.2831853f);
             _bounceTimer = 0f;
 
+            FitToHalfWidth(halfWidth);
+
             gameObject.layer = GameLayers.GateLayer;
             SetVisible(true);
             Repaint();
+        }
+
+        /// <summary>Sizes the structure so the half exactly covers its side of the road.</summary>
+        private void FitToHalfWidth(float halfWidth)
+        {
+            float span = halfWidth;
+            float inner = span - 0.24f;
+
+            if (slabTransform != null)
+            {
+                Vector3 scale = slabTransform.localScale;
+                slabTransform.localScale = new Vector3(inner, scale.y, scale.z);
+                _slabBaseScale = slabTransform.localScale;
+            }
+
+            float postX = span * 0.5f - 0.17f;
+            if (postLeft != null)
+            {
+                Vector3 p = postLeft.localPosition;
+                postLeft.localPosition = new Vector3(-postX, p.y, p.z);
+            }
+            if (postRight != null)
+            {
+                Vector3 p = postRight.localPosition;
+                postRight.localPosition = new Vector3(postX, p.y, p.z);
+            }
+
+            if (lintel != null)
+            {
+                Vector3 scale = lintel.localScale;
+                lintel.localScale = new Vector3(span, scale.y, scale.z);
+            }
+
+            if (bannerRenderer != null)
+            {
+                Transform bannerTransform = bannerRenderer.transform;
+                Vector3 scale = bannerTransform.localScale;
+                bannerTransform.localScale = new Vector3(span - 0.3f, scale.y, scale.z);
+            }
+
+            BoxCollider box = GetComponent<BoxCollider>();
+            if (box != null)
+            {
+                Vector3 size = box.size;
+                box.size = new Vector3(span, size.y, size.z);
+            }
         }
 
         private void Repaint()
         {
             Color tint = GateMath.TintFor(mathType, value);
 
-            if (slabRenderer != null)
-            {
-                if (_propertyBlock == null) _propertyBlock = new MaterialPropertyBlock();
-                slabRenderer.GetPropertyBlock(_propertyBlock);
-                _propertyBlock.SetColor("_BaseColor", tint);
-                _propertyBlock.SetColor("_Color", tint);
-                slabRenderer.SetPropertyBlock(_propertyBlock);
-            }
+            Tint(slabRenderer, tint);
+            Tint(bannerRenderer, Color.Lerp(tint, Color.white, 0.35f));
 
             if (label != null)
             {
                 label.text = GateMath.Format(mathType, value);
                 label.color = Color.white;
             }
+        }
+
+        private void Tint(Renderer target, Color color)
+        {
+            if (target == null) return;
+
+            if (_propertyBlock == null) _propertyBlock = new MaterialPropertyBlock();
+            target.GetPropertyBlock(_propertyBlock);
+            _propertyBlock.SetColor("_BaseColor", color);
+            _propertyBlock.SetColor("_Color", color);
+            target.SetPropertyBlock(_propertyBlock);
         }
 
         private void SetVisible(bool visible)
@@ -184,7 +254,7 @@ namespace MobClash.Track
                 JuiceManager.Instance.SpawnFloatingText(
                     position,
                     (after - before >= 0 ? "+" : "") + (after - before),
-                    positive ? new Color(0.35f, 1f, 0.55f) : new Color(1f, 0.4f, 0.4f));
+                    positive ? Palette.Jade : Palette.Red);
 
                 JuiceManager.Instance.Shake(positive ? 0.12f : 0.2f, 0.16f);
                 if (positive) JuiceManager.Instance.HapticLight();

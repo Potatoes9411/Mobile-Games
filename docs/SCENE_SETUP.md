@@ -80,7 +80,8 @@ Portrait only · Linear colour space.
 
 ```
 Game.unity
-├── Directional Light                 rotation (52, -35, 0), shadows off
+├── Sun                               directional, warm, rotation (24, 12, 0), shadows off
+├── Sky Fill                          directional, violet bounce at 0.35 intensity
 ├── CameraRig                         Camera + AudioListener + CameraRig
 │                                     pos (0, 9.5, -11.5), rot (26, 0, 0), FOV 58
 ├── Player                            layer Player, tag Player
@@ -129,11 +130,37 @@ constants in the inspector rather than in code.
 
 ---
 
-## 4. Performance notes for mid-range Android
+## 4. Art direction
+
+Every colour in the 3D world and the HUD comes from `Assets/Scripts/Core/Palette.cs` — the same
+values the browser build uses, so the two implementations look identical. The direction is
+**golden hour siege**: warm amber sky, deep teal fields, sandstone road, cobalt mob against crimson
+defenders.
+
+| Element | Built by | Notes |
+| --- | --- | --- |
+| Crowd member | `PrimitiveFactory.CreateFighter` | torso, head, helmet dome, gold plume |
+| Tower defender | `PrimitiveFactory.CreateDefender` | same silhouette, crimson |
+| Gate | `PrimitiveFactory.CreateGateHalf` | stone posts, lintel, banner, coloured curtain |
+| Hazard | `PrimitiveFactory.CreateObstacle` | spinning saw on a post over a warning ring |
+| Keep | `PrimitiveFactory.CreateCastleShell` | wall, buttresses, battlements, gatehouse, banner |
+| Room | `PrimitiveFactory.CreateTowerNode` | stone surround, recessed interior, wall plaque |
+| Terrain | `PrimitiveFactory.CreateGround` | fields, shoulder, road, speed rungs, walls with caps |
+| Scenery | `LevelBuilder.BuildScenery` | trees, rocks, banners seeded on the level index |
+
+Lighting is a warm key light plus a violet sky-fill, with **linear fog in the horizon colour**
+(45m → 210m) so distant geometry dissolves rather than popping in. Swap the palette values and the
+whole game re-skins; swap the prefab fields on `LevelBuilder` / `SwarmManager` / `SiegeManager` to
+replace the generated geometry with real art.
+
+## 5. Performance notes for mid-range Android
 
 * `Application.targetFrameRate = 60`, vSync off (`GameManager`).
-* Crowd budget: `SwarmManager.maxVisualUnits = 600`. The *logical* count is uncapped, so the HUD can
-  read `1240` while 600 capsules are drawn. Drop to 300 for low-end devices.
+* Crowd budget: `SwarmManager.maxVisualUnits = 450` while running, `maxSiegeUnits = 150` during the
+  siege. The *logical* count is uncapped, so the HUD can read `1240` while 450 figures are drawn.
+  Each crowd member is **four renderers** (torso, head, helmet, crest) — about 1800 instanced
+  renderers at the default. For low-end devices either drop `maxVisualUnits` or disable the `Helmet`
+  and `Crest` children on the unit prefab, which halves the count and still reads as a crowd.
 * Enable **GPU Instancing** on the crowd material (the generated one already has it on) and keep the
   unit mesh under ~200 triangles.
 * Shadows are off on every generated renderer, along with light probes, reflection probes and motion

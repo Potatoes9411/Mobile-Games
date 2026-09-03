@@ -27,13 +27,22 @@ namespace MobClash.Swarm
         public GameObject unitPrefab;
 
         [Header("Budget")]
-        [Tooltip("Maximum crowd members actually rendered. 500-600 is safe on mid range Android.")]
-        public int maxVisualUnits = 600;
+        [Tooltip("Maximum crowd members rendered while running. Each is 4 renderers, so 450 is " +
+                 "about the ceiling on mid range Android. Drop it for low end hardware.")]
+        public int maxVisualUnits = 450;
+
+        [Tooltip("Rendered members during the siege. Fewer bodies keeps the tower readable.")]
+        public int maxSiegeUnits = 150;
+
         public int prewarmUnits = 320;
 
         [Header("Formation")]
         public float unitSpacing = 0.42f;
         public float maxFormationRadius = 4.6f;
+
+        [Tooltip("Siege formation: a wide, shallow battle line massed at the tower base.")]
+        public float siegeLineWidth = 12f;
+        public float siegeLineDepth = 3.6f;
         public float baseDamp = 0.11f;
         public float dampVariance = 0.05f;
         public float jitterAmount = 0.18f;
@@ -46,7 +55,7 @@ namespace MobClash.Swarm
         public float punchAmount = 0.35f;
 
         [Header("Look")]
-        public Color unitColor = new Color(0.25f, 0.62f, 1f, 1f);
+        public Color unitColor = new Color(0.239f, 0.545f, 1f, 1f);
 
         private Transform[] _transforms;
         private SwarmVisual[] _visuals;
@@ -63,6 +72,30 @@ namespace MobClash.Swarm
         public int Count { get { return _logicalCount; } }
         public int RenderedCount { get { return _visualCount; } }
         public Transform Pivot { get { return pivot; } }
+
+        /// <summary>True once the run has handed over to the tower, where the crowd re-forms.</summary>
+        private bool InSiegePhase
+        {
+            get
+            {
+                if (GameManager.Instance == null) return false;
+                GameState state = GameManager.Instance.State;
+                return state == GameState.SiegeMode || state == GameState.LevelWin ||
+                       state == GameState.LevelFail;
+            }
+        }
+
+        /// <summary>Rendered-unit budget for the current phase.</summary>
+        private int VisualCap()
+        {
+            if (GameManager.Instance == null) return maxVisualUnits;
+
+            GameState state = GameManager.Instance.State;
+            bool siegeBudget = state == GameState.TransitionToSiege || state == GameState.SiegeMode ||
+                               state == GameState.LevelWin || state == GameState.LevelFail;
+
+            return siegeBudget ? Mathf.Min(maxSiegeUnits, maxVisualUnits) : maxVisualUnits;
+        }
 
         public float CrowdRadius
         {
@@ -126,7 +159,7 @@ namespace MobClash.Swarm
             target = Mathf.Clamp(target, 0, GateMath.MaxCrowd);
             _logicalCount = target;
 
-            int visualTarget = Mathf.Min(target, maxVisualUnits);
+            int visualTarget = Mathf.Min(target, VisualCap());
             while (_visualCount < visualTarget)
             {
                 if (!SpawnOne()) break;
@@ -243,8 +276,21 @@ namespace MobClash.Swarm
             _visualCount--;
         }
 
+        /// <summary>Reconciles the rendered population when the phase changes the budget.</summary>
+        private void ApplyVisualCap()
+        {
+            int target = Mathf.Min(_logicalCount, VisualCap());
+
+            while (_visualCount > target) DespawnAt(_visualCount - 1);
+            while (_visualCount < target)
+            {
+                if (!SpawnOne()) break;
+            }
+        }
+
         private void Update()
         {
+            ApplyVisualCap();
             if (_visualCount == 0) return;
 
             float dt = Time.deltaTime;
@@ -265,6 +311,12 @@ namespace MobClash.Swarm
 
             float invCount = 1f / _visualCount;
 
+            // Running: a round blob that reads as a crowd. Siege: a wide, shallow battle line so
+            // the army masses at the foot of the tower instead of burying it.
+            bool line = InSiegePhase;
+            float spreadX = line ? Mathf.Min(siegeLineWidth, unitSpacing * 2.7f * Mathf.Sqrt(_visualCount)) : radius;
+            float spreadZ = line ? Mathf.Min(siegeLineDepth, unitSpacing * 0.8f * Mathf.Sqrt(_visualCount)) : radius;
+
             for (int i = 0; i < _visualCount; i++)
             {
                 Transform t = _transforms[i];
@@ -273,9 +325,9 @@ namespace MobClash.Swarm
                 SwarmVisual visual = _visuals[i];
                 float slot = (i + 0.5f) * invCount;
                 float angle = i * GoldenAngle;
-                float r = radius * Mathf.Sqrt(slot);
+                float r = Mathf.Sqrt(slot);
 
-                Vector3 offset = new Vector3(Mathf.Cos(angle) * r, 0f, Mathf.Sin(angle) * r);
+                Vector3 offset = new Vector3(Mathf.Cos(angle) * r * spreadX, 0f, Mathf.Sin(angle) * r * spreadZ);
                 if (visual != null) offset += visual.jitter;
 
                 Vector3 target = center + offset;

@@ -11,8 +11,9 @@ The repository ships **two complete implementations of the same design**:
 | Unity 3D project | `Assets/` | Android (APK), Windows 11 (EXE), WebGL |
 | Canvas/JS build | `web/index.html` | Any browser, and shipped as a 104 KB Windows `.exe` in `dist/` |
 
-Both share the same pacing math, the same economy curves and the same three-phase loop, so tuning
-one and porting the numbers to the other is a copy-paste job.
+Both share the same pacing math, the same economy curves, the same three-phase loop **and the same
+art direction** — golden hour siege, driven from one palette file in each build — so tuning one and
+porting the numbers to the other is a copy-paste job.
 
 ---
 

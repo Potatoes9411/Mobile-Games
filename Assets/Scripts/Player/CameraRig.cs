@@ -21,7 +21,13 @@ namespace MobClash.Player
         public float horizontalFollow = 0.55f;
 
         [Header("Siege framing")]
-        public Vector3 siegeOffset = new Vector3(0f, 7f, -18f);
+        [Tooltip("Pull-back and lift scale with tower height so a 2 floor keep and a 6 floor " +
+                 "fortress both fill the frame, and the army reads as a band at the base.")]
+        public float siegeDistanceBase = 11f;
+        public float siegeDistancePerHeight = 1.15f;
+        public float siegeHeightBase = 4f;
+        public float siegeHeightPerHeight = 0.55f;
+        [Range(0f, 1f)] public float siegeLookHeight = 0.55f;
         public float siegeTransitionTime = 0.9f;
 
         [Header("Field of view")]
@@ -91,7 +97,9 @@ namespace MobClash.Player
         {
             if (_siegeMode)
             {
-                return _siegeAnchor + siegeOffset + new Vector3(0f, _siegeHeight * 0.45f, 0f);
+                float distance = siegeDistanceBase + _siegeHeight * siegeDistancePerHeight;
+                float height = siegeHeightBase + _siegeHeight * siegeHeightPerHeight;
+                return _siegeAnchor + new Vector3(0f, height, -distance);
             }
 
             if (target == null) return transform.position;
@@ -105,7 +113,7 @@ namespace MobClash.Player
         {
             if (_siegeMode)
             {
-                return _siegeAnchor + new Vector3(0f, _siegeHeight * 0.5f, 0f);
+                return _siegeAnchor + new Vector3(0f, _siegeHeight * siegeLookHeight, 0f);
             }
 
             if (target == null) return transform.position + Vector3.forward;

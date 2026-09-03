@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using MobClash.Core;
 using MobClash.Data;
 using UnityEngine;
@@ -22,13 +23,20 @@ namespace MobClash.Siege
         public Renderer bodyRenderer;
         public TextMesh label;
 
-        [Header("Colours")]
-        public Color lockedColor = new Color(0.23f, 0.25f, 0.31f, 1f);
-        public Color beatableColor = new Color(0.90f, 0.38f, 0.28f, 1f);
-        public Color blockedColor = new Color(0.38f, 0.11f, 0.14f, 1f);
-        public Color clearedColor = new Color(0.18f, 0.50f, 0.93f, 1f);
-        public Color bossColor = new Color(0.62f, 0.16f, 0.72f, 1f);
+        [Header("Defenders")]
+        [Tooltip("Optional figure prefab. Falls back to the generated defender.")]
+        public GameObject defenderPrefab;
+        public int maxDefenderFigures = 3;
+        public float defenderScale = 0.8f;
 
+        [Header("Colours")]
+        public Color lockedColor = new Color(0.18f, 0.16f, 0.22f, 1f);
+        public Color beatableColor = new Color(0.36f, 0.10f, 0.14f, 1f);
+        public Color blockedColor = new Color(0.20f, 0.07f, 0.10f, 1f);
+        public Color clearedColor = new Color(0.10f, 0.28f, 0.59f, 1f);
+        public Color bossColor = new Color(0.45f, 0.13f, 0.52f, 1f);
+
+        private readonly List<GameObject> _defenders = new List<GameObject>(3);
         private NodeState _state = NodeState.Locked;
         private bool _beatable;
         private Vector3 _baseScale = Vector3.one;
@@ -81,13 +89,53 @@ namespace MobClash.Siege
             gameObject.layer = GameLayers.TowerNodeLayer;
             if (bodyTransform != null) bodyTransform.gameObject.layer = GameLayers.TowerNodeLayer;
 
+            BuildDefenders();
             SetState(NodeState.Locked);
             RefreshThreat(0);
+        }
+
+        /// <summary>
+        /// Puts a garrison in the window. Purely decorative - the room's strength is its number -
+        /// but an empty box reads as scenery while figures read as something to fight.
+        /// </summary>
+        private void BuildDefenders()
+        {
+            for (int i = 0; i < _defenders.Count; i++)
+            {
+                if (_defenders[i] != null) PrimitiveFactory.SafeDestroy(_defenders[i]);
+            }
+            _defenders.Clear();
+
+            int count = Mathf.Clamp(1 + power % 3, 1, Mathf.Max(1, maxDefenderFigures));
+            for (int i = 0; i < count; i++)
+            {
+                GameObject figure = defenderPrefab != null
+                    ? Instantiate(defenderPrefab, transform)
+                    : PrimitiveFactory.CreateDefender();
+
+                if (defenderPrefab == null) figure.transform.SetParent(transform, false);
+
+                float spread = (i - (count - 1) * 0.5f) * 0.85f;
+                figure.transform.localPosition = new Vector3(spread, 0.12f, -0.55f);
+                figure.transform.localScale = Vector3.one * defenderScale;
+                figure.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+
+                _defenders.Add(figure);
+            }
+        }
+
+        private void SetDefendersVisible(bool visible)
+        {
+            for (int i = 0; i < _defenders.Count; i++)
+            {
+                if (_defenders[i] != null) _defenders[i].SetActive(visible);
+            }
         }
 
         public void SetState(NodeState state)
         {
             _state = state;
+            SetDefendersVisible(state != NodeState.Cleared);
             Repaint();
         }
 
