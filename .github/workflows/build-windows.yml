@@ -23,13 +23,13 @@ jobs:
         run: ./desktop/win-launcher/build.sh
       - name: Verify the payload is embedded
         run: |
-          test -f dist/MobClashGateSiege.exe
-          grep -q "MOB CLASH" dist/MobClashGateSiege.exe
-          ls -lh dist/MobClashGateSiege.exe
+          test -f dist/PocketArcade.exe
+          grep -q "Pocket Arcade" dist/PocketArcade.exe
+          ls -lh dist/PocketArcade.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: MobClashGateSiege-launcher
-          path: dist/MobClashGateSiege.exe
+          name: PocketArcade-launcher
+          path: dist/PocketArcade.exe
 
   electron:
     name: Electron desktop app (installer + portable)
@@ -47,6 +47,6 @@ jobs:
         run: npm run dist
       - uses: actions/upload-artifact@v4
         with:
-          name: MobClashGateSiege-electron
+          name: PocketArcade-electron
           path: |
             desktop/dist/*.exe

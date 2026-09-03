@@ -1,18 +1,18 @@
 {
-  "name": "mob-clash-gate-siege",
-  "productName": "Mob Clash Gate Siege",
+  "name": "pocket-arcade",
+  "productName": "Pocket Arcade",
   "version": "1.0.0",
-  "description": "Hybrid-casual runner, math gates and tower siege. Windows desktop shell.",
+  "description": "Pocket Arcade - three full mobile games in one shell.",
   "main": "main.js",
   "author": "ViralGames",
   "license": "MIT",
   "private": true,
   "scripts": {
-    "prestart": "node sync.js",
+    "prestart": "node ../web/build-single.js && node sync.js",
     "start": "electron .",
-    "predist": "node sync.js",
+    "predist": "node ../web/build-single.js && node sync.js",
     "dist": "electron-builder --win nsis portable",
-    "dist:dir": "node sync.js && electron-builder --win --dir"
+    "dist:dir": "node ../web/build-single.js && node sync.js && electron-builder --win --dir"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -20,7 +20,7 @@
   },
   "build": {
     "appId": "com.viralgames.mobclash",
-    "productName": "Mob Clash Gate Siege",
+    "productName": "Pocket Arcade",
     "directories": {
       "output": "dist"
     },
@@ -33,13 +33,13 @@
         "nsis",
         "portable"
       ],
-      "artifactName": "MobClashGateSiege-${version}-${target}.${ext}"
+      "artifactName": "PocketArcade-${version}-${target}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Mob Clash Gate Siege"
+      "shortcutName": "Pocket Arcade"
     }
   }
 }

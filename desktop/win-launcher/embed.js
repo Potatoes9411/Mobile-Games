@@ -1,9 +1,10 @@
-// Generates game_data.h: the whole browser build embedded as a byte array so the
+// Generates game_data.h: the bundled arcade embedded as a byte array so the
 // launcher is a single self-contained .exe with no external files.
+// Run `node web/build-single.js` first; build.sh does that for you.
 const fs = require("fs");
 const path = require("path");
 
-const source = path.join(__dirname, "..", "..", "web", "index.html");
+const source = path.join(__dirname, "..", "..", "dist", "pocket-arcade.html");
 const target = path.join(__dirname, "game_data.h");
 
 const bytes = fs.readFileSync(source);

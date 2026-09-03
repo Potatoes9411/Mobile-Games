@@ -1,5 +1,5 @@
 /*
- * Mob Clash: Gate Siege - Windows launcher
+ * Pocket Arcade - Windows launcher
  *
  * A ~100 KB native Win32 executable with the entire game embedded inside it.
  * On launch it unpacks the game next to the user's app data and opens it in a
@@ -18,9 +18,9 @@
 
 #include "game_data.h"
 
-#define APP_DIR    L"MobClashGateSiege"
+#define APP_DIR    L"PocketArcade"
 #define GAME_FILE  L"game.html"
-#define WINDOW_ARG L"--window-size=560,960"
+#define WINDOW_ARG L"--window-size=560,980"
 
 /*
  * mingw-w64 maps bare swprintf() to the non-conforming MSVC variant, which takes
@@ -97,7 +97,7 @@ int main(void)
     if (!GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH)) {
         if (!GetEnvironmentVariableW(L"TEMP", base, MAX_PATH)) {
             MessageBoxW(NULL, L"Could not locate a writable folder.",
-                        L"Mob Clash: Gate Siege", MB_ICONERROR | MB_OK);
+                        L"Pocket Arcade", MB_ICONERROR | MB_OK);
             return 1;
         }
     }
@@ -115,7 +115,7 @@ int main(void)
 
     if (!WriteGame(gamePath)) {
         MessageBoxW(NULL, L"Could not unpack the game files.",
-                    L"Mob Clash: Gate Siege", MB_ICONERROR | MB_OK);
+                    L"Pocket Arcade", MB_ICONERROR | MB_OK);
         return 1;
     }
 

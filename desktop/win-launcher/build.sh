@@ -9,16 +9,19 @@ here="$(cd "$(dirname "$0")" && pwd)"
 out="$here/../../dist"
 mkdir -p "$out"
 
-echo "==> Embedding web/index.html"
+echo "==> Bundling the arcade"
+node "$here/../../web/build-single.js"
+
+echo "==> Embedding dist/pocket-arcade.html"
 node "$here/embed.js"
 
-echo "==> Compiling MobClashGateSiege.exe"
+echo "==> Compiling PocketArcade.exe"
 x86_64-w64-mingw32-gcc \
   "$here/main.c" \
-  -o "$out/MobClashGateSiege.exe" \
+  -o "$out/PocketArcade.exe" \
   -O2 -s -mwindows -DUNICODE -D_UNICODE \
   -I"$here" \
   -lshell32
 
-ls -lh "$out/MobClashGateSiege.exe"
-echo "==> Done: dist/MobClashGateSiege.exe"
+ls -lh "$out/PocketArcade.exe"
+echo "==> Done: dist/PocketArcade.exe"

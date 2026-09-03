@@ -14,11 +14,11 @@ Four ways to run the game on a Windows 11 machine, ordered from "zero setup" to 
 
 ## A. The prebuilt executable
 
-`dist\MobClashGateSiege.exe` — double-click it. That is the whole install.
+`dist\PocketArcade.exe` — double-click it. That is the whole install.
 
 ### How it works
 
-The launcher is a 104 KB native Win32 program (`desktop/win-launcher/main.c`) with the entire game
+The launcher is a 222 KB native Win32 program (`desktop/win-launcher/main.c`) with the entire game
 embedded in its data section as a byte array. On launch it:
 
 1. Creates `%LOCALAPPDATA%\MobClashGateSiege\` and writes `game.html` there (overwriting each run,
@@ -37,8 +37,13 @@ It imports only `kernel32`, `shell32` and `user32`. No runtime, no installer, no
 
 ```bash
 sudo apt-get install mingw-w64      # Debian/Ubuntu; brew install mingw-w64 on macOS
-./desktop/win-launcher/build.sh     # embeds web/index.html and cross-compiles
+./desktop/win-launcher/build.sh     # bundles the arcade, embeds it, cross-compiles
 ```
+
+`build.sh` runs `node web/build-single.js` first, which inlines the hub, the engine
+and all three games into `dist/pocket-arcade.html`. That bundle is what gets
+embedded, so the sources stay split for review while the executable stays a single
+self-contained file.
 
 On Windows use MSYS2 and swap `x86_64-w64-mingw32-gcc` for `gcc` in `build.sh`.
 
@@ -51,11 +56,11 @@ On Windows use MSYS2 and swap `x86_64-w64-mingw32-gcc` for `gcc` in `build.sh`.
 
 An unsigned executable downloaded from the internet triggers "Windows protected your PC" on first
 run: **More info → Run anyway**. To remove the warning permanently you need an OV or EV
-code-signing certificate and `signtool sign /fd SHA256 /tr <timestamp-url> /td SHA256 MobClashGateSiege.exe`.
+code-signing certificate and `signtool sign /fd SHA256 /tr <timestamp-url> /td SHA256 PocketArcade.exe`.
 
 ## B. Just open the HTML
 
-1. `web\index.html` → double-click.
+1. `web\index.html` → double-click, or the one-file `dist\pocket-arcade.html`.
 2. Or double-click `web\PlayOnWindows.bat`, which opens it in your default browser.
 
 Controls: drag with the mouse (or `A` / `D`) to steer, `Space` to start, click a tower room to
@@ -88,12 +93,11 @@ npm run dist
 
 Outputs into `desktop\dist\`:
 
-* `MobClashGateSiege-1.0.0-portable.exe` — single file, no install, runs from a USB stick.
-* `MobClashGateSiege-1.0.0-nsis.exe` — installer with a desktop shortcut and an uninstaller.
+* `PocketArcade-1.0.0-portable.exe` — single file, no install, runs from a USB stick.
+* `PocketArcade-1.0.0-nsis.exe` — installer with a desktop shortcut and an uninstaller.
 
 `npm start` runs it without packaging. Both scripts first run `node sync.js`, which copies
-`web/index.html` into `desktop/game/` — `web/index.html` stays the single source of truth, so the
-desktop and browser builds can never drift.
+`web/index.html` into `desktop/game/` — `web/` stays the single source of truth, so the desktop and browser builds can never drift.
 
 The window is 620 × 1000 (portrait, like the phone target), resizable, with the menu bar hidden.
 Change those in `desktop/main.js`.
@@ -118,7 +122,7 @@ The Unity project targets Windows too — same C#, same pacing, real 3D.
 2. In the editor: `Tools ▸ Mob Clash ▸ 4. Setup Everything`, then `5. Build Playable Scene`.
 3. `Tools ▸ Mob Clash ▸ 7. Build Windows x64 EXE`.
 
-Output: `Builds\Windows\MobClashGateSiege.exe` alongside its `_Data` folder — ship the whole folder.
+Output: `Builds\Windows\PocketArcade.exe` alongside its `_Data` folder — ship the whole folder.
 
 Command line:
 
@@ -164,8 +168,8 @@ Tuning constants live in exactly two places:
 
 | Concept | Unity | Web |
 | --- | --- | --- |
-| Level pacing | `LevelGenerator` fields | `TUNE` object |
-| Upgrade curves | `EconomyManager` fields | `ECON` object |
+| Level pacing | `LevelGenerator` fields | `TUNE` in `src/games/mobclash.js` |
+| Upgrade curves | `EconomyManager` fields | each game's shop rows |
 | Gate arithmetic | `GateMath.Apply` | `applyGate()` |
 | Tower solver | `LevelData.IsSolvable` | `isSolvable()` |
 

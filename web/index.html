@@ -3,2516 +3,299 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#1B1436">
-<title>Mob Clash: Gate Siege</title>
+<meta name="theme-color" content="#0E0B1E">
+<title>Pocket Arcade</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Titan+One&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
 <style>
 /* ---------------------------------------------------------------------------
-   MOB CLASH: GATE SIEGE
-   Art direction: golden hour siege. Warm amber sky, deep teal fields,
-   sandstone road, cobalt mob against crimson defenders. Single committed
-   visual world, no theme switching.
+   POCKET ARCADE
+   Three full games behind one hub. Dark cabinet chrome, each game carrying its
+   own accent through the tile, the HUD and its results screen.
    --------------------------------------------------------------------------- */
 :root{
-  --sky-deep:#1B1436;
-  --sky-warm:#F4894B;
-  --amber:#FFC24B;
-  --amber-dark:#B87116;
-  --cobalt:#3D8BFF;
-  --cobalt-dark:#1B4FA8;
+  --void:#0E0B1E;
+  --panel:#191233;
+  --panel-2:#241A45;
+  --line:#33285C;
+  --ink:#F4F1FF;
+  --dim:#9A92C4;
+  --gem:#7BE0FF;
+  --gold:#FFC24B;
   --jade:#3FD98A;
-  --jade-dark:#1E8C55;
-  --crimson:#FF4D5A;
-  --crimson-dark:#9E1F2C;
-  --stone:#F6EEE3;
-  --ink:#241A38;
-  --ink-soft:#5A4B72;
+  --rose:#FF4D6D;
+  --accent:#3D8BFF;
   --display:"Titan One","Arial Black",system-ui,sans-serif;
   --ui:"Barlow Semi Condensed","Segoe UI",Roboto,system-ui,sans-serif;
 }
 *,*::before,*::after{box-sizing:border-box}
-html,body{height:100%;margin:0;overflow:hidden;background:#1B1436}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--void)}
 body{
-  font-family:var(--ui);
-  color:var(--stone);
-  -webkit-font-smoothing:antialiased;
-  -webkit-tap-highlight-color:transparent;
-  user-select:none;
-  touch-action:none;
+  font-family:var(--ui);color:var(--ink);
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;
+  user-select:none;touch-action:none;
 }
-canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+canvas#stage{position:fixed;inset:0;width:100%;height:100%;display:block}
 
-#ui{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column}
-.wrap{width:min(560px,100%);margin:0 auto;padding:0 18px}
-
-/* ---------------------------------------------------------------- HUD ---- */
-#hud{flex:1;display:flex;flex-direction:column;padding-top:max(14px,env(safe-area-inset-top));transition:opacity .2s}
-#hud.hide{opacity:0}
-.topbar{display:flex;align-items:center;gap:12px}
-
-.badge{
-  font-family:var(--display);font-size:15px;letter-spacing:.02em;
-  color:var(--stone);
-  background:linear-gradient(180deg,#5A4B72,#2E2447);
-  border:2px solid rgba(255,255,255,.22);
-  border-radius:10px;padding:7px 11px 5px;
-  box-shadow:0 3px 0 rgba(0,0,0,.45);
-  white-space:nowrap;
-}
-
-.track{
-  flex:1;height:16px;border-radius:99px;
-  background:rgba(20,14,38,.62);
-  border:2px solid rgba(255,255,255,.20);
-  box-shadow:inset 0 2px 4px rgba(0,0,0,.5);
-  position:relative;overflow:hidden;
-}
-.track i{
-  position:absolute;inset:2px auto 2px 2px;width:0;border-radius:99px;
-  background:linear-gradient(180deg,#7BE6AE,var(--jade) 55%,var(--jade-dark));
-  transition:width .18s linear;
-}
-.pip{position:absolute;top:50%;width:4px;height:4px;border-radius:99px;background:rgba(255,255,255,.5);transform:translate(-50%,-50%)}
-
-.coin{
-  display:flex;align-items:center;gap:7px;
-  font-family:var(--display);font-size:17px;color:var(--amber);
-  text-shadow:0 2px 0 rgba(0,0,0,.5);
-  font-variant-numeric:tabular-nums;
-}
-.coin b{
-  width:20px;height:20px;border-radius:99px;display:block;
-  background:radial-gradient(circle at 34% 30%,#FFE9A8,var(--amber) 55%,var(--amber-dark));
-  border:2px solid #7A4A0C;box-shadow:0 2px 0 rgba(0,0,0,.4);
-}
-
-#crowd{
-  font-family:var(--display);font-size:clamp(52px,13vw,86px);line-height:1;
-  text-align:center;margin-top:10px;color:#fff;
-  font-variant-numeric:tabular-nums;
-  -webkit-text-stroke:5px var(--ink);paint-order:stroke fill;
-  text-shadow:0 6px 0 rgba(36,26,56,.55);
-  transition:transform .09s ease-out;
-}
-#crowd.pop{transform:scale(1.14)}
-#crowdCap{
-  text-align:center;font-size:13px;font-weight:700;letter-spacing:.32em;
-  color:rgba(255,255,255,.62);text-transform:uppercase;margin-top:-2px;
-  text-shadow:0 2px 3px rgba(0,0,0,.6);
-}
-#rush{
-  margin-top:8px;text-align:center;font-family:var(--display);font-size:20px;
-  color:#2A1B06;background:linear-gradient(180deg,#FFE08A,var(--amber));
-  border:3px solid #7A4A0C;border-radius:12px;padding:6px 0 4px;
-  box-shadow:0 4px 0 #7A4A0C;transform:rotate(-1.4deg);
-  opacity:0;transition:opacity .25s;
-}
-#rush.on{opacity:1;animation:rushWobble 1.6s ease-in-out infinite}
-@keyframes rushWobble{50%{transform:rotate(1.4deg) scale(1.03)}}
-
-#hint{
-  margin-top:auto;padding-bottom:max(28px,env(safe-area-inset-bottom));
-  text-align:center;font-size:15px;font-weight:700;letter-spacing:.20em;
-  text-transform:uppercase;color:rgba(255,255,255,.78);
-  text-shadow:0 2px 4px rgba(0,0,0,.7);
-}
-#hint span{display:inline-block;animation:nudge 1.9s ease-in-out infinite}
-@keyframes nudge{50%{transform:translateY(-4px)}}
-
-/* ------------------------------------------------------------ screens ---- */
-.screen{
-  position:absolute;inset:0;pointer-events:auto;
-  display:flex;flex-direction:column;align-items:center;
-  padding:0 18px max(30px,env(safe-area-inset-bottom));
-  background:
-    radial-gradient(90% 55% at 50% 22%, rgba(27,20,54,0) 0%, rgba(27,20,54,.55) 70%, rgba(27,20,54,.86) 100%);
-}
+#shell{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column}
+.screen{position:absolute;inset:0;pointer-events:auto;display:flex;flex-direction:column;overflow-y:auto}
 .screen[hidden]{display:none}
-.screen .pad{flex:1}
+.wrap{width:min(620px,100%);margin:0 auto;padding:0 16px}
 
-.logo{
-  font-family:var(--display);text-align:center;line-height:.92;
-  color:#fff;-webkit-text-stroke:7px var(--ink);paint-order:stroke fill;
-  filter:drop-shadow(0 8px 0 rgba(36,26,56,.5));
-  margin:0;
+/* -------------------------------------------------------------- home ---- */
+#home{
+  background:
+    radial-gradient(120% 70% at 50% -10%, #2C1F58 0%, transparent 62%),
+    linear-gradient(180deg,#140F2B,#0E0B1E);
 }
-.logo .a{display:block;font-size:clamp(44px,12vw,68px)}
-.logo .b{
-  display:block;font-size:clamp(24px,6.6vw,36px);color:var(--amber);
-  -webkit-text-stroke:6px var(--ink);letter-spacing:.06em;margin-top:6px;
+.topline{display:flex;align-items:center;gap:12px;padding-top:max(14px,env(safe-area-inset-top))}
+.avatar{
+  width:52px;height:52px;border-radius:15px;flex:none;
+  background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:2px solid var(--line);overflow:hidden;
 }
-.ribbon{
-  margin:14px auto 0;padding:7px 20px 5px;
-  font-family:var(--display);font-size:15px;letter-spacing:.16em;
-  color:#2A1B06;background:linear-gradient(180deg,#FFE08A,var(--amber));
-  border:3px solid #7A4A0C;border-radius:99px;box-shadow:0 4px 0 #7A4A0C;
-}
-
-.headline{
-  font-family:var(--display);font-size:clamp(34px,9vw,50px);text-align:center;
-  color:#fff;-webkit-text-stroke:6px var(--ink);paint-order:stroke fill;
-  filter:drop-shadow(0 7px 0 rgba(36,26,56,.5));margin:0;
-}
-.headline.good{color:var(--jade)}
-.headline.bad{color:var(--crimson)}
-.sub{margin:10px 0 0;font-size:15px;font-weight:600;letter-spacing:.18em;
-  text-transform:uppercase;color:rgba(255,255,255,.72);text-align:center}
-
-.payout{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:12px}
-.payout b{
-  width:44px;height:44px;border-radius:99px;display:block;
-  background:radial-gradient(circle at 34% 30%,#FFE9A8,var(--amber) 55%,var(--amber-dark));
-  border:4px solid #7A4A0C;box-shadow:0 4px 0 rgba(0,0,0,.4);
-}
-.payout span{
-  font-family:var(--display);font-size:clamp(40px,10vw,58px);color:var(--amber);
-  -webkit-text-stroke:6px var(--ink);paint-order:stroke fill;
+.avatar canvas{width:100%;height:100%;display:block}
+.levelbox{flex:1;min-width:0}
+.levelrow{display:flex;align-items:baseline;gap:8px}
+.levelrow b{font-family:var(--display);font-size:17px}
+.levelrow span{font-size:12px;font-weight:700;letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+.xpbar{margin-top:5px;height:9px;border-radius:99px;background:#100C24;border:1px solid var(--line);overflow:hidden}
+.xpbar i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#6E5BFF,#7BE0FF);transition:width .35s}
+.gems{
+  display:flex;align-items:center;gap:7px;font-family:var(--display);font-size:17px;color:var(--gem);
+  background:#100C24;border:2px solid var(--line);border-radius:12px;padding:8px 11px 6px;
   font-variant-numeric:tabular-nums;
 }
-
-/* ------------------------------------------------------------ buttons ---- */
-.btn{
-  pointer-events:auto;appearance:none;border:0;cursor:pointer;display:block;
-  width:100%;max-width:420px;margin-top:12px;
-  font-family:var(--display);font-size:21px;letter-spacing:.03em;
-  color:#12224A;padding:16px 20px 13px;border-radius:16px;
-  background:linear-gradient(180deg,#7FB8FF,var(--cobalt) 60%,#2F72DE);
-  border:3px solid rgba(255,255,255,.35);
-  box-shadow:0 6px 0 var(--cobalt-dark),0 12px 20px -8px rgba(0,0,0,.7);
-  transition:transform .07s,box-shadow .07s,filter .18s;
-}
-.btn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--cobalt-dark)}
-.btn:focus-visible{outline:4px solid #fff;outline-offset:3px}
-.btn.go{
-  background:linear-gradient(180deg,#8BF3BE,var(--jade) 60%,#25A868);
-  box-shadow:0 6px 0 var(--jade-dark),0 12px 20px -8px rgba(0,0,0,.7);color:#093A22;
-}
-.btn.go:active{box-shadow:0 2px 0 var(--jade-dark)}
-.btn.ad{
-  background:linear-gradient(180deg,#FFE08A,var(--amber) 60%,#E09A18);
-  box-shadow:0 6px 0 #7A4A0C,0 12px 20px -8px rgba(0,0,0,.7);color:#3A2504;
-}
-.btn.ad:active{box-shadow:0 2px 0 #7A4A0C}
-.btn.ghost{
-  background:linear-gradient(180deg,#6B5B87,#3B3057);color:#EDE6F7;
-  box-shadow:0 6px 0 #241A38,0 12px 20px -8px rgba(0,0,0,.7);
-}
-.btn.ghost:active{box-shadow:0 2px 0 #241A38}
-.btn[disabled]{filter:grayscale(.75) brightness(.72);cursor:default;transform:none}
-.btn .tag{
-  display:inline-block;font-family:var(--ui);font-weight:700;font-size:13px;
-  letter-spacing:.14em;background:rgba(0,0,0,.22);border-radius:99px;
-  padding:2px 9px;margin-left:8px;vertical-align:middle;
-}
-.breathe{animation:breathe 1.7s ease-in-out infinite}
-@keyframes breathe{50%{transform:scale(1.035)}}
-@media (prefers-reduced-motion:reduce){
-  .breathe,#rush.on,#hint span{animation:none}
+.gems b{
+  width:15px;height:15px;display:block;background:var(--gem);
+  clip-path:polygon(50% 0,100% 38%,50% 100%,0 38%);
 }
 
-/* -------------------------------------------------------------- shop ----- */
-#shop{overflow-y:auto;padding-top:max(22px,env(safe-area-inset-top));
-  background:linear-gradient(180deg,rgba(27,20,54,.90),rgba(27,20,54,.97))}
-#shop .headline{font-size:clamp(28px,7.5vw,40px)}
-.purse{
-  display:flex;align-items:center;justify-content:center;gap:10px;margin:10px 0 18px;
-  font-family:var(--display);font-size:28px;color:var(--amber);
-  -webkit-text-stroke:5px var(--ink);paint-order:stroke fill;font-variant-numeric:tabular-nums;
+h2.section{
+  font-family:var(--display);font-size:14px;letter-spacing:.18em;color:var(--dim);
+  text-transform:uppercase;margin:22px 0 10px;
 }
-.purse b{
-  width:26px;height:26px;border-radius:99px;-webkit-text-stroke:0;
-  background:radial-gradient(circle at 34% 30%,#FFE9A8,var(--amber) 55%,var(--amber-dark));
-  border:3px solid #7A4A0C;
+
+#tiles{display:flex;flex-direction:column;gap:12px}
+.tile{
+  position:relative;display:grid;grid-template-columns:104px 1fr auto;gap:14px;align-items:center;
+  padding:12px;border-radius:20px;cursor:pointer;text-align:left;
+  background:linear-gradient(135deg,var(--panel-2),var(--panel));
+  border:2px solid var(--line);
+  box-shadow:0 6px 0 rgba(0,0,0,.45);
+  transition:transform .08s,box-shadow .08s,border-color .2s;
+  appearance:none;font:inherit;color:inherit;width:100%;
 }
+.tile:active{transform:translateY(4px);box-shadow:0 2px 0 rgba(0,0,0,.45)}
+.tile:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.tile canvas{width:104px;height:88px;border-radius:14px;display:block;background:#0B0818}
+.tile h3{margin:0;font-family:var(--display);font-size:19px}
+.tile p{margin:3px 0 0;font-size:13px;color:var(--dim);line-height:1.35}
+.tile .best{margin-top:6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--gold)}
+.tile .go{
+  font-family:var(--display);font-size:13px;letter-spacing:.06em;color:#0B1226;
+  background:var(--accent);border-radius:10px;padding:9px 12px 7px;white-space:nowrap;
+}
+.tile.locked{filter:grayscale(.6) brightness(.7);cursor:not-allowed}
+.tile.locked .go{background:#3A3160;color:var(--dim)}
+
+/* ---------------------------------------------------------- missions ---- */
+.mission{
+  display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;
+  padding:11px 13px;border-radius:14px;background:var(--panel);border:1px solid var(--line);
+  margin-bottom:8px;
+}
+.mission h4{margin:0;font-size:14px;font-weight:700;letter-spacing:.03em}
+.mission .bar{margin-top:6px;height:7px;border-radius:99px;background:#100C24;overflow:hidden}
+.mission .bar i{display:block;height:100%;width:0;background:var(--jade);border-radius:99px}
+.mission .rw{
+  font-family:var(--display);font-size:14px;color:var(--gem);display:flex;align-items:center;gap:5px;
+}
+.mission .rw b{width:11px;height:11px;background:var(--gem);clip-path:polygon(50% 0,100% 38%,50% 100%,0 38%)}
+.mission.done{border-color:var(--jade)}
+.mission.done .rw{color:var(--jade)}
+
+.streak{
+  display:flex;gap:6px;margin-bottom:12px;
+}
+.streak i{
+  flex:1;height:6px;border-radius:99px;background:#100C24;border:1px solid var(--line);
+}
+.streak i.on{background:linear-gradient(90deg,var(--gold),#FF8A3D);border-color:transparent}
+
+/* --------------------------------------------------------- game HUD ----- */
+#gameUi{position:absolute;inset:0;pointer-events:none}
+#gameUi[hidden]{display:none}
+.hud{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;
+     padding:max(12px,env(safe-area-inset-top)) 14px max(16px,env(safe-area-inset-bottom))}
+.hud .row{display:flex;align-items:center;gap:10px}
+.hud .row:first-child{padding-right:74px}
+.chip{
+  font-family:var(--display);font-size:14px;letter-spacing:.02em;
+  background:rgba(14,11,30,.72);border:2px solid rgba(255,255,255,.16);
+  border-radius:11px;padding:7px 10px 5px;backdrop-filter:blur(6px);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.chip.gold{color:var(--gold)}
+.chip.gem{color:var(--gem)}
+.meter{
+  flex:1;height:14px;border-radius:99px;background:rgba(14,11,30,.72);
+  border:2px solid rgba(255,255,255,.16);overflow:hidden;position:relative;
+}
+.meter i{position:absolute;inset:1px auto 1px 1px;width:0;border-radius:99px;
+  background:linear-gradient(180deg,#8BF3BE,var(--jade));transition:width .12s linear}
+.meter.xp i{background:linear-gradient(180deg,#9E8BFF,#6E5BFF)}
+.meter.hp i{background:linear-gradient(180deg,#FF8A9E,var(--rose));transition:width .2s}
+.bigNum{
+  font-family:var(--display);font-size:clamp(40px,11vw,66px);line-height:1;text-align:center;
+  margin-top:10px;color:#fff;font-variant-numeric:tabular-nums;
+  -webkit-text-stroke:5px #1A1428;paint-order:stroke fill;
+  text-shadow:0 5px 0 rgba(20,15,35,.6);transition:transform .09s;
+}
+.bigNum.pop{transform:scale(1.13)}
+.cap{text-align:center;font-size:12px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.6);
+     text-transform:uppercase;margin-top:-1px;text-shadow:0 2px 3px rgba(0,0,0,.6)}
+.hint{margin-top:auto;text-align:center;font-size:14px;font-weight:700;letter-spacing:.18em;
+      text-transform:uppercase;color:rgba(255,255,255,.75);text-shadow:0 2px 4px rgba(0,0,0,.7)}
+.backBtn{
+  position:absolute;top:max(12px,env(safe-area-inset-top));right:14px;pointer-events:auto;
+  appearance:none;border:2px solid rgba(255,255,255,.18);background:rgba(14,11,30,.72);
+  color:var(--ink);font-family:var(--display);font-size:13px;border-radius:11px;
+  padding:8px 11px 6px;cursor:pointer;
+}
+
+/* ---------------------------------------------------------- overlays ---- */
+#modal{position:absolute;inset:0;pointer-events:auto;display:flex;flex-direction:column;
+       align-items:center;justify-content:center;padding:20px;
+       background:radial-gradient(80% 60% at 50% 40%,rgba(14,11,30,.72),rgba(14,11,30,.94))}
+#modal[hidden]{display:none}
 .card{
-  width:100%;max-width:460px;margin:0 auto 12px;pointer-events:auto;
-  display:grid;grid-template-columns:52px 1fr auto;align-items:center;gap:12px;
-  padding:13px 13px 13px 12px;border-radius:18px;
-  background:linear-gradient(180deg,#3B3057,#2A2141);
-  border:3px solid rgba(255,255,255,.14);
-  box-shadow:0 5px 0 rgba(0,0,0,.45);
+  width:min(460px,100%);background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:2px solid var(--line);border-radius:22px;padding:20px;
+  box-shadow:0 14px 0 rgba(0,0,0,.45);
 }
-.icon{
-  width:52px;height:52px;border-radius:14px;display:grid;place-items:center;
-  font-family:var(--display);font-size:22px;color:#12224A;
-  background:linear-gradient(180deg,#7FB8FF,var(--cobalt));
-  border:3px solid rgba(255,255,255,.3);
-}
-.icon.g{background:linear-gradient(180deg,#FFE08A,var(--amber));color:#3A2504}
-.icon.x{background:linear-gradient(180deg,#8BF3BE,var(--jade));color:#093A22}
-.card h3{margin:0;font-family:var(--display);font-size:16px;letter-spacing:.01em;color:#fff}
-.card .meta{margin-top:3px;font-size:13px;font-weight:600;color:rgba(255,255,255,.66);letter-spacing:.04em}
-.card .meta em{font-style:normal;color:var(--jade);font-weight:700}
-.buy{
-  appearance:none;border:0;cursor:pointer;min-width:96px;
-  font-family:var(--display);font-size:17px;color:#093A22;padding:13px 12px 10px;
-  border-radius:13px;font-variant-numeric:tabular-nums;
-  background:linear-gradient(180deg,#8BF3BE,var(--jade) 60%,#25A868);
-  border:3px solid rgba(255,255,255,.3);box-shadow:0 5px 0 var(--jade-dark);
+.card h2{margin:0 0 4px;font-family:var(--display);font-size:30px;text-align:center}
+.card .sub{margin:0 0 14px;text-align:center;font-size:13px;font-weight:700;letter-spacing:.16em;
+           text-transform:uppercase;color:var(--dim)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.stat{background:#130E29;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat b{display:block;font-family:var(--display);font-size:21px;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+
+.btn{
+  appearance:none;border:0;cursor:pointer;display:block;width:100%;margin-top:10px;
+  font-family:var(--display);font-size:19px;color:#0B1226;padding:15px 18px 12px;border-radius:15px;
+  background:linear-gradient(180deg,#7FB8FF,var(--accent) 60%,#2F72DE);
+  border:3px solid rgba(255,255,255,.32);
+  box-shadow:0 6px 0 rgba(0,0,0,.5);
   transition:transform .07s,box-shadow .07s,filter .18s;
 }
-.buy:active{transform:translateY(3px);box-shadow:0 2px 0 var(--jade-dark)}
-.buy:focus-visible{outline:3px solid #fff;outline-offset:2px}
-.buy[disabled]{background:linear-gradient(180deg,#6B5B87,#3B3057);color:rgba(255,255,255,.55);
-  box-shadow:0 5px 0 #241A38;cursor:default;transform:none}
-.buy small{display:block;font-family:var(--ui);font-weight:700;font-size:10px;letter-spacing:.14em;opacity:.7}
+.btn:active{transform:translateY(4px);box-shadow:0 2px 0 rgba(0,0,0,.5)}
+.btn:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.btn.go{background:linear-gradient(180deg,#8BF3BE,var(--jade) 60%,#25A868);color:#08321F}
+.btn.gold{background:linear-gradient(180deg,#FFE08A,var(--gold) 60%,#E09A18);color:#3A2504}
+.btn.ghost{background:linear-gradient(180deg,#4B3F78,#2E2550);color:var(--ink)}
+.btn[disabled]{filter:grayscale(.7) brightness(.7);cursor:default;transform:none}
+.btn small{display:block;font-family:var(--ui);font-weight:700;font-size:11px;letter-spacing:.14em;opacity:.75}
 
-/* --------------------------------------------------------------- ad ------ */
-#advert{
-  position:absolute;inset:0;pointer-events:auto;background:#120C24;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+/* level-up draft cards */
+.draft{display:flex;flex-direction:column;gap:10px;width:min(460px,100%)}
+.pick{
+  display:grid;grid-template-columns:54px 1fr;gap:12px;align-items:center;cursor:pointer;
+  padding:13px;border-radius:16px;text-align:left;appearance:none;font:inherit;color:inherit;
+  background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:2px solid var(--line);box-shadow:0 5px 0 rgba(0,0,0,.45);
+  transition:transform .07s,box-shadow .07s,border-color .2s;
 }
-#advert[hidden]{display:none}
-#advert .k{font-size:13px;font-weight:700;letter-spacing:.34em;color:rgba(255,255,255,.5)}
-#advert .m{font-family:var(--display);font-size:30px;color:var(--amber)}
-#advert .c{font-variant-numeric:tabular-nums;color:rgba(255,255,255,.5);font-weight:600}
-#advert .bar{width:min(280px,70%);height:8px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:10px}
-#advert .bar i{display:block;height:100%;width:0;background:var(--amber)}
+.pick:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(0,0,0,.45)}
+.pick:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.pick .ico{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;
+           font-family:var(--display);font-size:24px;color:#0B1226}
+.pick h3{margin:0;font-family:var(--display);font-size:17px}
+.pick p{margin:3px 0 0;font-size:13px;color:var(--dim);line-height:1.3}
+.pick .lvl{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--gold)}
+.pick.evolve{border-color:var(--gold);box-shadow:0 5px 0 rgba(120,80,0,.5)}
 
-#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+/* shop rows */
+.shopRow{
+  display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;
+  padding:12px;border-radius:14px;background:var(--panel);border:1px solid var(--line);margin-bottom:9px;
+}
+.shopRow h4{margin:0;font-family:var(--display);font-size:15px}
+.shopRow p{margin:3px 0 0;font-size:12px;color:var(--dim)}
+.shopRow .buy{
+  appearance:none;border:0;cursor:pointer;min-width:92px;
+  font-family:var(--display);font-size:15px;color:#08321F;padding:11px 10px 9px;border-radius:11px;
+  background:linear-gradient(180deg,#8BF3BE,var(--jade));box-shadow:0 4px 0 #1B7A4A;
+  font-variant-numeric:tabular-nums;
+}
+.shopRow .buy:active{transform:translateY(2px);box-shadow:0 2px 0 #1B7A4A}
+.shopRow .buy[disabled]{background:#39305C;color:var(--dim);box-shadow:0 4px 0 #221B3D;cursor:default}
+.shopRow .buy small{display:block;font-family:var(--ui);font-size:10px;letter-spacing:.12em;opacity:.7}
+
+#toasts{position:absolute;left:0;right:0;top:max(76px,env(safe-area-inset-top));
+        display:flex;flex-direction:column;align-items:center;gap:7px;pointer-events:none}
+.toast{
+  font-family:var(--display);font-size:14px;padding:9px 15px 7px;border-radius:99px;
+  background:rgba(14,11,30,.92);border:2px solid var(--line);
+  animation:toastIn .28s ease-out, toastOut .3s ease-in 2s forwards;
+}
+@keyframes toastIn{from{opacity:0;transform:translateY(-12px) scale(.9)}}
+@keyframes toastOut{to{opacity:0;transform:translateY(-10px)}}
+
+.footRow{display:flex;gap:10px;margin:18px 0 26px}
+.footRow button{
+  flex:1;appearance:none;cursor:pointer;font-family:var(--ui);font-weight:700;font-size:12px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px;
+}
+@media (prefers-reduced-motion:reduce){.toast{animation:none}}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="stage"></canvas>
 
-<div id="ui">
+<div id="shell">
 
-  <div id="hud">
+  <div class="screen" id="home">
     <div class="wrap">
-      <div class="topbar">
-        <div class="badge">LVL <span id="lvlNum">1</span></div>
-        <div class="track" id="trackBar"><i id="bar"></i></div>
-        <div class="coin"><b></b><span id="gold">0</span></div>
+      <div class="topline">
+        <div class="avatar"><canvas id="avatarCanvas" width="104" height="104"></canvas></div>
+        <div class="levelbox">
+          <div class="levelrow"><b id="acctLevel">LV 1</b><span id="acctXp">0 / 120 XP</span></div>
+          <div class="xpbar"><i id="acctBar"></i></div>
+        </div>
+        <div class="gems"><b></b><span id="gemCount">0</span></div>
       </div>
-      <div id="crowd">0</div>
-      <div id="crowdCap">runners</div>
-      <div id="rush">GOLD RUSH &nbsp;&times;2 COINS</div>
-    </div>
-    <div id="hint"><span></span></div>
-  </div>
 
-  <div class="screen" id="menu">
-    <div class="pad"></div>
-    <h1 class="logo"><span class="a">MOB CLASH</span><span class="b">GATE SIEGE</span></h1>
-    <div class="ribbon" id="menuRibbon">LEVEL 1 &middot; THE HOOK</div>
-    <div class="pad"></div>
-    <button class="btn go breathe" id="play">PLAY</button>
-    <button class="btn ghost" id="openShop">UPGRADES<span class="tag" id="shopTag">0 READY</span></button>
-  </div>
+      <h2 class="section">Games</h2>
+      <div id="tiles"></div>
 
-  <div class="screen" id="win" hidden>
-    <div class="pad"></div>
-    <h2 class="headline good">TOWER TAKEN</h2>
-    <p class="sub" id="winSub">3 rooms conquered</p>
-    <div class="payout"><b></b><span id="winGold">0</span></div>
-    <div class="pad"></div>
-    <button class="btn ad" id="watchAd">TRIPLE IT<span class="tag">WATCH AD</span></button>
-    <button class="btn go" id="next">NEXT LEVEL</button>
-  </div>
+      <h2 class="section">Daily missions</h2>
+      <div class="streak" id="streak"></div>
+      <div id="missions"></div>
 
-  <div class="screen" id="fail" hidden>
-    <div class="pad"></div>
-    <h2 class="headline bad">SIEGE BROKEN</h2>
-    <p class="sub" id="failWhy">The mob ran out of numbers</p>
-    <div class="payout"><b></b><span id="failGold">0</span></div>
-    <div class="pad"></div>
-    <button class="btn" id="retry">TRY AGAIN</button>
-  </div>
-
-  <div class="screen" id="shop" hidden>
-    <h2 class="headline">UPGRADES</h2>
-    <div class="purse"><b></b><span id="shopGold">0</span></div>
-
-    <div class="card">
-      <div class="icon">+</div>
-      <div>
-        <h3>Starting Mob</h3>
-        <div class="meta">Runners at the start line &middot; <em id="v-crowd">20</em> &middot; <span id="l-crowd">LV 1</span></div>
+      <div class="footRow">
+        <button id="soundToggle">Sound: on</button>
+        <button id="gemShopBtn">Prestige shop</button>
+        <button id="resetBtn">Reset</button>
       </div>
-      <button class="buy" id="b-crowd">120<small>GOLD</small></button>
     </div>
-
-    <div class="card">
-      <div class="icon g">$</div>
-      <div>
-        <h3>Gold Multiplier</h3>
-        <div class="meta">Every payout, ads included &middot; <em id="v-gold">1.00&times;</em> &middot; <span id="l-gold">LV 1</span></div>
-      </div>
-      <button class="buy" id="b-gold">300<small>GOLD</small></button>
-    </div>
-
-    <div class="card">
-      <div class="icon x">&times;</div>
-      <div>
-        <h3>Gate Bonus</h3>
-        <div class="meta">Stronger + and &times; gates &middot; <em id="v-gate">+0 / +0.00&times;</em> &middot; <span id="l-gate">LV 1</span></div>
-      </div>
-      <button class="buy" id="b-gate">500<small>GOLD</small></button>
-    </div>
-
-    <div class="pad"></div>
-    <button class="btn ghost" id="closeShop">BACK</button>
   </div>
 
-  <div id="advert" hidden>
-    <div class="k" id="adKind">REWARDED VIDEO</div>
-    <div class="m">MOCK PLACEMENT</div>
-    <div class="c" id="adCount">2.0s</div>
-    <div class="bar"><i id="adBar"></i></div>
-  </div>
-
-  <div id="flash"></div>
+  <div id="gameUi" hidden></div>
+  <div id="modal" hidden></div>
+  <div id="toasts"></div>
 </div>
 
-<script>
-"use strict";
-/* ===========================================================================
-   MOB CLASH: GATE SIEGE - browser / Windows build
-   A faithful port of the Unity project's pacing math, economy curves and
-   three phase loop, rendered with a hand rolled pinhole projection on canvas.
-   =========================================================================== */
-
-/* --------------------------------------------------------------- 1. SAVE  */
-const SAVE_KEY = "mobclash.save.v1";
-
-const DEFAULT_SAVE = {
-  version: "1.0.0",
-  gold: 0,
-  levelIndex: 1,
-  startingCrowdLevel: 0,
-  goldMultiplierLevel: 0,
-  gateBonusLevel: 0,
-  totalRuns: 0,
-  totalWins: 0,
-  consecutiveFails: 0,
-  bestCrowd: 0,
-  soundEnabled: true
-};
-
-let save = loadSave();
-
-function loadSave() {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return Object.assign({}, DEFAULT_SAVE);
-    return Object.assign({}, DEFAULT_SAVE, JSON.parse(raw));
-  } catch (e) {
-    return Object.assign({}, DEFAULT_SAVE);
-  }
-}
-
-function writeSave() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* private mode */ }
-}
-
-/* Economy curves, identical to EconomyManager.cs */
-const ECON = {
-  crowdBase: 20, crowdPerLevel: 2, crowdCost: 120, crowdGrowth: 1.35,
-  goldPerLevel: 0.15, goldCost: 300, goldGrowth: 1.45,
-  gateFlatPerLevel: 1, gateMulPerLevel: 0.05, gateCost: 500, gateGrowth: 1.5,
-  maxLevel: 50,
-  ddsReliefPerFail: 0.08, ddsMin: 0.60
-};
-
-const startingCrowd = () => ECON.crowdBase + ECON.crowdPerLevel * save.startingCrowdLevel;
-const goldMultiplier = () => 1 + ECON.goldPerLevel * save.goldMultiplierLevel;
-const gateFlatBonus = () => ECON.gateFlatPerLevel * save.gateBonusLevel;
-const gateMulBonus = () => ECON.gateMulPerLevel * save.gateBonusLevel;
-const ddsBias = () => clamp(1 - ECON.ddsReliefPerFail * save.consecutiveFails, ECON.ddsMin, 1);
-
-const UPGRADES = {
-  crowd: { key: "startingCrowdLevel", base: ECON.crowdCost, growth: ECON.crowdGrowth,
-           value: () => String(startingCrowd()) },
-  gold:  { key: "goldMultiplierLevel", base: ECON.goldCost, growth: ECON.goldGrowth,
-           value: () => goldMultiplier().toFixed(2) + "×" },
-  gate:  { key: "gateBonusLevel", base: ECON.gateCost, growth: ECON.gateGrowth,
-           value: () => "+" + gateFlatBonus() + " / +" + gateMulBonus().toFixed(2) + "×" }
-};
-
-function upgradeCost(id) {
-  const u = UPGRADES[id];
-  const lv = save[u.key];
-  if (lv >= ECON.maxLevel) return Infinity;
-  return Math.round(u.base * Math.pow(u.growth, lv));
-}
-
-function buyUpgrade(id) {
-  const cost = upgradeCost(id);
-  if (!isFinite(cost) || save.gold < cost) { blip("bad"); vibrate(60); return false; }
-  save.gold -= cost;
-  save[UPGRADES[id].key]++;
-  writeSave();
-  blip("coin");
-  vibrate(18);
-  paintShop();
-  paintHud();
-  return true;
-}
-
-/* ----------------------------------------------------- 2. MATHS HELPERS  */
-const TAU = Math.PI * 2;
-const MAX_CROWD = 99999;
-
-const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
-const clamp01 = v => clamp(v, 0, 1);
-const lerp = (a, b, t) => a + (b - a) * t;
-const invLerp = (a, b, v) => a === b ? 0 : clamp01((v - a) / (b - a));
-
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** Unity's SmoothDamp, scalar form. Returns [value, velocity]. */
-function smoothDamp(current, target, velocity, smoothTime, maxSpeed, dt) {
-  smoothTime = Math.max(0.0001, smoothTime);
-  const omega = 2 / smoothTime;
-  const x = omega * dt;
-  const exp = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
-  let change = current - target;
-  const maxChange = maxSpeed * smoothTime;
-  change = clamp(change, -maxChange, maxChange);
-  const temp = (velocity + omega * change) * dt;
-  let newVel = (velocity - omega * temp) * exp;
-  let output = (current - change) + (change + temp) * exp;
-  if ((target - current > 0) === (output > target)) {
-    output = target;
-    newVel = (output - target) / dt;
-  }
-  return [output, newVel];
-}
-
-/** Gate arithmetic, identical to GateMath.cs. */
-function applyGate(crowd, type, value) {
-  let r;
-  if (type === "add") r = crowd + value;
-  else if (type === "sub") r = crowd - value;
-  else if (type === "mul") r = value <= 0 ? crowd : crowd * value;
-  else r = value <= 1 ? crowd : Math.round(crowd / value);
-  return clamp(Math.round(r), 0, MAX_CROWD);
-}
-
-const gateLabel = (type, value) =>
-  type === "add" ? "+" + value :
-  type === "sub" ? "−" + value :
-  type === "mul" ? "×" + value : "÷" + value;
-
-const gateIsGood = (type, value) =>
-  (type === "add" && value > 0) || (type === "mul" && value > 1);
-
-/* ------------------------------------------------- 3. LEVEL GENERATOR    */
-const TUNE = {
-  tutorialLevels: 3, masteryLevels: 10, feederInterval: 4, seed: 90211,
-  baseTrackLength: 110, trackLengthPerLevel: 6, maxTrackLength: 300, trackHalfWidth: 6,
-  baseRunSpeed: 12, runSpeedPerLevel: 0.11, maxRunSpeed: 18,
-  tutorialRows: 3, masteryRows: 4, feederRows: 4, maxRows: 6,
-  gateLane: 0.55, firstRowDistance: 26, finalRowPadding: 20,
-  safeAddFraction: 0.65, trapSubtractFraction: 0.35,
-  maxScatteredObstacles: 14, obstacleKillRadius: 1.15, attritionPerObstacle: 0.10,
-  maxFloors: 6, tutorialDifficulty: 0.35, feederDifficulty: 0.30,
-  coreStart: 0.55, coreEnd: 0.95, plateau: 40,
-  floorWeightGrowth: 0.75, maxCasualty: 0.25,
-  towerGap: 18
-};
-
-/** Greedy solver, mirrors LevelData.IsSolvable. */
-function isSolvable(nodes, crowd, casualtyRatio) {
-  if (!nodes.length) return true;
-  const cleared = nodes.map(() => false);
-  const topFloor = nodes.reduce((m, n) => Math.max(m, n.floor), 0);
-  let remaining = nodes.length, guard = 0;
-
-  while (remaining > 0 && guard++ < 4096) {
-    let unlocked = 0;
-    for (let f = 0; f <= topFloor; f++) {
-      const done = nodes.every((n, i) => n.floor !== f || cleared[i]);
-      if (!done) { unlocked = f; break; }
-      unlocked = f + 1;
-    }
-    let best = -1;
-    nodes.forEach((n, i) => {
-      if (cleared[i] || n.floor !== unlocked || n.power >= crowd) return;
-      if (best < 0 || n.power < nodes[best].power) best = i;
-    });
-    if (best < 0) return false;
-    const p = nodes[best].power;
-    crowd += p - Math.round(p * casualtyRatio);
-    cleared[best] = true;
-    remaining--;
-  }
-  return remaining === 0;
-}
-
-function generateLevel(levelIndex, crowdAtStart, bias) {
-  levelIndex = Math.max(1, levelIndex);
-  crowdAtStart = clamp(crowdAtStart, 5, 500);
-  bias = clamp(bias, 0.55, 1.25);
-
-  const rand = mulberry32(TUNE.seed + levelIndex * 7919);
-  const rf = (a, b) => a + rand() * (b - a);
-  const chance = p => rand() < p;
-
-  const isTutorial = levelIndex <= TUNE.tutorialLevels;
-  const isFeeder = !isTutorial && levelIndex % TUNE.feederInterval === 0;
-
-  const level = {
-    index: levelIndex, isTutorial, isFeeder,
-    startingCrowd: crowdAtStart,
-    halfWidth: TUNE.trackHalfWidth,
-    speed: Math.min(TUNE.maxRunSpeed, TUNE.baseRunSpeed + TUNE.runSpeedPerLevel * (levelIndex - 1)),
-    gates: [], obstacles: [], nodes: [], floorCount: 2,
-    casualtyRatio: 0, goldPerUnit: 1, goldMultiplier: isFeeder ? 2 : 1,
-    floorClearBonus: 20 + 5 * levelIndex,
-    band: isTutorial ? "hook" : (isFeeder ? "gold rush" : (levelIndex <= TUNE.masteryLevels ? "mastery" : "core"))
-  };
-
-  const rawLength = TUNE.baseTrackLength + TUNE.trackLengthPerLevel * (levelIndex - 1);
-  level.length = Math.min(TUNE.maxTrackLength, rawLength) * (isFeeder ? 0.92 : 1);
-  level.towerDistance = level.length + TUNE.towerGap;
-
-  /* --- hazards scattered along the track ------------------------------- */
-  if (!isTutorial && !isFeeder) {
-    const count = Math.round(lerp(1, TUNE.maxScatteredObstacles, invLerp(4, 30, levelIndex)));
-    const from = TUNE.firstRowDistance - 8;
-    const to = level.length - TUNE.finalRowPadding - 6;
-    for (let i = 0; i < count && to > from; i++) {
-      const o = { z: rf(from, to), lane: rf(-0.85, 0.85), r: TUNE.obstacleKillRadius, kind: "static", amp: 0, spd: 0, phase: rf(0, TAU) };
-      if (levelIndex >= 16 && chance(0.30)) { o.kind = "spinner"; o.amp = rf(2.0, 3.2); o.spd = rf(0.45, 0.85); }
-      else if (levelIndex >= 11 && chance(0.45)) { o.kind = "sweeper"; o.amp = rf(1.8, 3.4); o.spd = rf(0.35, 0.70); }
-      level.obstacles.push(o);
-    }
-  }
-
-  /* --- decision rows ---------------------------------------------------- */
-  const rows = isTutorial ? TUNE.tutorialRows
-    : isFeeder ? TUNE.feederRows
-    : levelIndex <= TUNE.masteryLevels ? TUNE.masteryRows
-    : clamp(TUNE.masteryRows + Math.floor((levelIndex - TUNE.masteryLevels) / 6), TUNE.masteryRows, TUNE.maxRows);
-
-  const skill = isTutorial ? 0.99
-    : isFeeder ? 0.95
-    : levelIndex <= TUNE.masteryLevels ? 0.86
-    : lerp(0.86, 0.70, invLerp(TUNE.masteryLevels, TUNE.plateau, levelIndex));
-
-  const firstZ = TUNE.firstRowDistance;
-  const lastZ = Math.max(firstZ + 12, level.length - TUNE.finalRowPadding);
-  let expected = crowdAtStart;
-  let previousZ = 0;
-  let trapUsed = false;
-
-  const riskyMotion = spec => {
-    if (levelIndex >= 9 && chance(0.4)) { spec.motion = "rotate"; spec.amp = rf(2.2, 3.0); spec.spd = rf(0.30, 0.55); }
-    else if (levelIndex >= 6) { spec.motion = "slide"; spec.amp = rf(1.8, 2.8); spec.spd = rf(0.35, 0.60); }
-  };
-
-  for (let row = 0; row < rows; row++) {
-    const t = rows <= 1 ? 0.5 : row / (rows - 1);
-    const z = lerp(firstZ, lastZ, t) + rf(-2, 2);
-
-    let left = { type: "add", value: 10, motion: "static", amp: 0, spd: 0, risky: false };
-    let right = { type: "mul", value: 2, motion: "static", amp: 0, spd: 0, risky: false };
-
-    if (isTutorial) {
-      /* The hook: both halves are gifts, so the win rate stays at 100%.
-         The ladder ramps the finale crowd 600 -> 900 -> 1500 across levels 1-3. */
-      const ladder = [[2, 3, 5], [3, 3, 5], [3, 5, 5]][clamp(levelIndex - 1, 0, 2)];
-      let li = clamp(row, 0, 2);
-      if (row === rows - 1) li = 2;
-      left = { type: "mul", value: ladder[li], motion: "static", amp: 0, spd: 0, risky: false };
-      right = { type: "add", value: Math.max(10, Math.round(expected * 0.6)), motion: "static", amp: 0, spd: 0, risky: false };
-    } else if (isFeeder) {
-      /* Gold rush. Multiplier rows alternate with additive rows: four stacked multipliers
-         would compound into a five figure crowd and wreck the gold curve. */
-      if (row % 2 === 0) {
-        left = { type: "mul", value: 3, motion: "static", amp: 0, spd: 0, risky: false };
-        right = { type: "mul", value: 2, motion: "static", amp: 0, spd: 0, risky: false };
-      } else {
-        left = { type: "add", value: Math.max(25, Math.round(expected * 1.2)), motion: "static", amp: 0, spd: 0, risky: false };
-        right = { type: "add", value: Math.max(15, Math.round(expected * 0.7)), motion: "static", amp: 0, spd: 0, risky: false };
-      }
-    } else if (levelIndex <= TUNE.masteryLevels) {
-      const safeAdd = Math.max(10, Math.round(expected * TUNE.safeAddFraction));
-      const makeTrap = !trapUsed && levelIndex >= 7 && chance(0.35);
-      if (makeTrap) { trapUsed = true; left = { type: "sub", value: Math.max(5, Math.round(expected * TUNE.trapSubtractFraction)), motion: "static", amp: 0, spd: 0, risky: false }; }
-      else left = { type: "add", value: safeAdd, motion: "static", amp: 0, spd: 0, risky: false };
-      right = { type: "mul", value: (levelIndex >= 8 && chance(0.4)) ? 3 : 2, motion: "static", amp: 0, spd: 0, risky: true };
-      riskyMotion(right);
-    } else {
-      const roll = rand();
-      if (roll < 0.45) {
-        left = { type: "add", value: Math.max(12, Math.round(expected * TUNE.safeAddFraction)), motion: "static", amp: 0, spd: 0, risky: false };
-        right = { type: "mul", value: chance(0.35) ? 3 : 2, motion: "static", amp: 0, spd: 0, risky: true };
-        riskyMotion(right);
-      } else if (roll < 0.75) {
-        left = { type: "mul", value: 2, motion: "static", amp: 0, spd: 0, risky: false };
-        right = { type: "mul", value: chance(0.30) ? 4 : 3, motion: "static", amp: 0, spd: 0, risky: true };
-        riskyMotion(right);
-      } else if (!trapUsed && expected > 40) {
-        trapUsed = true;
-        left = { type: "div", value: 2, motion: "static", amp: 0, spd: 0, risky: false };
-        right = { type: "sub", value: Math.max(10, Math.round(expected * TUNE.trapSubtractFraction)), motion: chance(0.5) ? "slide" : "static", amp: 2.2, spd: 0.45, risky: false };
-      } else {
-        left = { type: "add", value: Math.max(15, Math.round(expected * 0.5)), motion: "slide", amp: 2.0, spd: 0.40, risky: false };
-        right = { type: "mul", value: 2, motion: "static", amp: 0, spd: 0, risky: true };
-        riskyMotion(right);
-      }
-    }
-
-    if (chance(0.5)) { const s = left; left = right; right = s; }
-
-    left.lane = -TUNE.gateLane; right.lane = TUNE.gateLane;
-
-    [left, right].forEach(half => {
-      half.z = z;
-      half.row = row;
-      half.phase = rf(0, TAU);
-      if (half.risky && !isTutorial && !isFeeder) {
-        const guards = levelIndex >= 12 ? 2 : 1;
-        for (let g = 0; g < guards; g++) {
-          const gz = z - 6 - g * 4.5;
-          if (gz <= 8) continue;
-          level.obstacles.push({
-            z: gz, lane: half.lane + rf(-0.12, 0.12), r: TUNE.obstacleKillRadius, phase: rf(0, TAU),
-            kind: levelIndex >= 10 ? "sweeper" : "static",
-            amp: levelIndex >= 10 ? rf(1.2, 2.2) : 0,
-            spd: levelIndex >= 10 ? rf(0.45, 0.80) : 0
-          });
-        }
-      }
-      level.gates.push(half);
-    });
-
-    /* simulate the reference run so the tower can be sized to the player */
-    const a = applyGate(expected, left.type, left.value);
-    const b = applyGate(expected, right.type, right.value);
-    expected = Math.max(1, Math.round(lerp(Math.min(a, b), Math.max(a, b), skill)));
-
-    const hazards = level.obstacles.filter(o => o.z > previousZ && o.z <= z).length;
-    if (hazards > 0) expected = Math.max(1, Math.round(expected * Math.pow(1 - TUNE.attritionPerObstacle * (1 - skill), hazards)));
-    previousZ = z;
-  }
-
-  const trailing = level.obstacles.filter(o => o.z > previousZ && o.z <= level.length).length;
-  if (trailing > 0) expected = Math.max(1, Math.round(expected * Math.pow(1 - TUNE.attritionPerObstacle * (1 - skill), trailing)));
-
-  level.expectedCrowd = clamp(expected, 5, MAX_CROWD);
-
-  /* --- tower ------------------------------------------------------------ */
-  const floors = (isTutorial || isFeeder) ? 2 : clamp(2 + Math.floor(levelIndex / 6), 2, TUNE.maxFloors);
-  level.floorCount = floors;
-
-  let ratio = isTutorial ? TUNE.tutorialDifficulty
-    : isFeeder ? TUNE.feederDifficulty
-    : lerp(TUNE.coreStart, TUNE.coreEnd, invLerp(4, TUNE.plateau, levelIndex));
-  ratio *= bias;
-  level.difficultyRatio = ratio;
-  level.casualtyRatio = (isTutorial || isFeeder) ? 0 : lerp(0, TUNE.maxCasualty, invLerp(8, 30, levelIndex));
-
-  const totalPower = Math.max(floors * 3, Math.round(level.expectedCrowd * ratio));
-  const weights = [];
-  let weightSum = 0;
-  for (let f = 0; f < floors; f++) { weights[f] = 1 + TUNE.floorWeightGrowth * f; weightSum += weights[f]; }
-
-  const nodes = [];
-  for (let f = 0; f < floors; f++) {
-    const floorPower = Math.max(2, Math.round(totalPower * (weights[f] / weightSum)));
-    if (f === floors - 1) { nodes.push({ floor: f, slot: 0, power: floorPower, boss: true }); continue; }
-
-    const slots = (levelIndex >= 15 && chance(0.45)) ? 3 : 2;
-    const shares = [];
-    let sum = 0;
-    for (let s = 0; s < slots; s++) { shares[s] = (0.6 + s * 0.35) * rf(0.9, 1.1); sum += shares[s]; }
-    for (let s = 0; s < slots; s++) {
-      nodes.push({ floor: f, slot: s, power: Math.max(1, Math.round(floorPower * shares[s] / sum)), boss: false });
-    }
-  }
-
-  /* Guarantee the tower is solvable by a reference crowd, and non trivial. */
-  const scaleNodes = k => nodes.forEach(n => { n.power = clamp(Math.round(n.power * k), 1, MAX_CROWD); });
-  const margin = (isTutorial || isFeeder) ? 0.70 : 0.90;
-  const reference = Math.max(3, Math.round(level.expectedCrowd * margin));
-  const trivial = Math.max(2, Math.round(level.expectedCrowd * 0.40));
-
-  if (!isTutorial && !isFeeder) {
-    let tighten = 0;
-    while (tighten++ < 12 && isSolvable(nodes, trivial, level.casualtyRatio)) scaleNodes(1.08);
-  }
-  let relax = 0;
-  while (relax++ < 32 && !isSolvable(nodes, reference, level.casualtyRatio)) scaleNodes(0.88);
-  if (!isSolvable(nodes, reference, level.casualtyRatio)) {
-    nodes.forEach(n => { n.power = Math.max(1, Math.round(reference * 0.35) + n.floor * 2); });
-  }
-
-  level.nodes = nodes;
-  level.totalTowerPower = nodes.reduce((a, n) => a + n.power, 0);
-  return level;
-}
-</script>
-
-<script>
-"use strict";
-/* ===========================================================================
-   ART LAYER
-   Palette, sprite atlases, scenery and particles. Everything is generated at
-   boot into offscreen canvases, so the game ships as one file with no images.
-   =========================================================================== */
-
-const PAL = {
-  skyTop:   [27, 20, 54],
-  skyMid:   [122, 60, 104],
-  skyLow:   [244, 137, 75],
-  sun:      [255, 222, 150],
-  fog:      [236, 160, 116],
-  hillFar:  [92, 66, 116],
-  hillNear: [56, 42, 82],
-  grass:    [46, 116, 88],
-  grassDark:[30, 86, 66],
-  road:     [226, 199, 163],
-  roadDark: [198, 169, 132],
-  lane:     [247, 232, 206],
-  wall:     [126, 96, 88],
-  wallTop:  [176, 140, 122],
-  blue:     [61, 139, 255],
-  blueLight:[176, 218, 255],
-  blueDark: [26, 72, 150],
-  red:      [240, 77, 90],
-  redLight: [255, 178, 172],
-  redDark:  [130, 26, 38],
-  stone:    [198, 182, 162],
-  stoneDark:[168, 150, 132],
-  stoneDeep:[112, 98, 88],
-  gold:     [255, 194, 75],
-  goldDark: [184, 113, 22],
-  jade:     [63, 217, 138],
-  jadeDark: [30, 140, 85],
-  ink:      [36, 26, 56],
-  white:    [255, 255, 255],
-  tree:     [38, 104, 78],
-  treeDark: [24, 74, 56],
-  trunk:    [84, 58, 46]
-};
-
-const rgb  = c => "rgb(" + (c[0] | 0) + "," + (c[1] | 0) + "," + (c[2] | 0) + ")";
-const rgba = (c, a) => "rgba(" + (c[0] | 0) + "," + (c[1] | 0) + "," + (c[2] | 0) + "," + a + ")";
-const mix  = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-
-/** Atmospheric perspective: distant geometry dissolves into the horizon haze. */
-const FOG_NEAR = 34, FOG_FAR = 165;
-function fogAmount(z) { return clamp01((z - cam.z - FOG_NEAR) / (FOG_FAR - FOG_NEAR)) * 0.86; }
-function fogged(color, z) { return rgb(mix(color, PAL.fog, fogAmount(z))); }
-
-/* ------------------------------------------------------------ sprites --- */
-const SPR = { frames: 10, w: 76, h: 100, ss: 2, ground: 94, worldHeight: 1.95 };
-let ATLAS_BLUE = null, ATLAS_RED = null;
-
-function newCanvas(w, h) {
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  return cv;
-}
-
-function roundedRect(g, x, y, w, h, r) {
-  if (g.roundRect) { g.beginPath(); g.roundRect(x, y, w, h, r); return; }
-  r = Math.min(r, w / 2, h / 2);
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
-  g.closePath();
-}
-
-/**
- * Draws one animation frame of a fighter. Chunky silhouette, heavy ink outline,
- * plume on the helmet - readable at 20px tall in a crowd of hundreds.
- */
-function drawFighter(g, t, P) {
-  const swing = Math.sin(t * TAU);
-  const bob = Math.abs(Math.cos(t * TAU)) * 3.5;
-  const cx = SPR.w / 2, gy = SPR.ground - bob;
-  const ink = rgb(PAL.ink);
-
-  const ell = (x, y, rx, ry, fill, rot) => {
-    g.beginPath();
-    g.ellipse(x, y, rx, ry, rot || 0, 0, TAU);
-    g.fillStyle = fill; g.fill();
-    g.lineWidth = 3.6; g.strokeStyle = ink; g.stroke();
-  };
-
-  ell(cx - 7 + swing * 7, gy - 9, 5.4, 10, rgb(P.dark));
-  ell(cx + 7 - swing * 7, gy - 9, 5.4, 10, rgb(P.dark));
-  ell(cx - 15.5, gy - 38 - swing * 5, 5.2, 11, rgb(P.dark), -swing * 0.35);
-
-  ell(cx, gy - 37, 15, 19.5, rgb(P.body));
-
-  g.beginPath();
-  g.ellipse(cx, gy - 25, 13.2, 4.6, 0, 0, TAU);
-  g.fillStyle = rgb(P.dark); g.fill();
-
-  ell(cx + 15.5, gy - 38 + swing * 5, 5.2, 11, rgb(P.light), swing * 0.35);
-  ell(cx, gy - 62, 12.4, 12.4, rgb(P.light));
-
-  g.beginPath();
-  g.arc(cx, gy - 63.5, 13.6, Math.PI * 1.02, Math.PI * 1.98);
-  g.closePath();
-  g.fillStyle = rgb(P.body); g.fill();
-  g.lineWidth = 3.6; g.strokeStyle = ink; g.stroke();
-
-  g.beginPath();
-  g.moveTo(cx - 1, gy - 77);
-  g.quadraticCurveTo(cx + 3, gy - 90, cx + 11, gy - 85);
-  g.quadraticCurveTo(cx + 4, gy - 80, cx + 3, gy - 74);
-  g.closePath();
-  g.fillStyle = rgb(P.crest); g.fill();
-  g.lineWidth = 3; g.strokeStyle = ink; g.stroke();
-
-  roundedRect(g, cx - 9, gy - 65, 18, 6, 3);
-  g.fillStyle = ink; g.fill();
-}
-
-function buildAtlas(P) {
-  const ss = SPR.ss;
-  const cv = newCanvas(SPR.w * ss * SPR.frames, SPR.h * ss);
-  const g = cv.getContext("2d");
-  g.scale(ss, ss);
-  g.lineJoin = "round";
-  for (let f = 0; f < SPR.frames; f++) {
-    g.save();
-    g.translate(f * SPR.w, 0);
-    drawFighter(g, f / SPR.frames, P);
-    g.restore();
-  }
-  return cv;
-}
-
-function buildSprites() {
-  ATLAS_BLUE = buildAtlas({ body: PAL.blue, light: PAL.blueLight, dark: PAL.blueDark, crest: PAL.gold });
-  ATLAS_RED = buildAtlas({ body: PAL.red, light: PAL.redLight, dark: PAL.redDark, crest: PAL.stone });
-}
-
-/** Draws one fighter from an atlas, feet planted at a projected ground point. */
-function blitFighter(atlas, p, frame, scaleBoost) {
-  const ss = SPR.ss;
-  const h = SPR.worldHeight * p.s * (scaleBoost || 1);
-  const w = h * (SPR.w / SPR.h);
-  X.drawImage(atlas,
-    frame * SPR.w * ss, 0, SPR.w * ss, SPR.h * ss,
-    p.x - w / 2, p.y - h * (SPR.ground / SPR.h), w, h);
-}
-
-/* ------------------------------------------------------------ scenery --- */
-let scenery = [];
-
-function buildScenery(level) {
-  const rand = mulberry32(level.index * 104729 + 17);
-  const out = [];
-  const from = -20, to = level.towerDistance + 60;
-  const hw = level.halfWidth;
-
-  for (let z = from; z < to; z += 5.5 + rand() * 6) {
-    for (const side of [-1, 1]) {
-      if (rand() < 0.34) continue;
-      const roll = rand();
-      out.push({
-        z: z + rand() * 3,
-        x: side * (hw + 3.5 + rand() * 26),
-        kind: roll < 0.62 ? "tree" : (roll < 0.85 ? "rock" : "banner"),
-        scale: 0.75 + rand() * 0.7,
-        tilt: (rand() - 0.5) * 0.25
-      });
-    }
-  }
-  scenery = out.sort((a, b) => b.z - a.z);
-}
-
-function drawScenery(item) {
-  const base = proj(item.x, 0, item.z);
-  if (!base) return;
-
-  const s = base.s * item.scale;
-  const fog = fogAmount(item.z);
-
-  if (item.kind === "tree") {
-    X.fillStyle = rgba(PAL.ink, 0.22 * (1 - fog));
-    X.beginPath(); X.ellipse(base.x, base.y, s * 1.0, s * 0.30, 0, 0, TAU); X.fill();
-
-    X.fillStyle = rgb(mix(PAL.trunk, PAL.fog, fog));
-    X.fillRect(base.x - s * 0.14, base.y - s * 1.5, s * 0.28, s * 1.5);
-
-    const crown = rgb(mix(PAL.tree, PAL.fog, fog));
-    const crownDark = rgb(mix(PAL.treeDark, PAL.fog, fog));
-    for (let i = 0; i < 3; i++) {
-      const y = base.y - s * (1.4 + i * 0.85);
-      const r = s * (1.25 - i * 0.28);
-      X.fillStyle = i === 0 ? crownDark : crown;
-      X.beginPath();
-      X.moveTo(base.x, y - r * 1.5);
-      X.lineTo(base.x + r, y + r * 0.35);
-      X.lineTo(base.x - r, y + r * 0.35);
-      X.closePath();
-      X.fill();
-    }
-  } else if (item.kind === "rock") {
-    X.fillStyle = rgb(mix(PAL.stoneDeep, PAL.fog, fog));
-    X.beginPath();
-    X.ellipse(base.x, base.y - s * 0.28, s * 0.62, s * 0.42, item.tilt, 0, TAU);
-    X.fill();
-    X.fillStyle = rgb(mix(PAL.stoneDark, PAL.fog, fog));
-    X.beginPath();
-    X.ellipse(base.x - s * 0.12, base.y - s * 0.40, s * 0.36, s * 0.24, item.tilt, 0, TAU);
-    X.fill();
-  } else {
-    const h = s * 2.6;
-    X.strokeStyle = rgb(mix(PAL.trunk, PAL.fog, fog));
-    X.lineWidth = Math.max(1, s * 0.13);
-    X.beginPath(); X.moveTo(base.x, base.y); X.lineTo(base.x, base.y - h); X.stroke();
-
-    const wave = Math.sin(G.time * 2.4 + item.z) * s * 0.18;
-    X.fillStyle = rgb(mix(PAL.red, PAL.fog, fog));
-    X.beginPath();
-    X.moveTo(base.x, base.y - h);
-    X.lineTo(base.x + s * 0.95, base.y - h + s * 0.30 + wave);
-    X.lineTo(base.x, base.y - h + s * 0.78);
-    X.closePath();
-    X.fill();
-  }
-}
-
-/* ---------------------------------------------------------- particles --- */
-const PARTICLE_CAP = 420;
-let particles = [];
-
-function emit(x, y, z, count, opts) {
-  const o = opts || {};
-  for (let i = 0; i < count && particles.length < PARTICLE_CAP; i++) {
-    const a = Math.random() * TAU;
-    const speed = (o.speed || 6) * (0.35 + Math.random() * 0.9);
-    particles.push({
-      x, y, z,
-      vx: Math.cos(a) * speed,
-      vy: (o.up || 7) * (0.4 + Math.random()),
-      vz: Math.sin(a) * speed * 0.55,
-      g: o.gravity === undefined ? 22 : o.gravity,
-      life: (o.life || 0.7) * (0.7 + Math.random() * 0.6),
-      t: 0,
-      size: (o.size || 0.22) * (0.6 + Math.random() * 0.9),
-      color: o.color || PAL.gold,
-      square: !!o.square
-    });
-  }
-}
-
-function updateParticles(dt) {
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.t += dt;
-    if (p.t >= p.life) { particles.splice(i, 1); continue; }
-    p.vy -= p.g * dt;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.z += p.vz * dt;
-    if (p.y < 0) { p.y = 0; p.vy *= -0.35; p.vx *= 0.6; p.vz *= 0.6; }
-  }
-}
-
-function drawParticle(p) {
-  const q = proj(p.x, p.y, p.z);
-  if (!q) return;
-  const k = 1 - p.t / p.life;
-  const r = Math.max(1, p.size * q.s * (0.45 + k * 0.75));
-  X.globalAlpha = clamp01(k * 1.6);
-  X.fillStyle = rgb(p.color);
-  if (p.square) {
-    X.save();
-    X.translate(q.x, q.y);
-    X.rotate(p.t * 9 + p.size * 10);
-    X.fillRect(-r, -r * 0.7, r * 2, r * 1.4);
-    X.restore();
-  } else {
-    X.beginPath(); X.arc(q.x, q.y, r, 0, TAU); X.fill();
-  }
-  X.globalAlpha = 1;
-}
-</script>
-
-<script>
-"use strict";
-/* ===========================================================================
-   RUNTIME: state, camera, simulation, input
-   =========================================================================== */
-
-const CV = document.getElementById("c");
-const X = CV.getContext("2d");
-
-let W = 0, H = 0, DPR = 1, FOCAL = 500, HORIZON = 0;
-
-function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1);
-  W = Math.max(280, window.innerWidth);
-  H = Math.max(420, window.innerHeight);
-  CV.width = Math.round(W * DPR);
-  CV.height = Math.round(H * DPR);
-  X.setTransform(DPR, 0, 0, DPR, 0, 0);
-
-  // Keep the road a sane width on ultrawide screens by driving focal length
-  // from the smaller of the two "reading" dimensions.
-  FOCAL = Math.min(H * 0.56, W * 0.95);
-  HORIZON = H * 0.30;
-}
-window.addEventListener("resize", resize);
-window.addEventListener("orientationchange", resize);
-
-const MAX_VISUAL_UNITS = 340;
-const GOLDEN_ANGLE = 2.39996323;
-
-/* tower geometry, shared by the renderer and the hit test */
-const TOWER = { roomW: 3.5, roomH: 2.7, floorH: 3.7, baseY: 1.5, slot: 4.7, depth: 1.3 };
-
-const G = {
-  phase: "menu",
-  level: null,
-  time: 0,
-  player: { x: 0, z: 0, targetX: 0, vx: 0 },
-  crowd: 0,
-  units: [],
-  texts: [],
-  shake: 0,
-  shakeTime: 0,
-  flash: 0,
-  transitionT: 0,
-  transitionFrom: 0,
-  siege: null,
-  reward: 0,
-  rewardClaimed: false,
-  rewardBoosted: false,
-  failReason: "The mob ran out of numbers",
-  levelsSinceAd: 0,
-  lastAdTime: -999,
-  adPlaying: false
-};
-
-const cam = { x: 0, y: 9.6, z: -13.5 };
-
-/* ------------------------------------------------------------- camera --- */
-function cameraTarget() {
-  const level = G.level;
-  const siegeView = G.phase === "transition" || G.phase === "siege" ||
-                    G.phase === "win" || G.phase === "fail";
-
-  if (siegeView && level) {
-    // High and far enough that the tower owns the frame and the army reads as a
-    // band massed at its base rather than a wall of sprites in front of it.
-    const f = level.floorCount;
-    return {
-      x: 0,
-      y: 9 + f * 1.4,
-      z: level.towerDistance - (16 + f * 2.4)
-    };
-  }
-  return { x: G.player.x * 0.55, y: 9.6, z: G.player.z - 13.5 };
-}
-
-function updateCamera(dt, snap) {
-  const t = cameraTarget();
-  if (snap) { cam.x = t.x; cam.y = t.y; cam.z = t.z; return; }
-  const k = 1 - Math.exp(-(G.phase === "running" ? 9 : 3.4) * dt);
-  cam.x += (t.x - cam.x) * k;
-  cam.y += (t.y - cam.y) * k;
-  cam.z += (t.z - cam.z) * k;
-}
-
-function proj(x, y, z) {
-  const dz = z - cam.z;
-  if (dz <= 1.4) return null;
-  const s = FOCAL / dz;
-  return { x: W / 2 + (x - cam.x) * s, y: HORIZON + (cam.y - y) * s, s };
-}
-
-/* -------------------------------------------------------------- crowd --- */
-function crowdRadius() {
-  return Math.min(5.2, 0.44 * Math.sqrt(Math.max(1, G.units.length)));
-}
-
-function spawnUnit() {
-  G.units.push({
-    x: G.player.x + (Math.random() - 0.5) * 1.4,
-    z: G.player.z + (Math.random() - 0.5) * 1.4,
-    vx: 0, vz: 0,
-    phase: Math.random() * TAU,
-    damp: 0.11 + (Math.random() - 0.5) * 0.10,
-    jx: (Math.random() - 0.5) * 0.40,
-    jz: (Math.random() - 0.5) * 0.40,
-    gait: 0.85 + Math.random() * 0.35
-  });
-}
-
-/** Fewer bodies during the siege so the army does not bury the tower. */
-function visualCap() {
-  return (G.phase === "siege" || G.phase === "transition" ||
-          G.phase === "win" || G.phase === "fail") ? 150 : MAX_VISUAL_UNITS;
-}
-
-function setCrowd(n, quiet) {
-  const before = G.crowd;
-  G.crowd = clamp(Math.round(n), 0, MAX_CROWD);
-
-  const wanted = Math.min(G.crowd, visualCap());
-  while (G.units.length < wanted) spawnUnit();
-  if (G.units.length > wanted) G.units.length = wanted;
-
-  paintCrowd(G.crowd !== before && !quiet);
-}
-
-function resolveGate(half) {
-  const before = G.crowd;
-  let after;
-  if (half.type === "add") after = applyGate(before, "add", half.value + gateFlatBonus());
-  else if (half.type === "mul") after = clamp(Math.round(before * (half.value + gateMulBonus())), 0, MAX_CROWD);
-  else after = applyGate(before, half.type, half.value);
-
-  setCrowd(after);
-
-  const delta = after - before;
-  const good = delta >= 0;
-  const gx = gateX(half);
-
-  pushText(gx, 4.2, half.z, (delta >= 0 ? "+" : "") + delta, good ? PAL.jade : PAL.red, 1.25);
-  emit(gx, 2.4, half.z, good ? 22 : 14, {
-    color: good ? PAL.jade : PAL.red,
-    speed: good ? 6.5 : 4.5, up: good ? 9 : 5, life: 0.55, size: 0.17, square: true
-  });
-
-  shake(good ? 0.30 : 0.62);
-  if (!good) G.flash = 0.35;
-  blip(good ? "good" : "bad");
-  vibrate(good ? 14 : 34);
-}
-
-/* -------------------------------------------------------------- juice --- */
-function shake(amount) { G.shake = Math.max(G.shake, amount); G.shakeTime = 0.28; }
-function pushText(x, y, z, text, color, scale) {
-  G.texts.push({ x, y, z, text, color, t: 0, life: 1.0, scale: scale || 1 });
-}
-function pushScreenText(sx, sy, text, color, scale) {
-  G.texts.push({ screen: true, sx, sy, text, color, t: 0, life: 1.0, scale: scale || 1 });
-}
-
-let AC = null;
-function audio() {
-  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
-  if (AC && AC.state === "suspended") AC.resume();
-  return AC;
-}
-
-function tone(freq, endFreq, duration, type, gain) {
-  const ac = audio();
-  if (!ac || !save.soundEnabled) return;
-  const osc = ac.createOscillator();
-  const amp = ac.createGain();
-  osc.type = type || "triangle";
-  osc.frequency.setValueAtTime(freq, ac.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(40, endFreq), ac.currentTime + duration);
-  amp.gain.setValueAtTime(0.0001, ac.currentTime);
-  amp.gain.exponentialRampToValueAtTime(gain || 0.16, ac.currentTime + 0.012);
-  amp.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + duration);
-  osc.connect(amp).connect(ac.destination);
-  osc.start();
-  osc.stop(ac.currentTime + duration + 0.02);
-}
-
-function blip(kind) {
-  switch (kind) {
-    case "good":   tone(520, 1180, 0.16, "triangle", 0.15); break;
-    case "bad":    tone(420, 150, 0.22, "sawtooth", 0.12); break;
-    case "impact": tone(170, 55, 0.20, "square", 0.15); break;
-    case "coin":   tone(880, 1760, 0.11, "triangle", 0.12); break;
-    case "select": tone(680, 700, 0.07, "sine", 0.10); break;
-    case "win":    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, f, 0.13, "triangle", 0.13), i * 95)); break;
-    case "lose":   [440, 349, 262].forEach((f, i) => setTimeout(() => tone(f, f, 0.17, "sawtooth", 0.11), i * 130)); break;
-  }
-}
-
-function vibrate(ms) { if (navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } }
-
-/* --------------------------------------------------------------- flow --- */
-function prepareLevel() {
-  const level = generateLevel(save.levelIndex, startingCrowd(), ddsBias());
-  G.level = level;
-  G.player = { x: 0, z: 0, targetX: 0, vx: 0 };
-  G.units = [];
-  G.texts = [];
-  particles = [];
-  G.reward = 0;
-  G.rewardClaimed = false;
-  G.rewardBoosted = false;
-  G.transitionT = 0;
-  G.flash = 0;
-
-  level.gates.forEach(g => { g.consumed = false; });
-
-  buildSiege();
-  buildScenery(level);
-  setCrowd(level.startingCrowd, true);
-
-  updateCamera(0, true);
-  paintHud();
-  paintPips();
-}
-
-function startRun() {
-  if (G.phase !== "menu") return;
-  audio();
-  save.totalRuns++;
-  writeSave();
-  setPhase("running");
-  blip("select");
-}
-
-function setPhase(phase) {
-  G.phase = phase;
-
-  show("menu", phase === "menu");
-  show("win", phase === "win");
-  show("fail", phase === "fail");
-  if (phase !== "menu") show("shop", false);
-
-  const inRun = phase === "running" || phase === "transition" || phase === "siege";
-  $("crowd").style.display = inRun ? "" : "none";
-  $("crowdCap").style.display = inRun ? "" : "none";
-  $("rush").style.display = inRun ? "" : "none";
-
-  setCrowd(G.crowd, true);
-
-  const hint = $("hint").firstElementChild;
-  hint.textContent = phase === "running" ? "Drag to steer"
-    : phase === "siege" ? "Tap a room you outnumber" : "";
-
-  paintHud();
-}
-
-function finishRun(win, reason) {
-  const level = G.level;
-  const cleared = G.siege ? G.siege.nodes.filter(n => n.state === "cleared").length : 0;
-  const raw = G.crowd * level.goldPerUnit + cleared * level.floorClearBonus;
-  let total = raw * level.goldMultiplier * goldMultiplier();
-  if (!win) total *= 0.25;
-
-  G.reward = Math.max(win ? 1 : 0, Math.round(total));
-  G.rewardClaimed = false;
-  G.rewardBoosted = false;
-  G.failReason = reason || "No room left that you outnumber";
-
-  save.bestCrowd = Math.max(save.bestCrowd, G.crowd);
-  if (win) { save.totalWins++; save.consecutiveFails = 0; save.levelIndex++; }
-  else save.consecutiveFails++;
-  writeSave();
-
-  if (win) {
-    blip("win"); vibrate([18, 40, 24]); shake(0.7); G.flash = 0.4;
-    const t = G.level.towerDistance;
-    emit(0, TOWER.baseY + G.level.floorCount * TOWER.floorH, t, 90,
-      { color: PAL.gold, speed: 11, up: 15, life: 1.5, size: 0.28, square: true, gravity: 16 });
-  } else {
-    blip("lose"); vibrate(90);
-  }
-
-  $("winSub").textContent = cleared + (cleared === 1 ? " room conquered" : " rooms conquered");
-  $("failWhy").textContent = G.failReason;
-  $("watchAd").disabled = !(win && G.reward > 0);
-
-  setPhase(win ? "win" : "fail");
-  countUp(win ? "winGold" : "failGold", G.reward);
-}
-
-function claimReward() {
-  if (G.rewardClaimed) return;
-  G.rewardClaimed = true;
-  save.gold += G.reward;
-  writeSave();
-  paintHud();
-}
-
-function continueAfterResult() {
-  const won = G.phase === "win";
-  claimReward();
-  if (won) G.levelsSinceAd++;
-
-  const eligible = won && save.levelIndex >= 3 && G.levelsSinceAd >= 2 &&
-                   (performance.now() / 1000 - G.lastAdTime) > 45;
-
-  const proceed = () => { prepareLevel(); setPhase("menu"); };
-
-  if (eligible) {
-    G.levelsSinceAd = 0;
-    G.lastAdTime = performance.now() / 1000;
-    playMockAd("INTERSTITIAL AD", 1.6, proceed);
-  } else {
-    proceed();
-  }
-}
-
-/* -------------------------------------------------------------- siege --- */
-function buildSiege() {
-  G.siege = {
-    nodes: G.level.nodes.map(n => Object.assign({}, n, {
-      state: n.floor === 0 ? "available" : "locked",
-      rect: null, pulse: 0, reject: 0, rubble: 0
-    })),
-    floor: 0,
-    battle: null,
-    deadlock: 0,
-    live: false
-  };
-}
-
-function roomWorld(node) {
-  const slots = G.level.nodes.filter(n => n.floor === node.floor).length;
-  const offset = (slots - 1) * 0.5;
-  return {
-    x: (node.slot - offset) * TOWER.slot,
-    y: TOWER.baseY + node.floor * TOWER.floorH,
-    z: G.level.towerDistance - TOWER.depth
-  };
-}
-
-function siegeFloorCleared(floor) {
-  return G.siege.nodes.every(n => n.floor !== floor || n.state === "cleared");
-}
-
-function attackNode(node) {
-  if (!G.siege || !G.siege.live || G.siege.battle || node.state !== "available") return;
-
-  const w = roomWorld(node);
-
-  if (G.crowd <= node.power) {
-    node.reject = 0.34;
-    shake(0.34);
-    blip("bad");
-    vibrate(70);
-    G.flash = 0.25;
-    pushText(w.x, w.y + TOWER.roomH + 0.6, w.z, "TOO STRONG", PAL.red, 0.85);
-    return;
-  }
-
-  const casualties = Math.round(node.power * G.level.casualtyRatio);
-  G.siege.battle = {
-    node, t: 0, stage: "charge",
-    start: G.crowd,
-    trough: Math.max(1, G.crowd - node.power),
-    final: Math.max(1, G.crowd + node.power - casualties),
-    gain: node.power - casualties
-  };
-  blip("select");
-  vibrate(20);
-}
-
-function updateSiege(dt) {
-  const s = G.siege;
-  if (!s) return;
-
-  s.nodes.forEach(n => {
-    if (n.pulse > 0) n.pulse -= dt;
-    if (n.reject > 0) n.reject -= dt;
-  });
-
-  if (s.battle) {
-    const b = s.battle;
-    b.t += dt;
-
-    if (b.stage === "charge") {
-      const k = clamp01(b.t / 0.28);
-      setCrowd(Math.round(lerp(b.start, b.trough, k)), true);
-      if (k >= 1) {
-        const w = roomWorld(b.node);
-        b.stage = "absorb";
-        b.t = 0;
-        b.node.pulse = 0.38;
-        b.node.rubble = 1;
-        shake(0.62);
-        G.flash = 0.3;
-        blip("impact");
-        vibrate(30);
-        emit(w.x, w.y + TOWER.roomH * 0.5, w.z, 34,
-          { color: PAL.stone, speed: 7, up: 9, life: 0.9, size: 0.26, square: true });
-        pushText(w.x, w.y + TOWER.roomH + 0.4, w.z, "+" + b.gain, PAL.jade, 1.1);
-      }
-    } else {
-      const k = clamp01(b.t / 0.32);
-      setCrowd(Math.round(lerp(b.trough, b.final, k)), true);
-      if (k >= 1) {
-        setCrowd(b.final);
-        b.node.state = "cleared";
-        blip("coin");
-        if (siegeFloorCleared(s.floor) && s.floor + 1 < G.level.floorCount) {
-          s.floor++;
-          s.nodes.forEach(n => { if (n.floor === s.floor && n.state === "locked") n.state = "available"; });
-        }
-        s.battle = null;
-        if (s.nodes.every(n => n.state === "cleared")) finishRun(true);
-      }
-    }
-    return;
-  }
-
-  const anyMove = s.nodes.some(n => n.state === "available" && G.crowd > n.power);
-  if (!anyMove && !s.nodes.every(n => n.state === "cleared")) {
-    s.deadlock += dt;
-    if (s.deadlock > 1.1) finishRun(false, "No room left that you outnumber");
-  } else {
-    s.deadlock = 0;
-  }
-}
-
-/* ---------------------------------------------------------- simulation -- */
-/** Half the road each. Lane sign picks the side; the magnitude is fixed so the
-    two halves of a row tile the track edge to edge instead of overlapping. */
-function gateHalfWidth() { return G.level.halfWidth * 0.5; }
-
-function gateX(g) {
-  const base = (g.lane < 0 ? -1 : 1) * gateHalfWidth();
-  const travel = Math.min(g.amp, gateHalfWidth() * 0.62);
-  if (g.motion === "slide") return base + Math.sin(G.time * g.spd * TAU + g.phase) * travel;
-  if (g.motion === "rotate") return base + Math.sin(G.time * g.spd * Math.PI + g.phase) * travel * 0.5;
-  return base;
-}
-
-function obstaclePos(o) {
-  const base = o.lane * (G.level.halfWidth - o.r);
-  if (o.kind === "sweeper") return { x: base + Math.sin(G.time * o.spd * TAU + o.phase) * o.amp, z: o.z };
-  if (o.kind === "spinner") {
-    const a = (G.time * o.spd + o.phase) * TAU;
-    return { x: base + Math.cos(a) * o.amp, z: o.z + Math.sin(a) * o.amp * 0.35 };
-  }
-  return { x: base, z: o.z };
-}
-
-function checkGates(prevZ, z) {
-  const crossed = G.level.gates.filter(g => !g.consumed && g.z > prevZ && g.z <= z);
-  if (!crossed.length) return;
-
-  // The two halves tile the road, so a run always passes through exactly one:
-  // take the nearest crossed half rather than testing a threshold, which would
-  // miss the row when the runner is riding the centre line.
-  let taken = null, bestDistance = Infinity;
-  for (const g of crossed) {
-    const d = Math.abs(G.player.x - gateX(g));
-    if (d < bestDistance) { bestDistance = d; taken = g; }
-  }
-  if (taken) resolveGate(taken);
-  G.level.gates.forEach(g => {
-    if (crossed.indexOf(g) >= 0 || (taken && g.row === taken.row)) g.consumed = true;
-  });
-}
-
-function shaveObstacles() {
-  const near = G.level.obstacles.filter(o => Math.abs(o.z - G.player.z) < 14);
-  if (!near.length || !G.units.length) return;
-
-  const positions = near.map(obstaclePos);
-  let killed = 0;
-  let lastX = 0, lastZ = 0;
-
-  for (let i = G.units.length - 1; i >= 0; i--) {
-    const u = G.units[i];
-    for (let k = 0; k < positions.length; k++) {
-      const dx = u.x - positions[k].x, dz = u.z - positions[k].z, r = near[k].r;
-      if (dx * dx + dz * dz <= r * r) {
-        lastX = u.x; lastZ = u.z;
-        emit(u.x, 0.9, u.z, 4, { color: PAL.blueLight, speed: 3.5, up: 5, life: 0.5, size: 0.15 });
-        G.units.splice(i, 1);
-        killed++;
-        break;
-      }
-    }
-  }
-
-  if (!killed) return;
-
-  const perVisual = G.units.length > 0 && G.crowd > G.units.length
-    ? Math.max(1, Math.round(G.crowd / G.units.length)) : 1;
-  const loss = Math.min(G.crowd, killed * perVisual);
-  G.crowd = Math.max(0, G.crowd - loss);
-  paintCrowd(true);
-
-  shake(0.30);
-  blip("impact");
-  vibrate(16);
-  pushText(lastX, 2.8, lastZ, "-" + loss, PAL.red, 0.9);
-}
-
-function updateUnits(dt) {
-  const radius = crowdRadius();
-  const n = G.units.length;
-  if (!n) return;
-
-  const cx = G.player.x, cz = G.player.z;
-
-  // Running: a round blob. Siege: a wide, shallow battle line at the tower base.
-  const siegeLine = G.phase === "siege" || G.phase === "win" || G.phase === "fail";
-  const rx = siegeLine ? Math.min(12, 1.15 * Math.sqrt(n)) : radius;
-  const rz = siegeLine ? Math.min(3.6, 0.34 * Math.sqrt(n)) : radius;
-
-  for (let i = 0; i < n; i++) {
-    const u = G.units[i];
-    const slot = (i + 0.5) / n;
-    const angle = i * GOLDEN_ANGLE;
-    const r = Math.sqrt(slot);
-    const tx = cx + Math.cos(angle) * r * rx + u.jx;
-    const tz = cz + Math.sin(angle) * r * rz + u.jz;
-
-    const a = smoothDamp(u.x, tx, u.vx, u.damp, 60, dt);
-    const b = smoothDamp(u.z, tz, u.vz, u.damp, 60, dt);
-    u.x = a[0]; u.vx = a[1];
-    u.z = b[0]; u.vz = b[1];
-  }
-}
-
-function updateTexts(dt) {
-  for (let i = G.texts.length - 1; i >= 0; i--) {
-    const t = G.texts[i];
-    t.t += dt;
-    if (t.screen) t.sy -= 46 * dt; else t.y += 2.6 * dt;
-    if (t.t >= t.life) G.texts.splice(i, 1);
-  }
-}
-
-function update(dt) {
-  G.time += dt;
-  if (G.shakeTime > 0) { G.shakeTime -= dt; if (G.shakeTime <= 0) G.shake = 0; }
-  if (G.flash > 0) G.flash = Math.max(0, G.flash - dt * 2.6);
-
-  const level = G.level;
-  if (!level) return;
-
-  if (G.phase === "running") {
-    if (keyDir !== 0) G.player.targetX += keyDir * 11 * dt;
-    const limit = Math.max(0.6, level.halfWidth - crowdRadius() * 0.42);
-    G.player.targetX = clamp(G.player.targetX, -limit, limit);
-
-    const prevZ = G.player.z;
-    const step = smoothDamp(G.player.x, G.player.targetX, G.player.vx, 0.085, 26, dt);
-    G.player.x = step[0];
-    G.player.vx = step[1];
-    G.player.z += level.speed * dt;
-
-    checkGates(prevZ, G.player.z);
-    shaveObstacles();
-
-    if (G.crowd <= 0) finishRun(false, "The mob was wiped out on the track");
-    else if (G.player.z >= level.length) {
-      G.transitionFrom = G.player.z;
-      G.transitionT = 0;
-      setPhase("transition");
-    }
-  } else if (G.phase === "transition") {
-    G.transitionT += dt;
-    const k = clamp01(G.transitionT / 1.15);
-    const sm = k * k * (3 - 2 * k);
-    G.player.z = lerp(G.transitionFrom, level.towerDistance - 8, sm);
-    G.player.x += (0 - G.player.x) * (1 - Math.exp(-6 * dt));
-    G.player.targetX = G.player.x;
-    if (k >= 1) { setPhase("siege"); G.siege.live = true; }
-  } else if (G.phase === "siege") {
-    updateSiege(dt);
-  }
-
-  updateUnits(dt);
-  updateParticles(dt);
-  updateCamera(dt);
-  updateTexts(dt);
-  paintProgress();
-}
-
-/* -------------------------------------------------------------- input --- */
-let dragging = false, lastPointerX = 0, keyDir = 0;
-
-function pointInRect(px, py, r) {
-  return r && px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
-}
-
-CV.addEventListener("pointerdown", e => {
-  audio();
-  if (G.adPlaying) return;
-  CV.setPointerCapture(e.pointerId);
-  dragging = true;
-  lastPointerX = e.clientX;
-
-  if (G.phase === "siege" && G.siege && G.siege.live && !G.siege.battle) {
-    const hit = G.siege.nodes.find(n => n.state !== "cleared" && pointInRect(e.clientX, e.clientY, n.rect));
-    if (hit) attackNode(hit);
-  }
-});
-
-CV.addEventListener("pointermove", e => {
-  if (!dragging) return;
-  const dx = e.clientX - lastPointerX;
-  lastPointerX = e.clientX;
-  if (G.phase === "running") G.player.targetX += (dx / Math.min(W, 620)) * 13;
-});
-
-const endDrag = () => { dragging = false; };
-CV.addEventListener("pointerup", endDrag);
-CV.addEventListener("pointercancel", endDrag);
-
-window.addEventListener("keydown", e => {
-  if (e.repeat) return;
-  const k = e.key.toLowerCase();
-  if (k === "a" || k === "arrowleft") keyDir = -1;
-  else if (k === "d" || k === "arrowright") keyDir = 1;
-  else if (k === " " || k === "enter") {
-    e.preventDefault();
-    if (G.phase === "menu") startRun();
-    else if (G.phase === "win" || G.phase === "fail") continueAfterResult();
-  }
-});
-
-window.addEventListener("keyup", e => {
-  const k = e.key.toLowerCase();
-  if ((k === "a" || k === "arrowleft") && keyDir === -1) keyDir = 0;
-  if ((k === "d" || k === "arrowright") && keyDir === 1) keyDir = 0;
-});
-</script>
-
-<script>
-"use strict";
-/* ===========================================================================
-   RENDERER
-   Pinhole projection, painter's algorithm, atmospheric fog.
-   Everything at a constant Z projects to a screen-space rectangle, which is
-   why gates and tower rooms can be drawn (and hit tested) so cheaply.
-   =========================================================================== */
-
-/** Returns a screen-space frame for the plane at depth z, anchored at world x. */
-function planeAt(x0, z) {
-  const p = proj(x0, 0, z);
-  if (!p) return null;
-  return {
-    s: p.s,
-    px: xw => p.x + (xw - x0) * p.s,
-    py: yw => p.y - yw * p.s
-  };
-}
-
-function quad(a, b, c, d, fill, stroke, lw) {
-  X.beginPath();
-  X.moveTo(a[0], a[1]); X.lineTo(b[0], b[1]); X.lineTo(c[0], c[1]); X.lineTo(d[0], d[1]);
-  X.closePath();
-  if (fill) { X.fillStyle = fill; X.fill(); }
-  if (stroke) { X.strokeStyle = stroke; X.lineWidth = lw || 2; X.stroke(); }
-}
-
-function strip(x0, x1, y0, y1, zNear, zFar, fill) {
-  const n = planeAt(0, zNear), f = planeAt(0, zFar);
-  if (!n || !f) return;
-  quad([n.px(x0), n.py(y0)], [n.px(x1), n.py(y1)],
-       [f.px(x1), f.py(y1)], [f.px(x0), f.py(y0)], fill);
-}
-
-/* ----------------------------------------------------------------- sky --- */
-let clouds = null;
-
-function buildClouds() {
-  const rand = mulberry32(4242);
-  clouds = [];
-  for (let i = 0; i < 9; i++) {
-    clouds.push({
-      x: rand(), y: 0.10 + rand() * 0.62,
-      w: 0.07 + rand() * 0.13, h: 0.012 + rand() * 0.020,
-      a: 0.06 + rand() * 0.12, drift: 0.004 + rand() * 0.010
-    });
-  }
-}
-
-function drawSky() {
-  const skyBottom = HORIZON + 2;
-  const g = X.createLinearGradient(0, 0, 0, skyBottom);
-  g.addColorStop(0, rgb(PAL.skyTop));
-  g.addColorStop(0.52, rgb(PAL.skyMid));
-  g.addColorStop(0.88, rgb(mix(PAL.skyMid, PAL.skyLow, 0.75)));
-  g.addColorStop(1, rgb(PAL.skyLow));
-  X.fillStyle = g;
-  X.fillRect(0, 0, W, skyBottom);
-
-  const sunX = W * 0.5 - cam.x * 2.2;
-  const sunY = HORIZON - H * 0.055;
-  const glow = X.createRadialGradient(sunX, sunY, 0, sunX, sunY, H * 0.42);
-  glow.addColorStop(0, rgba(PAL.sun, 0.75));
-  glow.addColorStop(0.35, rgba(PAL.skyLow, 0.30));
-  glow.addColorStop(1, rgba(PAL.skyLow, 0));
-  X.fillStyle = glow;
-  X.fillRect(0, 0, W, skyBottom);
-
-  X.fillStyle = rgba(PAL.sun, 0.95);
-  X.beginPath(); X.arc(sunX, sunY, H * 0.052, 0, TAU); X.fill();
-
-  if (!clouds) buildClouds();
-  for (const c of clouds) {
-    const cx = (((c.x + G.time * c.drift - cam.x * 0.004) % 1.4) + 1.4) % 1.4;
-    const px = cx * W * 1.4 - W * 0.2;
-    const py = c.y * HORIZON;
-    X.fillStyle = rgba(mix(PAL.sun, PAL.white, 0.35), c.a);
-    X.beginPath();
-    X.ellipse(px, py, c.w * W, c.h * H, 0, 0, TAU);
-    X.ellipse(px + c.w * W * 0.55, py + c.h * H * 0.28, c.w * W * 0.55, c.h * H * 0.72, 0, 0, TAU);
-    X.fill();
-  }
-}
-
-function hillLayer(color, amp, base, phase, parallax, step) {
-  const offset = -cam.x * parallax - cam.z * parallax * 0.05;
-  X.beginPath();
-  X.moveTo(-10, HORIZON + 4);
-  for (let x = -10; x <= W + 10; x += step) {
-    const t = (x + offset) * 0.0055;
-    const y = HORIZON - base - amp * (Math.sin(t + phase) * 0.62 + Math.sin(t * 2.17 + phase * 2.3) * 0.38);
-    X.lineTo(x, y);
-  }
-  X.lineTo(W + 10, HORIZON + 4);
-  X.closePath();
-  X.fillStyle = color;
-  X.fill();
-}
-
-function drawHills() {
-  hillLayer(rgb(mix(PAL.hillFar, PAL.fog, 0.45)), H * 0.055, H * 0.008, 0.7, 5, 16);
-  hillLayer(rgb(mix(PAL.hillNear, PAL.fog, 0.22)), H * 0.036, 0, 2.4, 11, 12);
-}
-
-/* ------------------------------------------------------------- terrain --- */
-function drawTerrain() {
-  const L = G.level;
-  const hw = L.halfWidth;
-  const nearZ = cam.z + 3.2;
-  const farZ = cam.z + 210;
-
-  const g = X.createLinearGradient(0, HORIZON, 0, H);
-  g.addColorStop(0, rgb(PAL.fog));
-  g.addColorStop(0.06, rgb(mix(PAL.grass, PAL.fog, 0.62)));
-  g.addColorStop(0.35, rgb(PAL.grass));
-  g.addColorStop(1, rgb(PAL.grassDark));
-  X.fillStyle = g;
-  X.fillRect(0, HORIZON, W, H - HORIZON);
-
-  // shoulder and road bed
-  strip(-hw - 2.6, hw + 2.6, 0.02, 0.02, nearZ, farZ, rgb(mix(PAL.roadDark, PAL.grassDark, 0.35)));
-
-  const road = X.createLinearGradient(0, HORIZON, 0, H);
-  road.addColorStop(0, rgb(PAL.fog));
-  road.addColorStop(0.08, rgb(mix(PAL.road, PAL.fog, 0.55)));
-  road.addColorStop(0.4, rgb(PAL.road));
-  road.addColorStop(1, rgb(PAL.roadDark));
-  strip(-hw, hw, 0.04, 0.04, nearZ, farZ, road);
-
-  // rungs across the road sell the speed
-  const step = 6;
-  const start = Math.floor(nearZ / step) * step;
-  for (let z = start; z < Math.min(farZ, nearZ + 130); z += step) {
-    const fade = 1 - fogAmount(z);
-    if (fade <= 0.03) continue;
-    X.globalAlpha = 0.34 * fade;
-    strip(-hw + 0.35, hw - 0.35, 0.05, 0.05, z, z + 1.6, rgb(PAL.lane));
-    X.globalAlpha = 1;
-  }
-
-  // side walls
-  const wallH = 1.75;
-  for (const side of [-1, 1]) {
-    const x = side * (hw + 0.5);
-    strip(x, x, 0, wallH, nearZ, farZ, rgb(PAL.wall));
-    strip(x, x + side * 0.75, wallH, wallH, nearZ, farZ, rgb(PAL.wallTop));
-  }
-}
-
-/* --------------------------------------------------------------- gates --- */
-function drawGate(gate) {
-  if (gate.consumed) return;
-  const gx = gateX(gate);
-  const f = planeAt(gx, gate.z);
-  if (!f || f.s < 0.9) return;
-
-  const good = gateIsGood(gate.type, gate.value);
-  const tint = good ? PAL.jade : PAL.red;
-  const fog = fogAmount(gate.z);
-  const alpha = 1 - fog * 0.8;
-
-  const halfW = gateHalfWidth() - 0.12, topY = 4.35, fieldTop = 3.7;
-  const lx = f.px(-halfW), rx = f.px(halfW);
-  const y0 = f.py(0.05), yField = f.py(fieldTop), yTop = f.py(topY);
-
-  X.globalAlpha = alpha;
-
-  // glow
-  const cxs = (lx + rx) / 2, cys = (y0 + yTop) / 2;
-  const glow = X.createRadialGradient(cxs, cys, 0, cxs, cys, (rx - lx) * 0.9);
-  glow.addColorStop(0, rgba(tint, 0.34));
-  glow.addColorStop(1, rgba(tint, 0));
-  X.fillStyle = glow;
-  X.fillRect(lx - (rx - lx) * 0.5, yTop - 20, (rx - lx) * 2, y0 - yTop + 40);
-
-  // energy field
-  const field = X.createLinearGradient(0, yField, 0, y0);
-  field.addColorStop(0, rgba(tint, 0.14));
-  field.addColorStop(1, rgba(tint, 0.42));
-  X.fillStyle = field;
-  X.fillRect(lx, yField, rx - lx, y0 - yField);
-
-  X.globalAlpha = alpha * 0.5;
-  X.fillStyle = rgba(PAL.white, 0.5);
-  for (let i = 0; i < 4; i++) {
-    const t = ((G.time * 0.55 + i * 0.25 + gate.phase * 0.1) % 1);
-    const yy = yField + (y0 - yField) * t;
-    X.fillRect(lx, yy, rx - lx, Math.max(1, f.s * 0.035));
-  }
-  X.globalAlpha = alpha;
-
-  // posts
-  const postW = f.s * 0.62;
-  const stone = rgb(mix(PAL.stone, PAL.fog, fog));
-  const stoneD = rgb(mix(PAL.stoneDark, PAL.fog, fog));
-  X.fillStyle = stone;
-  X.fillRect(lx - postW * 0.5, yTop, postW, y0 - yTop);
-  X.fillRect(rx - postW * 0.5, yTop, postW, y0 - yTop);
-  X.fillStyle = stoneD;
-  X.fillRect(lx - postW * 0.5, yTop, postW * 0.32, y0 - yTop);
-  X.fillRect(rx - postW * 0.5, yTop, postW * 0.32, y0 - yTop);
-
-  // lintel
-  const lintelH = f.py(topY - 0.62) - yTop;
-  X.fillStyle = stone;
-  X.fillRect(lx - postW * 0.7, yTop, (rx - lx) + postW * 1.4, lintelH);
-  X.fillStyle = rgba(PAL.ink, 0.22);
-  X.fillRect(lx - postW * 0.7, yTop + lintelH * 0.72, (rx - lx) + postW * 1.4, lintelH * 0.28);
-
-  // banner strip in the tint colour
-  X.fillStyle = rgba(tint, 0.85);
-  X.fillRect(lx - postW * 0.7, yTop + lintelH * 0.26, (rx - lx) + postW * 1.4, lintelH * 0.34);
-
-  // the number
-  const size = Math.max(12, f.s * 1.15);
-  X.font = size + "px 'Titan One', 'Arial Black', sans-serif";
-  X.textAlign = "center";
-  X.textBaseline = "middle";
-  const label = gateLabel(gate.type, gate.value);
-  const ly = f.py(1.85);
-  X.lineJoin = "round";
-  X.lineWidth = Math.max(3, size * 0.20);
-  X.strokeStyle = rgb(PAL.ink);
-  X.strokeText(label, cxs, ly);
-  X.fillStyle = good ? rgb(PAL.white) : rgb(PAL.redLight);
-  X.fillText(label, cxs, ly);
-
-  X.globalAlpha = 1;
-}
-
-/* ----------------------------------------------------------- obstacles --- */
-function drawObstacle(o) {
-  const pos = obstaclePos(o);
-  const f = planeAt(pos.x, pos.z);
-  if (!f || f.s < 0.9) return;
-
-  const fog = fogAmount(pos.z);
-  const s = f.s;
-  const cx = f.px(pos.x), gy = f.py(0);
-
-  // ground warning ring
-  X.globalAlpha = (1 - fog) * 0.55;
-  X.strokeStyle = rgb(PAL.red);
-  X.lineWidth = Math.max(1.5, s * 0.055);
-  X.setLineDash([s * 0.22, s * 0.18]);
-  X.beginPath();
-  X.ellipse(cx, gy, o.r * s, o.r * s * 0.34, 0, 0, TAU);
-  X.stroke();
-  X.setLineDash([]);
-  X.globalAlpha = 1 - fog * 0.8;
-
-  const hubY = f.py(1.05);
-  const spin = G.time * (o.kind === "static" ? 1.6 : 4.2) + o.phase;
-  const R = o.r * s * 0.95;
-
-  X.fillStyle = rgb(mix(PAL.stoneDeep, PAL.fog, fog));
-  X.fillRect(cx - s * 0.10, hubY, s * 0.20, gy - hubY);
-
-  X.beginPath();
-  for (let i = 0; i < 16; i++) {
-    const a = spin + (i / 16) * TAU;
-    const rr = R * (i % 2 === 0 ? 1 : 0.72);
-    const px = cx + Math.cos(a) * rr, py = hubY + Math.sin(a) * rr * 0.42;
-    if (i === 0) X.moveTo(px, py); else X.lineTo(px, py);
-  }
-  X.closePath();
-  X.fillStyle = rgb(mix(PAL.stoneDark, PAL.fog, fog));
-  X.fill();
-  X.lineWidth = Math.max(1.5, s * 0.05);
-  X.strokeStyle = rgb(mix(PAL.ink, PAL.fog, fog * 0.5));
-  X.stroke();
-
-  X.beginPath();
-  X.ellipse(cx, hubY, R * 0.34, R * 0.16, 0, 0, TAU);
-  X.fillStyle = rgb(mix(PAL.red, PAL.fog, fog));
-  X.fill();
-
-  X.globalAlpha = 1;
-}
-
-/* --------------------------------------------------------------- units --- */
-function drawUnit(u) {
-  const p = proj(u.x, 0, u.z);
-  if (!p || p.s < 0.8) return;
-
-  X.globalAlpha = 0.28;
-  X.fillStyle = rgb(PAL.ink);
-  X.beginPath();
-  X.ellipse(p.x, p.y, p.s * 0.40, p.s * 0.15, 0, 0, TAU);
-  X.fill();
-  X.globalAlpha = 1;
-
-  const moving = G.phase === "running" || G.phase === "transition";
-  const cycle = moving ? G.time * 11 * u.gait + u.phase : u.phase + G.time * 1.6;
-  const frame = Math.floor(((cycle / TAU) % 1 + 1) % 1 * SPR.frames) % SPR.frames;
-  blitFighter(ATLAS_BLUE, p, frame);
-}
-
-/* -------------------------------------------------------------- finish --- */
-function drawFinish() {
-  const L = G.level;
-  const hw = L.halfWidth;
-  const f = planeAt(0, L.length);
-  if (!f || f.s < 0.6) return;
-
-  const cols = 12;
-  const y0 = f.py(0.06);
-  for (let i = 0; i < cols; i++) {
-    const x0 = f.px(-hw + (i * 2 * hw) / cols);
-    const x1 = f.px(-hw + ((i + 1) * 2 * hw) / cols);
-    X.fillStyle = i % 2 === 0 ? rgb(PAL.white) : rgb(PAL.ink);
-    X.fillRect(x0, y0 - f.s * 0.06, x1 - x0, f.s * 1.1);
-  }
-
-  for (const side of [-1, 1]) {
-    const px = f.px(side * (hw + 0.4));
-    const top = f.py(4.6);
-    X.strokeStyle = rgb(PAL.stoneDark);
-    X.lineWidth = Math.max(1.5, f.s * 0.10);
-    X.beginPath(); X.moveTo(px, f.py(0)); X.lineTo(px, top); X.stroke();
-
-    const wave = Math.sin(G.time * 3 + side) * f.s * 0.14;
-    X.fillStyle = rgb(PAL.jade);
-    X.beginPath();
-    X.moveTo(px, top);
-    X.lineTo(px - side * f.s * 1.15, top + f.s * 0.32 + wave);
-    X.lineTo(px, top + f.s * 0.78);
-    X.closePath();
-    X.fill();
-  }
-}
-
-/* --------------------------------------------------------------- tower --- */
-function archPath(g, x, y, w, h) {
-  const rr = Math.min(h * 0.52, w * 0.5);
-  g.beginPath();
-  g.moveTo(x, y + h);
-  g.lineTo(x, y + rr);
-  g.ellipse(x + w / 2, y + rr, w / 2, rr, 0, Math.PI, 0, false);
-  g.lineTo(x + w, y + h);
-  g.closePath();
-}
-
-function drawTower() {
-  const L = G.level, S = G.siege;
-  if (!L || !S) return;
-
-  const floors = L.floorCount;
-  let maxSlots = 1;
-  for (let f = 0; f < floors; f++) {
-    maxSlots = Math.max(maxSlots, L.nodes.filter(n => n.floor === f).length);
-  }
-
-  const shellW = maxSlots * TOWER.slot + 3.2;
-  const shellH = TOWER.baseY + floors * TOWER.floorH + 1.4;
-  const zF = L.towerDistance - TOWER.depth;
-  const zB = L.towerDistance + TOWER.depth * 1.9;
-
-  const front = planeAt(0, zF), back = planeAt(0, zB);
-  if (!front || !back || front.s < 0.6) return;
-
-  const fog = fogAmount(L.towerDistance);
-  const F = c => rgb(mix(c, PAL.fog, fog));
-  const stone = F(PAL.stone);
-  const stoneD = F(PAL.stoneDark);
-  const stoneDeep = F(PAL.stoneDeep);
-
-  const hw = shellW / 2;
-  const fx0 = front.px(-hw), fx1 = front.px(hw);
-  const fy0 = front.py(0), fyTop = front.py(shellH);
-
-  // back mass and side faces give the tower real thickness
-  quad([back.px(-hw), back.py(0)], [back.px(hw), back.py(0)],
-       [back.px(hw), back.py(shellH)], [back.px(-hw), back.py(shellH)], stoneDeep);
-  quad([fx0, fy0], [back.px(-hw), back.py(0)],
-       [back.px(-hw), back.py(shellH)], [fx0, fyTop], stoneD);
-  quad([fx1, fy0], [back.px(hw), back.py(0)],
-       [back.px(hw), back.py(shellH)], [fx1, fyTop], stoneD);
-
-  // front face with a top-down light falloff
-  const wall = X.createLinearGradient(0, fyTop, 0, fy0);
-  wall.addColorStop(0, F(mix(PAL.stone, PAL.white, 0.12)));
-  wall.addColorStop(1, F(mix(PAL.stone, PAL.stoneDeep, 0.30)));
-  X.fillStyle = wall;
-  X.fillRect(fx0, fyTop, fx1 - fx0, fy0 - fyTop);
-
-  // masonry courses
-  X.fillStyle = rgba(PAL.stoneDeep, 0.14 * (1 - fog));
-  for (let y = 0.5; y < shellH; y += 0.62) {
-    const yy = front.py(y);
-    X.fillRect(fx0, yy, fx1 - fx0, Math.max(1, front.s * 0.035));
-  }
-
-  // corner buttresses
-  const bw = front.s * 1.05;
-  for (const bx of [fx0, fx1 - bw]) {
-    X.fillStyle = stone;
-    X.fillRect(bx, front.py(shellH + 0.5), bw, fy0 - front.py(shellH + 0.5));
-    X.fillStyle = rgba(PAL.stoneDeep, 0.22 * (1 - fog));
-    X.fillRect(bx + bw * 0.72, front.py(shellH + 0.5), bw * 0.28, fy0 - front.py(shellH + 0.5));
-  }
-
-  // gatehouse at the foot of the tower
-  const gw = front.s * TOWER.roomW * 0.85, gh = front.s * TOWER.baseY * 0.92;
-  const gx = (fx0 + fx1) / 2 - gw / 2, gy = fy0 - gh;
-  archPath(X, gx, gy, gw, gh);
-  X.fillStyle = F(mix(PAL.stoneDeep, PAL.ink, 0.45));
-  X.fill();
-  X.strokeStyle = stoneD;
-  X.lineWidth = Math.max(1.5, front.s * 0.07);
-  X.stroke();
-  X.strokeStyle = rgba(PAL.ink, 0.55 * (1 - fog));
-  X.lineWidth = Math.max(1, front.s * 0.045);
-  for (let i = 1; i < 5; i++) {
-    const lx = gx + (gw * i) / 5;
-    X.beginPath(); X.moveTo(lx, gy + gh * 0.20); X.lineTo(lx, gy + gh); X.stroke();
-  }
-
-  // battlements
-  const merlonW = (fx1 - fx0) / 9;
-  const merlonTop = front.py(shellH + 0.85);
-  for (let i = 0; i < 9; i += 2) {
-    X.fillStyle = stone;
-    X.fillRect(fx0 + i * merlonW, merlonTop, merlonW, fyTop - merlonTop);
-  }
-
-  // flagpole
-  const poleX = (fx0 + fx1) / 2;
-  const poleTop = front.py(shellH + 2.1);
-  const allClear = S.nodes.every(n => n.state === "cleared");
-  X.strokeStyle = stoneD;
-  X.lineWidth = Math.max(1.5, front.s * 0.06);
-  X.beginPath(); X.moveTo(poleX, merlonTop); X.lineTo(poleX, poleTop); X.stroke();
-  const wave = Math.sin(G.time * 3.1) * front.s * 0.18;
-  X.fillStyle = F(allClear ? PAL.blue : PAL.red);
-  X.beginPath();
-  X.moveTo(poleX, poleTop);
-  X.lineTo(poleX + front.s * 1.5, poleTop + front.s * 0.42 + wave);
-  X.lineTo(poleX, poleTop + front.s * 0.95);
-  X.closePath();
-  X.fill();
-
-  // rooms
-  const detail = front.s > 9;
-  for (const node of S.nodes) {
-    const w = roomWorld(node);
-    const rx0 = front.px(w.x - TOWER.roomW / 2);
-    const rx1 = front.px(w.x + TOWER.roomW / 2);
-    const ry1 = front.py(w.y);
-    const ry0 = front.py(w.y + TOWER.roomH);
-    const rw = rx1 - rx0, rh = ry1 - ry0;
-    node.rect = { x: rx0, y: ry0, w: rw, h: rh };
-
-    const beatable = G.crowd > node.power;
-    const live = node.state === "available" && S.live;
-    const pulse = node.pulse > 0 ? Math.sin(clamp01(node.pulse / 0.38) * Math.PI) * 0.09 : 0;
-    const jitter = node.reject > 0 ? Math.sin(G.time * 55) * rw * 0.05 * clamp01(node.reject / 0.34) : 0;
-
-    const dx = rx0 + jitter - rw * pulse * 0.5;
-    const dy = ry0 - rh * pulse * 0.5;
-    const dw = rw * (1 + pulse), dh = rh * (1 + pulse);
-    const cx = dx + dw / 2;
-
-    let inner, edge, ink;
-    if (node.state === "cleared") { inner = mix(PAL.blueDark, PAL.ink, 0.45); edge = PAL.blue; ink = PAL.blueLight; }
-    else if (node.state === "locked") { inner = mix(PAL.stoneDeep, PAL.ink, 0.62); edge = PAL.stoneDeep; ink = PAL.stoneDark; }
-    else if (beatable) { inner = mix(PAL.redDark, PAL.ink, 0.20); edge = node.boss ? PAL.gold : PAL.jade; ink = PAL.white; }
-    else { inner = mix(PAL.redDark, PAL.ink, 0.55); edge = PAL.redDark; ink = PAL.redLight; }
-
-    // stone surround
-    archPath(X, dx - dw * 0.08, dy - dh * 0.06, dw * 1.16, dh * 1.06);
-    X.fillStyle = F(mix(PAL.stone, PAL.stoneDark, 0.55));
-    X.fill();
-
-    // recess
-    archPath(X, dx, dy, dw, dh);
-    X.fillStyle = F(inner);
-    X.fill();
-    X.save();
-    X.clip();
-
-    if (node.state !== "locked" && node.state !== "cleared") {
-      const torch = X.createRadialGradient(cx, dy + dh * 0.9, 0, cx, dy + dh * 0.9, dh);
-      torch.addColorStop(0, rgba(PAL.gold, beatable ? 0.34 : 0.14));
-      torch.addColorStop(1, rgba(PAL.gold, 0));
-      X.fillStyle = torch;
-      X.fillRect(dx, dy, dw, dh);
-    }
-
-    if (detail && node.state !== "cleared" && node.state !== "locked") {
-      const show = Math.min(3, 1 + (node.power % 3));
-      for (let i = 0; i < show; i++) {
-        const spread = (i - (show - 1) / 2) * dw * 0.27;
-        const fake = (dh * 0.60) / SPR.worldHeight;
-        const frame = Math.floor(((G.time * 2.6 + i * 0.31 + node.floor) % 1) * SPR.frames) % SPR.frames;
-        blitFighter(ATLAS_RED, { x: cx + spread, y: dy + dh * 0.96, s: fake }, frame);
-      }
-    }
-
-    if (node.state === "locked") {
-      X.strokeStyle = rgba(PAL.stoneDark, 0.85);
-      X.lineWidth = Math.max(1.2, front.s * 0.06);
-      for (let i = 1; i < 5; i++) {
-        const lx = dx + (dw * i) / 5;
-        X.beginPath(); X.moveTo(lx, dy + dh * 0.12); X.lineTo(lx, dy + dh); X.stroke();
-      }
-    }
-
-    if (node.state === "cleared") {
-      X.fillStyle = rgb(PAL.blue);
-      const bwid = dw * 0.46, bh = dh * 0.52;
-      X.beginPath();
-      X.moveTo(cx - bwid / 2, dy + dh * 0.10);
-      X.lineTo(cx + bwid / 2, dy + dh * 0.10);
-      X.lineTo(cx + bwid / 2, dy + dh * 0.10 + bh);
-      X.lineTo(cx, dy + dh * 0.10 + bh * 0.70);
-      X.lineTo(cx - bwid / 2, dy + dh * 0.10 + bh);
-      X.closePath();
-      X.fill();
-    }
-
-    X.restore();
-
-    // frame edge, brightened while the room is a legal target
-    archPath(X, dx, dy, dw, dh);
-    X.strokeStyle = F(edge);
-    X.lineWidth = Math.max(1.5, front.s * (live && beatable ? 0.10 : 0.05));
-    X.stroke();
-    if (live && beatable) {
-      X.globalAlpha = 0.30 + Math.sin(G.time * 4 + node.floor) * 0.16;
-      X.strokeStyle = rgb(edge);
-      X.lineWidth = Math.max(2, front.s * 0.18);
-      X.stroke();
-      X.globalAlpha = 1;
-    }
-
-    // count plaque on the wall below the room
-    if (front.s > 4) {
-      const pw = dw * 0.68, ph = dh * 0.30;
-      const px = cx - pw / 2, py = ry1 + dh * 0.06;
-      roundedRect(X, px, py, pw, ph, ph * 0.30);
-      X.fillStyle = F(mix(PAL.stoneDeep, PAL.ink, 0.35));
-      X.fill();
-      X.strokeStyle = F(edge);
-      X.lineWidth = Math.max(1, front.s * 0.035);
-      X.stroke();
-
-      const size = Math.max(9, ph * 0.78);
-      X.font = size + "px 'Titan One', 'Arial Black', sans-serif";
-      X.textAlign = "center";
-      X.textBaseline = "middle";
-      X.fillStyle = rgb(ink);
-      X.fillText(node.state === "cleared" ? "✓" : String(node.power), cx, py + ph * 0.54);
-    }
-  }
-}
-
-/* --------------------------------------------------------------- texts --- */
-function drawTexts() {
-  X.textAlign = "center";
-  X.textBaseline = "middle";
-  X.lineJoin = "round";
-
-  for (const t of G.texts) {
-    const k = clamp01(t.t / t.life);
-    const alpha = 1 - Math.max(0, (k - 0.55) / 0.45);
-    let px, py, size;
-
-    if (t.screen) {
-      px = t.sx; py = t.sy; size = 30 * t.scale;
-    } else {
-      const p = proj(t.x, t.y, t.z);
-      if (!p) continue;
-      px = p.x; py = p.y;
-      size = clamp(p.s * 0.85 * t.scale, 13, 54);
-    }
-
-    const pop = 1 + (1 - Math.min(1, k * 4)) * 0.35;
-    X.globalAlpha = alpha;
-    X.font = Math.round(size * pop) + "px 'Titan One', 'Arial Black', sans-serif";
-    X.lineWidth = Math.max(4, size * 0.26);
-    X.strokeStyle = rgb(PAL.ink);
-    X.strokeText(t.text, px, py);
-    X.fillStyle = rgb(t.color);
-    X.fillText(t.text, px, py);
-    X.globalAlpha = 1;
-  }
-}
-
-/* -------------------------------------------------------------- frame --- */
-function render() {
-  X.save();
-
-  if (G.shake > 0) {
-    const k = G.shake * clamp01(G.shakeTime / 0.28);
-    X.translate((Math.random() - 0.5) * 20 * k, (Math.random() - 0.5) * 15 * k);
-  }
-
-  drawSky();
-  drawHills();
-
-  if (G.level) {
-    drawTerrain();
-
-    const items = [];
-    for (const item of scenery) {
-      if (item.z > cam.z + 2 && item.z < cam.z + 200) items.push({ z: item.z, fn: drawScenery, a: item });
-    }
-    if (G.level.towerDistance - cam.z < 230) {
-      items.push({ z: G.level.towerDistance, fn: drawTower });
-    }
-    for (const g of G.level.gates) if (!g.consumed) items.push({ z: g.z, fn: drawGate, a: g });
-    for (const o of G.level.obstacles) items.push({ z: o.z, fn: drawObstacle, a: o });
-    for (const u of G.units) items.push({ z: u.z, fn: drawUnit, a: u });
-    for (const p of particles) items.push({ z: p.z, fn: drawParticle, a: p });
-    items.push({ z: G.level.length, fn: drawFinish });
-
-    items.sort((a, b) => b.z - a.z);
-    for (const i of items) i.fn(i.a);
-  }
-
-  drawTexts();
-
-  // vignette keeps the eye on the road
-  const vig = X.createRadialGradient(W / 2, H * 0.52, H * 0.28, W / 2, H * 0.52, H * 0.78);
-  vig.addColorStop(0, "rgba(20,14,38,0)");
-  vig.addColorStop(1, "rgba(20,14,38,0.45)");
-  X.fillStyle = vig;
-  X.fillRect(0, 0, W, H);
-
-  X.restore();
-
-  $("flash").style.opacity = G.flash > 0 ? (G.flash * 0.55).toFixed(3) : "0";
-}
-</script>
-
-<script>
-"use strict";
-/* ===========================================================================
-   INTERFACE AND BOOT
-   =========================================================================== */
-
-const $ = id => document.getElementById(id);
-
-function show(id, visible) {
-  const el = $(id);
-  if (el) el.hidden = !visible;
-}
-
-const BAND_LABEL = {
-  "hook": "THE HOOK",
-  "gold rush": "GOLD RUSH",
-  "mastery": "MASTERY",
-  "core": "CORE LOOP"
-};
-
-let crowdPopTimer = null;
-function paintCrowd(pop) {
-  const el = $("crowd");
-  if (!el) return;
-  el.textContent = G.crowd.toLocaleString();
-  if (!pop) return;
-
-  el.classList.add("pop");
-  clearTimeout(crowdPopTimer);
-  crowdPopTimer = setTimeout(() => el.classList.remove("pop"), 95);
-}
-
-let lastProgress = -1;
-function paintProgress() {
-  if (!G.level) return;
-  const done = (G.phase === "siege" || G.phase === "transition" ||
-                G.phase === "win" || G.phase === "fail")
-    ? 1 : clamp01(G.player.z / G.level.length);
-  const pct = Math.round(done * 100);
-  if (pct === lastProgress) return;
-  lastProgress = pct;
-  $("bar").style.width = pct + "%";
-}
-
-function paintPips() {
-  const bar = $("trackBar");
-  if (!bar || !G.level) return;
-  Array.prototype.slice.call(bar.querySelectorAll(".pip")).forEach(p => p.remove());
-
-  const seen = {};
-  for (const g of G.level.gates) {
-    if (seen[g.row]) continue;
-    seen[g.row] = true;
-    const pip = document.createElement("span");
-    pip.className = "pip";
-    pip.style.left = clamp01(g.z / G.level.length) * 100 + "%";
-    bar.appendChild(pip);
-  }
-}
-
-function paintHud() {
-  const gold = save.gold.toLocaleString();
-  $("gold").textContent = gold;
-  $("shopGold").textContent = gold;
-  $("lvlNum").textContent = save.levelIndex;
-
-  if (G.level) {
-    $("menuRibbon").textContent = "LEVEL " + G.level.index + " · " +
-      (BAND_LABEL[G.level.band] || G.level.band.toUpperCase());
-    $("rush").classList.toggle("on", !!G.level.isFeeder);
-  }
-
-  let ready = 0;
-  for (const id in UPGRADES) {
-    const cost = upgradeCost(id);
-    if (isFinite(cost) && save.gold >= cost) ready++;
-  }
-  $("shopTag").textContent = ready > 0 ? ready + " READY" : "SHOP";
-  $("shopTag").style.background = ready > 0 ? "rgba(63,217,138,.35)" : "rgba(0,0,0,.22)";
-}
-
-function paintShop() {
-  for (const id of ["crowd", "gold", "gate"]) {
-    const u = UPGRADES[id];
-    const level = save[u.key];
-    const cost = upgradeCost(id);
-    const maxed = !isFinite(cost);
-
-    $("v-" + id).textContent = u.value();
-    $("l-" + id).textContent = "LV " + (level + 1);
-
-    const btn = $("b-" + id);
-    btn.innerHTML = maxed ? "MAX" : cost.toLocaleString() + "<small>GOLD</small>";
-    btn.disabled = maxed || save.gold < cost;
-  }
-  $("shopGold").textContent = save.gold.toLocaleString();
-}
-
-/** Coin counter roll-up on the result screens. */
-function countUp(id, target) {
-  const el = $(id);
-  if (!el) return;
-  const started = performance.now();
-  const duration = Math.min(900, 220 + target * 0.6);
-
-  const step = now => {
-    const k = clamp01((now - started) / duration);
-    const eased = 1 - Math.pow(1 - k, 3);
-    el.textContent = Math.round(target * eased).toLocaleString();
-    if (k < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-}
-
-/* mock ad framework - same call shape as any mediation SDK */
-function playMockAd(kind, seconds, done) {
-  G.adPlaying = true;
-  $("adKind").textContent = kind;
-  show("advert", true);
-
-  const started = performance.now();
-  const tick = () => {
-    const elapsed = (performance.now() - started) / 1000;
-    const remaining = Math.max(0, seconds - elapsed);
-    $("adCount").textContent = remaining.toFixed(1) + "s";
-    $("adBar").style.width = clamp01(elapsed / seconds) * 100 + "%";
-
-    if (remaining > 0) requestAnimationFrame(tick);
-    else {
-      show("advert", false);
-      G.adPlaying = false;
-      done();
-    }
-  };
-  tick();
-}
-
-/* ------------------------------------------------------------- buttons --- */
-$("play").addEventListener("click", startRun);
-
-$("openShop").addEventListener("click", () => { paintShop(); show("shop", true); blip("select"); });
-$("closeShop").addEventListener("click", () => { show("shop", false); blip("select"); });
-
-for (const id of ["crowd", "gold", "gate"]) {
-  $("b-" + id).addEventListener("click", () => {
-    if (buyUpgrade(id)) {
-      if (id === "crowd") prepareLevel();
-      paintHud();
-    }
-  });
-}
-
-$("next").addEventListener("click", continueAfterResult);
-$("retry").addEventListener("click", continueAfterResult);
-
-$("watchAd").addEventListener("click", () => {
-  if (G.rewardClaimed || G.rewardBoosted) return;
-  $("watchAd").disabled = true;
-  playMockAd("REWARDED VIDEO", 2.2, () => {
-    G.rewardBoosted = true;
-    G.reward *= 3;
-    countUp("winGold", G.reward);
-    blip("coin");
-    vibrate(24);
-  });
-});
-
-/* ---------------------------------------------------------------- boot --- */
-let lastFrame = performance.now();
-
-function loop(now) {
-  const dt = Math.min(0.05, (now - lastFrame) / 1000);
-  lastFrame = now;
-
-  if (!G.adPlaying) update(dt);
-  render();
-
-  requestAnimationFrame(loop);
-}
-
-resize();
-buildSprites();
-prepareLevel();
-paintPips();
-setPhase("menu");
-paintShop();
-paintHud();
-requestAnimationFrame(loop);
-
-// Redraw the sprite atlases once the display face has loaded so the
-// in-canvas numbers match the HTML interface.
-if (document.fonts && document.fonts.ready) {
-  document.fonts.ready.then(() => { buildSprites(); });
-}
-</script>
-
+<script src="src/engine/core.js"></script>
+<script src="src/engine/rig.js"></script>
+<script src="src/engine/fx.js"></script>
+<script src="src/engine/view3d.js"></script>
+<script src="src/games/mobclash.js"></script>
+<script src="src/games/horde.js"></script>
+<script src="src/games/runner.js"></script>
+<script src="src/hub.js"></script>
 </body>
 </html>

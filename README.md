@@ -1,47 +1,68 @@
-# Mob Clash: Gate Siege
+# Pocket Arcade
 
-A hybrid-casual mobile game in the Voodoo / SayGames / Supersonic mould: swerve a crowd down a
-track, gamble it through `+ - × ÷` gates, then spend the resulting horde storming a tower one room
-at a time. Between runs you sink gold into three upgrade tracks and go again.
+Three complete mobile games in one hub, sharing an engine, a cross-game progression
+layer, and a procedural character system that generates and animates every fighter
+from a seed — no character art in the repository.
 
-The repository ships **two complete implementations of the same design**:
-
-| Build | Where it lives | Runs on |
+| Game | Genre | Loop |
 | --- | --- | --- |
-| Unity 3D project | `Assets/` | Android (APK), Windows 11 (EXE), WebGL |
-| Canvas/JS build | `web/index.html` | Any browser, and shipped as a 104 KB Windows `.exe` in `dist/` |
+| **Mob Clash: Gate Siege** | Crowd runner + puzzle | Swerve a mob through `+ − × ÷` gates, then storm a keep room by room |
+| **Horde Arena** | Survivor auto-battler | Steer only; draft an upgrade every level, evolve weapons, survive 20 waves |
+| **Rooftop Run** | Endless runner | Three lanes, vault and slide, chain power-ups, chase distance |
 
-Both share the same pacing math, the same economy curves, the same three-phase loop **and the same
-art direction** — golden hour siege, driven from one palette file in each build — so tuning one and
-porting the numbers to the other is a copy-paste job.
+Above them sits an account level, gems, a prestige shop, daily missions and a
+streak — so a run always feeds something.
 
 ---
 
 ## Play it right now on Windows 11
 
-**Option 1 — the executable.** Download [`dist/MobClashGateSiege.exe`](dist/MobClashGateSiege.exe)
-and double-click it. 104 KB, no installer, no dependencies, nothing to unpack.
+**The executable.** Download [`dist/PocketArcade.exe`](dist/PocketArcade.exe) and
+double-click it. 222 KB, no installer, nothing to unpack.
 
-The whole game is embedded inside the executable. On launch it writes itself to
-`%LOCALAPPDATA%\MobClashGateSiege\` and opens in a chrome-less app window — no tabs, no address
-bar, its own taskbar entry — using the Edge that ships with Windows 11 (or Chrome, if you have it).
-Saves live in a private profile beside it, so progress survives restarts and does not touch your
-normal browser.
+All three games are embedded inside the executable. On launch it writes itself to
+`%LOCALAPPDATA%\PocketArcade\` and opens in a chrome-less app window — no tabs,
+no address bar, its own taskbar entry — using the Edge that ships with Windows 11
+(or Chrome, if you have it). Saves live in a private profile beside it.
 
-> Windows SmartScreen will warn about an unsigned executable the first time: **More info → Run
-> anyway**. Signing it requires a code-signing certificate; see `docs/WINDOWS_AND_WEB_BUILD.md`.
+> Windows SmartScreen warns about an unsigned executable the first time:
+> **More info → Run anyway**.
 
-**Option 2 — no download.** Open `web/index.html` in any browser, or double-click
-`web/PlayOnWindows.bat`.
+**No download.** Open `web/index.html` in any browser, or the single-file bundle
+`dist/pocket-arcade.html`.
 
-Drag with the mouse (or `A` / `D`) to steer, `Space` to start, click a tower room to attack it.
-Progress is stored locally.
+**A fully native app.** `cd desktop && npm install && npm run dist` packages an
+Electron build with an NSIS installer, or let
+`.github/workflows/build-windows.yml` build both executables for you.
 
-**Option 3 — a fully native app.** `cd desktop && npm install && npm run dist` packages an Electron
-build with an NSIS installer, or push to GitHub and let `.github/workflows/build-windows.yml` build
-both executables for you.
+Controls: drag or `A`/`D` to steer, swipe (or arrows) in Rooftop Run, tap to
+select. Everything saves locally.
 
-## Build the Unity version
+---
+
+## The character system
+
+Every fighter — the mob, the arena hero, the tower garrison, the runner — comes out
+of `A.Rig`. A seed produces proportions, an HSL palette and gear; a clip name
+produces a pose; the renderer walks the skeleton and draws each limb as a tapered
+capsule with an ink outline.
+
+Fifteen clips (`run`, `sprint`, `jump`, `slide`, `roll`, `shoot`, `attack`, `die`,
+`cheer`, …) are plain functions of normalised time, so animation is code, not data.
+
+Crowds do not pay for that. `Rig.bake` renders a clip into a sprite strip once at
+boot, so 260 runners or 120 arena enemies cost one `drawImage` each while heroes
+and bosses are still drawn live from the skeleton.
+
+Full architecture: [`docs/ARCADE.md`](docs/ARCADE.md).
+
+---
+
+## The Unity project
+
+`Assets/` holds a complete Unity 3D implementation of Mob Clash: Gate Siege,
+targeting Android (APK), Windows and WebGL — the same pacing math, economy curves
+and three-phase loop as the web version.
 
 ```
 Tools ▸ Mob Clash ▸ 4. Setup Everything        # layers, tags, physics matrix, player settings
@@ -49,62 +70,48 @@ Tools ▸ Mob Clash ▸ 5. Build Playable Scene    # generates Assets/Scenes/Gam
 Tools ▸ Mob Clash ▸ 6. Build Android APK       # or 7. Windows x64 EXE, or 8. WebGL
 ```
 
-There are no prefabs, materials or `.meta`-bound art assets to import: every visual is generated
-from Unity primitives and code-built materials by `PrimitiveFactory`, so the scripts alone are a
-running game. Swap in real art later by assigning the prefab fields on `LevelBuilder`,
-`SwarmManager` and `SiegeManager`.
-
-Full walkthroughs: [`docs/SCENE_SETUP.md`](docs/SCENE_SETUP.md) and
+No prefabs or art assets to import: every visual is generated from primitives and
+code-built materials, so the scripts alone are a running, art-directed game.
+See [`docs/SCENE_SETUP.md`](docs/SCENE_SETUP.md) and
 [`docs/ANDROID_BUILD.md`](docs/ANDROID_BUILD.md).
 
 ---
 
-## The loop
+## Retention design
 
-1. **Swerve** — one finger on the X axis, `SmoothDamp` steering for weight, constant forward speed.
-2. **Math gates** — static, sliding and rotating gate pairs; taking one half instantly consumes the other.
-3. **Tower siege** — rooms unlock floor by floor. Take a room when `crowd > defenders`; conquering it
-   absorbs the defenders (`crowd += defenders`, minus the level's casualty ratio). Stall out with no
-   beatable room and the siege is lost.
-4. **Meta** — spend gold on Starting Mob, Gold Multiplier and Gate Bonus.
-
-## Retention pacing
+Mob Clash's level pacing is generated, not authored, and is verified before it
+ships to the player:
 
 | Levels | Band | Design |
 | --- | --- | --- |
-| 1–3 | The Hook | Only positive gates, ×2/×3/×5 ladders, zero hazards, tower at 0.35× the expected crowd. 100% win rate. |
-| 4–10 | Mastery | Every row is a decision: `+N now` versus `×M guarded by moving hazards`. Traps appear at level 7. |
-| 11+ | Core Loop | Procedural rows (safe-vs-risky, multiplier race, lesser-evil trap pairs), hazard density and tower ratio both ramp. |
-| every 4th | Gold Rush | 4 gift rows, no hazards, ×2 gold, easy tower. The breather that prevents churn. |
+| 1–3 | The Hook | Only positive gates, ×2/×3/×5 ladders, no hazards, 0.35 tower ratio. 100% win rate. |
+| 4–10 | Mastery | Every row is a decision: `+N now` versus `×M guarded by hazards`. |
+| 11+ | Core Loop | Procedural rows, trap pairs, hazard density and tower ratio both ramp. |
+| every 4th | Gold Rush | Gift rows, no hazards, ×2 gold, easy tower — the breather that prevents churn. |
 
-Difficulty is **relative, not absolute**: the generator simulates a reference run through the level
-it just built and sizes the tower against that result, so a player with maxed crowd upgrades still
-meets a proportionate tower. A greedy solver then proves every generated tower is beatable before it
-ships. The numbers behind all of this are in [`docs/PACING_MATH.md`](docs/PACING_MATH.md).
+Difficulty is **relative**: the generator simulates a reference run through the
+level it just built and sizes the tower against that result, then a greedy solver
+proves the tower is beatable before it ships. Every formula and a generated level
+table: [`docs/PACING_MATH.md`](docs/PACING_MATH.md).
+
+Horde Arena and Rooftop Run carry their own curves — in-run drafting and weapon
+evolutions for the former, stacking power-ups and a six-line shop for the latter.
+
+---
 
 ## Repository map
 
 ```
-Assets/Scripts/Core/      GameManager (FSM), events, layers, gate maths, input, primitive factory
-Assets/Scripts/Data/      LevelData ScriptableObject + LevelGenerator (the pacing brain)
-Assets/Scripts/Level/     LevelBuilder - turns a LevelData into scene geometry
-Assets/Scripts/Player/    PlayerSwerve, CameraRig
-Assets/Scripts/Swarm/     ObjectPool, SwarmManager (500+ units, one flat update loop)
-Assets/Scripts/Track/     Gate, Obstacle, FinishLine
-Assets/Scripts/Siege/     SiegeManager, TowerNode
-Assets/Scripts/Meta/      EconomyManager (JSON in PlayerPrefs)
-Assets/Scripts/Juice/     JuiceManager, FloatingText, HapticFeedback, procedural SfxLibrary
-Assets/Scripts/Ads/       AdManager (mock mediation, real call shape)
-Assets/Scripts/UI/        UIManager, UIFactory, UpgradeRowUI (uGUI built in code)
-Assets/Editor/            ProjectSetup, SceneBootstrapper, BuildScript
-web/index.html            Complete browser build, single file, zero dependencies
-desktop/win-launcher/     C source for the single-file Windows .exe (mingw-w64 cross build)
+web/                      the arcade: hub, engine, three games
+dist/PocketArcade.exe     prebuilt Windows executable, everything embedded
+dist/pocket-arcade.html   single-file bundle (node web/build-single.js)
+desktop/win-launcher/     C source for the .exe (mingw-w64 cross build)
 desktop/                  Electron shell for a fully native Windows app
-dist/MobClashGateSiege.exe  Prebuilt Windows executable, game embedded
-docs/                     Scene setup, Android pipeline, Windows/web pipeline, pacing math
+Assets/                   Unity 3D project (Mob Clash, Android/Windows/WebGL)
+docs/                     arcade architecture, scene setup, build pipelines, pacing math
 ```
 
 ## Licence
 
-MIT. Sound effects are synthesised at runtime and all geometry is generated, so there is nothing in
-here you need to clear before shipping.
+MIT. All audio is synthesised at runtime and all geometry and characters are
+generated, so there is nothing here to clear before shipping.

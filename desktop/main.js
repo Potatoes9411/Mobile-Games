@@ -1,4 +1,4 @@
-// Electron shell that turns the browser build into a real Windows 11 desktop app.
+// Electron shell that turns the bundled arcade into a real Windows 11 desktop app.
 // Run `npm start` to play, `npm run dist` to produce an installer and a portable .exe.
 const { app, BrowserWindow, Menu } = require("electron");
 const path = require("path");
@@ -10,7 +10,7 @@ function createWindow() {
     minWidth: 380,
     minHeight: 640,
     backgroundColor: "#070912",
-    title: "Mob Clash: Gate Siege",
+    title: "Pocket Arcade",
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
