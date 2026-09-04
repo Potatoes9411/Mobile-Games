@@ -174,6 +174,9 @@ window.A = window.A || {};
   /* ------------------------------------------------------------- audio --- */
   A.Audio = {
     ctx: null,
+    /* Master volume, 0..1, set from the settings modal. Applied on top of every
+       per-sound gain so one slider governs the whole arcade. */
+    volume: 0.8,
 
     resume: function () {
       if (!A.Audio.ctx) {
@@ -195,7 +198,8 @@ window.A = window.A || {};
       osc.frequency.setValueAtTime(Math.max(30, from), ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(Math.max(30, to), ctx.currentTime + duration);
       amp.gain.setValueAtTime(0.0001, ctx.currentTime);
-      amp.gain.exponentialRampToValueAtTime(gain || 0.14, ctx.currentTime + 0.012);
+      var peak = Math.max(0.0002, (gain || 0.14) * A.Audio.volume);
+      amp.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.012);
       amp.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
       osc.connect(amp).connect(ctx.destination);
       osc.start();
@@ -217,7 +221,7 @@ window.A = window.A || {};
 
       var source = ctx.createBufferSource();
       var amp = ctx.createGain();
-      amp.gain.value = gain || 0.2;
+      amp.gain.value = Math.max(0, (gain || 0.2) * A.Audio.volume);
       source.buffer = buffer;
       source.connect(amp).connect(ctx.destination);
       source.start();
@@ -255,8 +259,10 @@ window.A = window.A || {};
     }
   };
 
+  A.hapticsEnabled = true;
+
   A.vibrate = function (pattern) {
-    if (!navigator.vibrate) return;
+    if (!navigator.vibrate || !A.hapticsEnabled) return;
     try { navigator.vibrate(pattern); } catch (e) { /* blocked */ }
   };
 
@@ -363,6 +369,24 @@ window.A = window.A || {};
 
     keyPressed: function (key) {
       return !!A.Input.keys[key];
+    },
+
+    /** Drops every held key and pointer flag. Called on every game unload so a
+        key held while backing out cannot leak into the next game. */
+    reset: function () {
+      var self = A.Input;
+      self.down = false;
+      self.pressed = false;
+      self.released = false;
+      self.tapped = false;
+      self.swipe = "";
+      self.dx = 0;
+      self.dy = 0;
+      self.axis = 0;
+      self.keys = {};
+      self._downThisFrame = false;
+      self._upThisFrame = false;
+      self._swipeThisFrame = "";
     }
   };
 
@@ -410,6 +434,9 @@ window.A = window.A || {};
     canvas: null,
     ctx: null,
     w: 0, h: 0, dpr: 1,
+    /* Upper bound on the backing-store scale. The graphics setting moves this;
+       on a fill-rate bound device dropping to 1 is the single biggest win. */
+    qualityCap: 2,
 
     attach: function (canvas) {
       A.View.canvas = canvas;
@@ -421,7 +448,7 @@ window.A = window.A || {};
 
     resize: function () {
       var v = A.View;
-      v.dpr = Math.min(2, window.devicePixelRatio || 1);
+      v.dpr = Math.min(v.qualityCap, window.devicePixelRatio || 1);
       v.w = Math.max(280, window.innerWidth);
       v.h = Math.max(420, window.innerHeight);
       v.canvas.width = Math.round(v.w * v.dpr);

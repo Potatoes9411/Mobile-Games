@@ -155,3 +155,58 @@ frame loop, input, the canvas, effects and everything above the game.
 * Effects share one capped pool (520 particles) across every game and are reset on
   each game switch.
 * Nothing allocates per frame in the hot loops beyond the sort arrays.
+
+## Adding a game
+
+The hub is manifest driven. To add a game:
+
+1. Drop the file in `web/src/games/`. It registers itself:
+   `A.games.push({ id, name, tagline, accent, unlock, template, bestLine, thumb, create })`.
+2. Add a row to `web/src/manifest.js` with `id`, `title`, `genre` and `script`.
+
+Nothing else in the hub knows the list. `GameManager.preloadAll()` injects each
+script at boot and the grid renders tiles as they register, so a slow file never
+blocks the rest of the hub. `GameManager.ensure(id)` will also load a game on
+demand if it is not yet registered.
+
+The single-file build inlines every manifest script instead, because a page
+opened from disk cannot fetch its siblings. The manager checks its registry
+before it ever tries to fetch, so the inlined copies simply mean it never has to.
+
+## Lifecycle and teardown
+
+`GameManager` hands every game a **scope** on `host.scope`. Anything registered
+on it is released when the player leaves, in reverse order of registration:
+
+| Call | Releases |
+| --- | --- |
+| `scope.onCleanup(fn)` | runs `fn` on unload |
+| `scope.on(target, type, fn)` | detaches the listener |
+| `scope.raf(step)` | cancels the animation frame |
+| `scope.timeout/interval(fn, ms)` | clears the timer |
+| `scope.node(el)` | removes the element |
+| `scope.three(renderer, scene)` | disposes every geometry, material and texture on the graph, then the renderer, then forces context loss |
+| `scope.matter(engine, runner, render)` | stops the runner and render, clears the world and engine, drops engine events |
+
+This matters because browsers cap the number of live WebGL contexts. Hot-swapping
+games without disposing their GPU resources exhausts that cap and takes the tab
+with it. `unloadCurrentGame()` also resets the shared effects layer, clears held
+keys and pointer flags, wipes the 2D stage, and removes any canvas a game
+appended without registering.
+
+Verified by driving every game twice in a row headlessly: canvas count, game-UI
+child count and the live scope all return to their boot values, with no console
+errors.
+
+## Settings
+
+A global settings card (home screen, or from the pause overlay) controls:
+
+- **Volume** — a master multiplier applied on top of every per-sound gain.
+- **Graphics** — caps the canvas backing-store scale (`low` pins device pixel
+  ratio to 1, which is the single biggest win on a fill-rate bound device).
+- **Vibration** — gates `A.vibrate` on phones.
+
+`Esc` pauses a running game, or closes an open card if one is showing. A paused
+game keeps painting but stops updating, and its input is dropped so it cannot
+lurch the moment the overlay is dismissed.

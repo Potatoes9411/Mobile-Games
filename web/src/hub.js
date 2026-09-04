@@ -199,7 +199,15 @@
     return b;
   };
 
-  /** Standard end-of-run card. Games hand over their own stat lines. */
+  /**
+   * Standard end-of-run card. Games hand over their own stat lines.
+   *
+   * Two shapes are accepted because the arcade grew two conventions: the
+   * original positional `stats: [[label, value]]` / `buttons: []`, and the
+   * later object form `rows: [{label, value}]` / `actions: []`. Normalising
+   * here is cheaper - and far less error prone - than rewriting every caller,
+   * and a game that passes the wrong one silently rendered an empty card.
+   */
   Hub.results = function (opts) {
     var card = Hub.el("div", "card");
     var title = Hub.el("h2", null, opts.title);
@@ -207,16 +215,37 @@
     card.appendChild(title);
     card.appendChild(Hub.el("p", "sub", opts.subtitle || ""));
 
-    var stats = Hub.el("div", "stats");
-    (opts.stats || []).forEach(function (s) {
-      var box = Hub.el("div", "stat");
-      box.appendChild(Hub.el("b", null, s[1]));
-      box.appendChild(Hub.el("span", null, s[0]));
-      stats.appendChild(box);
-    });
-    card.appendChild(stats);
+    /* A run that beat the stored personal best gets its own banner. */
+    if (activeDef && typeof opts.score === "number") {
+      if (A.GameManager.reportScore(activeDef.id, opts.score)) {
+        var flash = Hub.el("p", "sub", "NEW RECORD");
+        flash.style.color = "var(--gold)";
+        flash.style.letterSpacing = ".28em";
+        card.appendChild(flash);
+      }
+    }
 
-    (opts.buttons || []).forEach(function (b) {
+    var lines = [];
+    (opts.stats || []).forEach(function (s) {
+      lines.push({ label: s[0], value: s[1] });
+    });
+    (opts.rows || []).forEach(function (r) {
+      lines.push({ label: r.label, value: r.value });
+    });
+
+    if (lines.length) {
+      var stats = Hub.el("div", "stats");
+      lines.forEach(function (line) {
+        var box = Hub.el("div", "stat");
+        box.appendChild(Hub.el("b", null, String(line.value)));
+        box.appendChild(Hub.el("span", null, line.label));
+        stats.appendChild(box);
+      });
+      card.appendChild(stats);
+    }
+
+    var buttons = (opts.buttons || []).concat(opts.actions || []);
+    buttons.forEach(function (b) {
       card.appendChild(Hub.button(b.label, b.className, b.onClick, b.sub));
     });
 
@@ -271,8 +300,9 @@
     host.innerHTML = "";
     tileCanvases = [];
 
-    A.games.forEach(function (def) {
+    A.GameManager.orderedDefinitions().forEach(function (def) {
       var unlocked = A.Save.data.accountLevel >= (def.unlock || 1);
+      var meta = A.GameManager.meta(def.id);
       var tile = Hub.el("button", "tile" + (unlocked ? "" : " locked"));
       tile.style.setProperty("--accent", def.accent);
 
@@ -292,10 +322,18 @@
 
       var body = Hub.el("div", "body");
       body.appendChild(Hub.el("h3", null, def.name));
+      if (meta.genre) {
+        var genre = Hub.el("div", "genre", meta.genre);
+        genre.style.color = def.accent;
+        body.appendChild(genre);
+      }
       body.appendChild(Hub.el("p", null, def.tagline));
 
       if (unlocked && def.bestLine) {
-        body.appendChild(Hub.el("div", "best", def.bestLine(slot)));
+        var line = def.bestLine(slot);
+        var hi = A.GameManager.hiScore(def.id);
+        if (hi > 0) line += "  ·  HI " + A.formatNumber(hi);
+        body.appendChild(Hub.el("div", "best", line));
       } else if (!unlocked) {
         body.appendChild(Hub.el("div", "best", "Reach account level " + def.unlock));
       }
@@ -379,10 +417,29 @@
   };
 
   /* -------------------------------------------------------- lifecycle --- */
+  /** Loads a game by id if needed, then launches it. */
+  Hub.launchById = function (id) {
+    var known = A.GameManager.definition(id);
+    if (known) { Hub.launch(known); return Promise.resolve(known); }
+
+    Hub.toast("LOADING...");
+    return A.GameManager.ensure(id).then(function (def) {
+      Hub.paintTiles();
+      Hub.launch(def);
+      return def;
+    })["catch"](function (err) {
+      Hub.toast("COULD NOT LOAD THAT GAME");
+      if (window.console) console.warn(err);
+    });
+  };
+
   Hub.launch = function (def) {
     if (active) Hub.exit();
 
     activeDef = def;
+    /* Fresh resource scope. Everything the game registers on it - listeners,
+       frames, renderers, physics worlds - is released when we unload. */
+    var scope = A.GameManager.beginScope(def.id);
     homeVisible = false;
     $("home").hidden = true;
     $("gameUi").hidden = false;
@@ -406,7 +463,12 @@
       hue: Hub.prestige().hue,
       addXp: Hub.addXp,
       addGems: Hub.addGems,
-      commit: function () { A.Save.write(); }
+      commit: function () { A.Save.write(); },
+      /* Games that build their own renderer or physics world register it here
+         so the hub can take it apart again. */
+      scope: scope,
+      reportScore: function (score) { return A.GameManager.reportScore(def.id, score); },
+      hiScore: function () { return A.GameManager.hiScore(def.id); }
     };
 
     A.Fx.reset();
@@ -420,16 +482,31 @@
     });
     $("gameUi").appendChild(back);
 
+    var pause = Hub.el("button", "pauseBtn", "II");
+    pause.addEventListener("click", function () {
+      A.Audio.sfx("select");
+      Hub.pause.show();
+    });
+    $("gameUi").appendChild(pause);
+
     if (active.start) active.start();
     A.Save.data.totalRuns = A.Save.data.totalRuns || 0;
   };
 
   Hub.exit = function () {
-    if (active && active.stop) active.stop();
+    if (active && active.stop) {
+      try { active.stop(); } catch (e) {
+        if (window.console) console.warn("[arcade] game stop failed", e);
+      }
+    }
     active = null;
     activeDef = null;
     homeVisible = true;
-    A.Fx.reset();
+
+    /* Release the game's scope and reset the shared state it touched, before
+       anything repaints. */
+    A.GameManager.unloadCurrentGame();
+    Hub.pause.hide();
     Hub.modal.hide();
     $("gameUi").hidden = true;
     $("gameUi").innerHTML = "";
@@ -437,6 +514,113 @@
     Hub.paintAccount();
     Hub.paintMissions();
     Hub.paintTiles();
+  };
+
+  /* ----------------------------------------------------------- pause ---- */
+  /**
+   * Global pause. The frame loop keeps running so the scene stays painted, but
+   * the game's update is skipped and its input is dropped - a paused game that
+   * still reads the pointer would move the moment the overlay is dismissed.
+   */
+  Hub.pause = {
+    visible: function () { return !$("pause").hidden; },
+
+    show: function () {
+      if (!active || Hub.pause.visible()) return;
+      $("pauseName").textContent = activeDef ? activeDef.name : "";
+      $("pause").hidden = false;
+      A.Input.reset();
+    },
+
+    hide: function () {
+      if ($("pause").hidden) return;
+      $("pause").hidden = true;
+      A.Input.reset();
+    },
+
+    toggle: function () {
+      if (Hub.pause.visible()) Hub.pause.hide();
+      else Hub.pause.show();
+    }
+  };
+
+  /* -------------------------------------------------------- settings ---- */
+  Hub.openSettings = function () {
+    var GM = A.GameManager;
+    var s = GM.settings();
+    var card = Hub.el("div", "card");
+    card.appendChild(Hub.el("h2", null, "SETTINGS"));
+    card.appendChild(Hub.el("p", "sub", "Applies to every game"));
+
+    /* Volume */
+    var volRow = Hub.el("div", "setRow");
+    var volLeft = Hub.el("div");
+    volLeft.appendChild(Hub.el("h4", null, "VOLUME"));
+    var volRead = Hub.el("p", null, Math.round(s.volume * 100) + "%");
+    volLeft.appendChild(volRead);
+    volRow.appendChild(volLeft);
+
+    var slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "100";
+    slider.step = "5";
+    slider.value = String(Math.round(s.volume * 100));
+    slider.addEventListener("input", function () {
+      var v = parseInt(slider.value, 10) / 100;
+      volRead.textContent = Math.round(v * 100) + "%";
+      A.Save.data.soundEnabled = v > 0;
+      GM.setSetting("volume", v);
+    });
+    /* One confirmation blip on release, so the level is audible while setting it. */
+    slider.addEventListener("change", function () { A.Audio.resume(); A.Audio.sfx("select"); });
+    volRow.appendChild(slider);
+    card.appendChild(volRow);
+
+    /* Graphics */
+    var gfxRow = Hub.el("div", "setRow");
+    var gfxLeft = Hub.el("div");
+    gfxLeft.appendChild(Hub.el("h4", null, "GRAPHICS"));
+    gfxLeft.appendChild(Hub.el("p", null, "Lower this if the frame rate dips"));
+    gfxRow.appendChild(gfxLeft);
+
+    var seg = Hub.el("div", "segmented");
+    [["low", "LOW"], ["medium", "MED"], ["high", "HIGH"]].forEach(function (opt) {
+      var b = Hub.el("button", s.quality === opt[0] ? "on" : null, opt[1]);
+      b.addEventListener("click", function () {
+        GM.setSetting("quality", opt[0]);
+        A.Audio.sfx("select");
+        Hub.modal.hide();
+        Hub.openSettings();
+      });
+      seg.appendChild(b);
+    });
+    gfxRow.appendChild(seg);
+    card.appendChild(gfxRow);
+
+    /* Haptics */
+    var hapRow = Hub.el("div", "setRow");
+    var hapLeft = Hub.el("div");
+    hapLeft.appendChild(Hub.el("h4", null, "VIBRATION"));
+    hapLeft.appendChild(Hub.el("p", null, "Phones only"));
+    hapRow.appendChild(hapLeft);
+
+    var hapSeg = Hub.el("div", "segmented");
+    [[true, "ON"], [false, "OFF"]].forEach(function (opt) {
+      var b = Hub.el("button", s.haptics === opt[0] ? "on" : null, opt[1]);
+      b.addEventListener("click", function () {
+        GM.setSetting("haptics", opt[0]);
+        A.Audio.sfx("select");
+        Hub.modal.hide();
+        Hub.openSettings();
+      });
+      hapSeg.appendChild(b);
+    });
+    hapRow.appendChild(hapSeg);
+    card.appendChild(hapRow);
+
+    card.appendChild(Hub.button("DONE", "go", Hub.modal.hide));
+    Hub.modal.show(card);
   };
 
   /* ---------------------------------------------------------- avatar ---- */
@@ -488,12 +672,30 @@
       if (active && active.onResize) active.onResize();
     };
 
-    $("soundToggle").addEventListener("click", function () {
-      A.Save.data.soundEnabled = !A.Save.data.soundEnabled;
-      A.Save.write();
-      $("soundToggle").textContent = "Sound: " + (A.Save.data.soundEnabled ? "on" : "off");
+    $("settingsBtn").addEventListener("click", function () {
+      A.Audio.resume();
+      Hub.openSettings();
     });
-    $("soundToggle").textContent = "Sound: " + (A.Save.data.soundEnabled ? "on" : "off");
+
+    $("pauseResume").addEventListener("click", function () {
+      A.Audio.sfx("select");
+      Hub.pause.hide();
+    });
+    $("pauseSettings").addEventListener("click", function () {
+      A.Audio.sfx("select");
+      Hub.openSettings();
+    });
+    $("pauseQuit").addEventListener("click", function () {
+      A.Audio.sfx("select");
+      Hub.exit();
+    });
+
+    /* Escape pauses a running game and closes an open card, in that order. */
+    window.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      if (Hub.modal.visible()) { Hub.modal.hide(); return; }
+      if (active) Hub.pause.toggle();
+    });
 
     $("gemShopBtn").addEventListener("click", function () {
       A.Audio.resume();
@@ -517,6 +719,10 @@
 
     Hub.paintAccount();
     Hub.paintMissions();
+
+    /* The manifest drives the grid. Tiles appear as each script registers, so
+       a slow game file never blocks the rest of the hub from rendering. */
+    A.GameManager.boot(function () { Hub.paintTiles(); });
     Hub.paintTiles();
 
     A.Loop.start(function (dt) {
@@ -524,7 +730,8 @@
       var scaled = dt * A.Fx.timeScale;
 
       if (active) {
-        if (!Hub.modal.visible() && active.update) active.update(scaled);
+        var halted = Hub.modal.visible() || Hub.pause.visible();
+        if (!halted && active.update) active.update(scaled);
         A.Fx.update(scaled);
         if (active.render) active.render(g);
       } else {

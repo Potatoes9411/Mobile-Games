@@ -29,6 +29,33 @@ html = html.replace(scriptTag, (match, src) => {
 
 if (inlined === 0) throw new Error("No scripts were inlined - did index.html change shape?");
 
+/*
+ * Game scripts are not referenced by index.html any more - the GameManager
+ * injects them from the manifest at runtime. A single file opened from disk
+ * cannot fetch siblings, so the bundle inlines every manifest entry instead.
+ * The manager checks its registry before fetching, so the inlined copies simply
+ * mean it never has to.
+ */
+const manifestSrc = fs.readFileSync(path.join(webDir, "src", "manifest.js"), "utf8");
+const scriptPaths = [];
+const rowPattern = /script:\s*"([^"]+)"/g;
+let rowMatch;
+while ((rowMatch = rowPattern.exec(manifestSrc)) !== null) scriptPaths.push(rowMatch[1]);
+
+if (scriptPaths.length === 0) throw new Error("No game scripts found in the manifest");
+
+const gameBlobs = scriptPaths.map((src) => {
+  const file = path.join(webDir, src);
+  if (!fs.existsSync(file)) throw new Error("Manifest points at a missing file: " + src);
+  inlined++;
+  return "<script>\n/* ---- " + src + " ---- */\n" + fs.readFileSync(file, "utf8") + "\n</script>";
+});
+
+if (!html.includes("<!--ARCADE_GAME_SCRIPTS-->")) {
+  throw new Error("index.html is missing the ARCADE_GAME_SCRIPTS placeholder");
+}
+html = html.replace("<!--ARCADE_GAME_SCRIPTS-->", gameBlobs.join("\n"));
+
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(outFile, html);
 
