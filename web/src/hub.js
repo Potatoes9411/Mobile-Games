@@ -277,26 +277,29 @@
       tile.style.setProperty("--accent", def.accent);
 
       var canvas = document.createElement("canvas");
-      canvas.width = 208; canvas.height = 176;
+      canvas.width = 320; canvas.height = 220;
       tile.appendChild(canvas);
-      tileCanvases.push({ def: def, ctx: canvas.getContext("2d"), w: 104, h: 88 });
-      canvas.getContext("2d").scale(2, 2);
-
-      var mid = Hub.el("div");
-      mid.appendChild(Hub.el("h3", null, def.name));
-      mid.appendChild(Hub.el("p", null, def.tagline));
+      var tileCtx = canvas.getContext("2d");
+      tileCtx.scale(2, 2);
+      tileCanvases.push({ def: def, ctx: tileCtx, w: 160, h: 110 });
 
       var slot = A.Save.game(def.id, def.template || {});
-      if (unlocked && def.bestLine) {
-        mid.appendChild(Hub.el("div", "best", def.bestLine(slot)));
-      } else if (!unlocked) {
-        mid.appendChild(Hub.el("div", "best", "Unlocks at account level " + def.unlock));
-      }
-      tile.appendChild(mid);
+      var fresh = !slot.runs;
 
-      var go = Hub.el("div", "go", unlocked ? "PLAY" : "LOCKED");
-      go.style.background = unlocked ? def.accent : "";
-      tile.appendChild(go);
+      var flag = Hub.el("div", "flag", unlocked ? (fresh ? "NEW" : "PLAY") : "LV " + def.unlock);
+      if (unlocked && !fresh) flag.style.background = def.accent;
+      tile.appendChild(flag);
+
+      var body = Hub.el("div", "body");
+      body.appendChild(Hub.el("h3", null, def.name));
+      body.appendChild(Hub.el("p", null, def.tagline));
+
+      if (unlocked && def.bestLine) {
+        body.appendChild(Hub.el("div", "best", def.bestLine(slot)));
+      } else if (!unlocked) {
+        body.appendChild(Hub.el("div", "best", "Reach account level " + def.unlock));
+      }
+      tile.appendChild(body);
 
       if (unlocked) {
         tile.addEventListener("click", function () {

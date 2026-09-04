@@ -1,14 +1,24 @@
 # Pocket Arcade
 
-Three complete mobile games in one hub, sharing an engine, a cross-game progression
-layer, and a procedural character system that generates and animates every fighter
-from a seed — no character art in the repository.
+Seven complete mobile games in one hub, sharing an engine, a cross-game
+progression layer, and a procedural character system that generates and animates
+every fighter from a seed — no character art in the repository.
 
-| Game | Genre | Loop |
+The line-up was picked against what is actually charting, not from memory:
+puzzle is the second largest mobile genre by revenue and block-drop leads global
+downloads, so the arcade covers that; the rest are the formats you have seen a
+thousand ad impressions of.
+
+| Game | Format | The hook |
 | --- | --- | --- |
-| **Mob Clash: Gate Siege** | Crowd runner + puzzle | Swerve a mob through `+ − × ÷` gates, then storm a keep room by room |
-| **Horde Arena** | Survivor auto-battler | Steer only; draft an upgrade every level, evolve weapons, survive 20 waves |
-| **Rooftop Run** | Endless runner | Three lanes, vault and slide, chain power-ups, chase distance |
+| **Mob Clash: Gate Siege** | Crowd runner + puzzle | Gamble a mob through `+ − × ÷` gates, then storm a keep room by room |
+| **Block Storm** | Block puzzle | Three pieces, no rotation, clear rows and columns, chain the combo |
+| **Pin Rescue** | Pull-the-pin | Drain the lava out the side, then drop the gold. Wrong order cooks your hero |
+| **Helix Drop** | Helix tower | Spin into the gaps; three clean drops and the ball smashes through |
+| **Roller Splat** | Paint maze | Swipe, the ball rolls until it hits a wall, painting everything it crosses |
+| **Paper Territory** | Territory io | Drive out, loop back, claim what you enclosed; three rivals want the map |
+| **Horde Arena** | Survivor auto-battler | Steer only; draft an upgrade per level, evolve weapons, 20 waves |
+| **Rooftop Run** | Endless runner | Three lanes, vault and slide, stack magnet, shield and boost |
 
 Above them sits an account level, gems, a prestige shop, daily missions and a
 streak — so a run always feeds something.
@@ -18,9 +28,9 @@ streak — so a run always feeds something.
 ## Play it right now on Windows 11
 
 **The executable.** Download [`dist/PocketArcade.exe`](dist/PocketArcade.exe) and
-double-click it. 222 KB, no installer, nothing to unpack.
+double-click it. 322 KB, no installer, nothing to unpack.
 
-All three games are embedded inside the executable. On launch it writes itself to
+All seven games are embedded inside the executable. On launch it writes itself to
 `%LOCALAPPDATA%\PocketArcade\` and opens in a chrome-less app window — no tabs,
 no address bar, its own taskbar entry — using the Edge that ships with Windows 11
 (or Chrome, if you have it). Saves live in a private profile beside it.
@@ -51,7 +61,7 @@ Fifteen clips (`run`, `sprint`, `jump`, `slide`, `roll`, `shoot`, `attack`, `die
 `cheer`, …) are plain functions of normalised time, so animation is code, not data.
 
 Crowds do not pay for that. `Rig.bake` renders a clip into a sprite strip once at
-boot, so 260 runners or 120 arena enemies cost one `drawImage` each while heroes
+boot, so 220 runners or 120 arena enemies cost one `drawImage` each while heroes
 and bosses are still drawn live from the skeleton.
 
 Full architecture: [`docs/ARCADE.md`](docs/ARCADE.md).
@@ -102,7 +112,7 @@ evolutions for the former, stacking power-ups and a six-line shop for the latter
 ## Repository map
 
 ```
-web/                      the arcade: hub, engine, three games
+web/                      the arcade: hub, engine, seven games
 dist/PocketArcade.exe     prebuilt Windows executable, everything embedded
 dist/pocket-arcade.html   single-file bundle (node web/build-single.js)
 desktop/win-launcher/     C source for the .exe (mingw-w64 cross build)

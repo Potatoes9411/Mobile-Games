@@ -74,31 +74,47 @@ canvas#stage{position:fixed;inset:0;width:100%;height:100%;display:block}
 
 h2.section{
   font-family:var(--display);font-size:14px;letter-spacing:.18em;color:var(--dim);
-  text-transform:uppercase;margin:22px 0 10px;
+  text-transform:uppercase;margin:22px 0 10px;display:flex;align-items:center;gap:10px;
 }
+h2.section::after{content:"";flex:1;height:1px;background:var(--line)}
 
-#tiles{display:flex;flex-direction:column;gap:12px}
+.wordmark{
+  font-family:var(--display);font-size:15px;letter-spacing:.26em;
+  color:var(--ink);text-transform:uppercase;opacity:.9;
+}
+.wordmark b{color:var(--gem)}
+
+#tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media (max-width:380px){ #tiles{grid-template-columns:1fr} }
+
 .tile{
-  position:relative;display:grid;grid-template-columns:104px 1fr auto;gap:14px;align-items:center;
-  padding:12px;border-radius:20px;cursor:pointer;text-align:left;
-  background:linear-gradient(135deg,var(--panel-2),var(--panel));
+  position:relative;display:flex;flex-direction:column;overflow:hidden;
+  padding:0;border-radius:18px;cursor:pointer;text-align:left;
+  background:linear-gradient(180deg,var(--panel-2),var(--panel));
   border:2px solid var(--line);
-  box-shadow:0 6px 0 rgba(0,0,0,.45);
+  box-shadow:0 5px 0 rgba(0,0,0,.45);
   transition:transform .08s,box-shadow .08s,border-color .2s;
   appearance:none;font:inherit;color:inherit;width:100%;
 }
-.tile:active{transform:translateY(4px);box-shadow:0 2px 0 rgba(0,0,0,.45)}
+.tile:active{transform:translateY(4px);box-shadow:0 1px 0 rgba(0,0,0,.45)}
 .tile:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
-.tile canvas{width:104px;height:88px;border-radius:14px;display:block;background:#0B0818}
-.tile h3{margin:0;font-family:var(--display);font-size:19px}
-.tile p{margin:3px 0 0;font-size:13px;color:var(--dim);line-height:1.35}
-.tile .best{margin-top:6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--gold)}
-.tile .go{
-  font-family:var(--display);font-size:13px;letter-spacing:.06em;color:#0B1226;
-  background:var(--accent);border-radius:10px;padding:9px 12px 7px;white-space:nowrap;
+.tile canvas{width:100%;aspect-ratio:16/11;display:block;background:#0B0818;border-bottom:2px solid var(--line)}
+.tile .body{padding:10px 11px 12px}
+.tile h3{margin:0;font-family:var(--display);font-size:15px;line-height:1.15}
+.tile p{margin:4px 0 0;font-size:12px;color:var(--dim);line-height:1.32;
+        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tile .best{
+  margin-top:7px;font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--gold);
+  display:flex;align-items:center;gap:5px;
 }
-.tile.locked{filter:grayscale(.6) brightness(.7);cursor:not-allowed}
-.tile.locked .go{background:#3A3160;color:var(--dim)}
+.tile .best::before{content:"";width:5px;height:5px;border-radius:99px;background:currentColor}
+.tile .flag{
+  position:absolute;top:8px;left:8px;font-family:var(--display);font-size:10px;letter-spacing:.12em;
+  padding:4px 7px 3px;border-radius:6px;background:var(--jade);color:#06301C;
+}
+.tile.locked{cursor:not-allowed}
+.tile.locked canvas{filter:grayscale(1) brightness(.42)}
+.tile.locked .flag{background:#3A3160;color:var(--dim)}
 
 /* ---------------------------------------------------------- missions ---- */
 .mission{
@@ -234,8 +250,8 @@ h2.section{
 .shopRow .buy[disabled]{background:#39305C;color:var(--dim);box-shadow:0 4px 0 #221B3D;cursor:default}
 .shopRow .buy small{display:block;font-family:var(--ui);font-size:10px;letter-spacing:.12em;opacity:.7}
 
-#toasts{position:absolute;left:0;right:0;top:max(76px,env(safe-area-inset-top));
-        display:flex;flex-direction:column;align-items:center;gap:7px;pointer-events:none}
+#toasts{position:absolute;left:0;right:0;bottom:max(84px,env(safe-area-inset-bottom));
+        display:flex;flex-direction:column-reverse;align-items:center;gap:7px;pointer-events:none}
 .toast{
   font-family:var(--display);font-size:14px;padding:9px 15px 7px;border-radius:99px;
   background:rgba(14,11,30,.92);border:2px solid var(--line);
@@ -269,7 +285,8 @@ h2.section{
         <div class="gems"><b></b><span id="gemCount">0</span></div>
       </div>
 
-      <h2 class="section">Games</h2>
+      <div class="wordmark" style="margin-top:18px">POCKET <b>ARCADE</b></div>
+      <h2 class="section">All games</h2>
       <div id="tiles"></div>
 
       <h2 class="section">Daily missions</h2>
@@ -2054,7 +2071,7 @@ window.A = window.A || {};
   };
 
   var TOWER = { roomW: 3.5, roomH: 2.7, floorH: 3.7, baseY: 1.5, slot: 4.7, depth: 1.3 };
-  var MAX_UNITS = 260;
+  var MAX_UNITS = 220;
   var SIEGE_UNITS = 130;
 
   function create(host) {
@@ -2064,6 +2081,36 @@ window.A = window.A || {};
     var S = null;
     var ui = {};
     var clouds = null;
+    var grads = null;
+
+    function buildGradients(g) {
+      var w = A.View.w, h = A.View.h;
+      var bottom = cam.horizon + 2;
+
+      var sky = g.createLinearGradient(0, 0, 0, bottom);
+      sky.addColorStop(0, A.rgb(PAL.skyTop));
+      sky.addColorStop(0.52, A.rgb(PAL.skyMid));
+      sky.addColorStop(0.88, A.rgb(A.mix(PAL.skyMid, PAL.skyLow, 0.75)));
+      sky.addColorStop(1, A.rgb(PAL.skyLow));
+
+      var ground = g.createLinearGradient(0, cam.horizon, 0, h);
+      ground.addColorStop(0, A.rgb(PAL.fog));
+      ground.addColorStop(0.06, A.rgb(A.mix(PAL.grass, PAL.fog, 0.62)));
+      ground.addColorStop(0.35, A.rgb(PAL.grass));
+      ground.addColorStop(1, A.rgb(PAL.grassDark));
+
+      var road = g.createLinearGradient(0, cam.horizon, 0, h);
+      road.addColorStop(0, A.rgb(PAL.fog));
+      road.addColorStop(0.08, A.rgb(A.mix(PAL.road, PAL.fog, 0.55)));
+      road.addColorStop(0.4, A.rgb(PAL.road));
+      road.addColorStop(1, A.rgb(PAL.roadDark));
+
+      var vig = g.createRadialGradient(w / 2, h * 0.52, h * 0.28, w / 2, h * 0.52, h * 0.78);
+      vig.addColorStop(0, "rgba(20,14,38,0)");
+      vig.addColorStop(1, "rgba(20,14,38,0.45)");
+
+      grads = { sky: sky, ground: ground, road: road, vig: vig, w: w, h: h, horizon: cam.horizon };
+    }
 
     /* ------------------------------------------------------ economy ----- */
     function startingCrowd() { return 20 + save.upCrowd * 2; }
@@ -2570,6 +2617,7 @@ window.A = window.A || {};
 
     function render(g) {
       var w = A.View.w, h = A.View.h;
+      if (!grads || grads.w !== w || grads.h !== h || grads.horizon !== cam.horizon) buildGradients(g);
       A.Fx.applyShake(g);
 
       drawSky(g, w, h);
@@ -2593,10 +2641,7 @@ window.A = window.A || {};
       A.Fx.drawParticles(g, cam.project);
       A.Fx.drawTexts(g, cam.project);
 
-      var vig = g.createRadialGradient(w / 2, h * 0.52, h * 0.28, w / 2, h * 0.52, h * 0.78);
-      vig.addColorStop(0, "rgba(20,14,38,0)");
-      vig.addColorStop(1, "rgba(20,14,38,0.45)");
-      g.fillStyle = vig;
+      g.fillStyle = grads.vig;
       g.fillRect(0, 0, w, h);
 
       g.restore();
@@ -2605,12 +2650,7 @@ window.A = window.A || {};
 
     function drawSky(g, w, h) {
       var bottom = cam.horizon + 2;
-      var grad = g.createLinearGradient(0, 0, 0, bottom);
-      grad.addColorStop(0, A.rgb(PAL.skyTop));
-      grad.addColorStop(0.52, A.rgb(PAL.skyMid));
-      grad.addColorStop(0.88, A.rgb(A.mix(PAL.skyMid, PAL.skyLow, 0.75)));
-      grad.addColorStop(1, A.rgb(PAL.skyLow));
-      g.fillStyle = grad;
+      g.fillStyle = grads.sky;
       g.fillRect(0, 0, w, bottom);
 
       var sunX = w * 0.5 - cam.x * 2.2;
@@ -2665,23 +2705,13 @@ window.A = window.A || {};
       var nearZ = cam.z + 3.2, farZ = cam.z + 210;
       var h = A.View.h, w = A.View.w;
 
-      var ground = g.createLinearGradient(0, cam.horizon, 0, h);
-      ground.addColorStop(0, A.rgb(PAL.fog));
-      ground.addColorStop(0.06, A.rgb(A.mix(PAL.grass, PAL.fog, 0.62)));
-      ground.addColorStop(0.35, A.rgb(PAL.grass));
-      ground.addColorStop(1, A.rgb(PAL.grassDark));
-      g.fillStyle = ground;
+      g.fillStyle = grads.ground;
       g.fillRect(0, cam.horizon, w, h - cam.horizon);
 
       A.strip(g, cam, -hw - 2.6, hw + 2.6, 0.02, 0.02, nearZ, farZ,
         A.rgb(A.mix(PAL.roadDark, PAL.grassDark, 0.35)));
 
-      var road = g.createLinearGradient(0, cam.horizon, 0, h);
-      road.addColorStop(0, A.rgb(PAL.fog));
-      road.addColorStop(0.08, A.rgb(A.mix(PAL.road, PAL.fog, 0.55)));
-      road.addColorStop(0.4, A.rgb(PAL.road));
-      road.addColorStop(1, A.rgb(PAL.roadDark));
-      A.strip(g, cam, -hw, hw, 0.04, 0.04, nearZ, farZ, road);
+      A.strip(g, cam, -hw, hw, 0.04, 0.04, nearZ, farZ, grads.road);
 
       var start = Math.floor(nearZ / 6) * 6;
       for (var z = start; z < Math.min(farZ, nearZ + 130); z += 6) {
@@ -3184,6 +3214,3093 @@ window.A = window.A || {};
       g.fillRect(w * 0.36, h * 0.44, w * 0.12, h * 0.14);
       g.fillStyle = "rgba(255,77,90,0.8)";
       g.fillRect(w * 0.52, h * 0.44, w * 0.12, h * 0.14);
+    },
+    create: create
+  });
+})(window.A);
+
+</script>
+<script>
+/* ---- src/games/blockblast.js ---- */
+/* ===========================================================================
+   BLOCK STORM
+   Eight-by-eight block puzzle. Three pieces at a time, no rotation, drop them
+   to fill rows and columns. Chosen because puzzle is the second largest mobile
+   genre by revenue and the block-drop format currently leads global downloads.
+   The whole game is one screen and one rule, which is the point.
+   =========================================================================== */
+(function (A) {
+  "use strict";
+  A.games = A.games || [];
+
+  var N = 8;
+  var TAU = A.TAU;
+
+  var COLORS = [
+    [93, 168, 255], [63, 217, 138], [255, 194, 75],
+    [255, 109, 129], [185, 139, 255], [123, 224, 255], [255, 145, 77]
+  ];
+
+  /* Standard block-puzzle piece set: lines, squares, corners and rectangles. */
+  var SHAPES = (function () {
+    function cells() { return Array.prototype.slice.call(arguments); }
+    var list = [
+      { w: 1, h: 1, c: cells([0, 0]), weight: 6 },
+      { w: 2, h: 1, c: cells([0, 0], [1, 0]), weight: 8 },
+      { w: 1, h: 2, c: cells([0, 0], [0, 1]), weight: 8 },
+      { w: 3, h: 1, c: cells([0, 0], [1, 0], [2, 0]), weight: 8 },
+      { w: 1, h: 3, c: cells([0, 0], [0, 1], [0, 2]), weight: 8 },
+      { w: 4, h: 1, c: cells([0, 0], [1, 0], [2, 0], [3, 0]), weight: 5 },
+      { w: 1, h: 4, c: cells([0, 0], [0, 1], [0, 2], [0, 3]), weight: 5 },
+      { w: 5, h: 1, c: cells([0, 0], [1, 0], [2, 0], [3, 0], [4, 0]), weight: 2 },
+      { w: 1, h: 5, c: cells([0, 0], [0, 1], [0, 2], [0, 3], [0, 4]), weight: 2 },
+      { w: 2, h: 2, c: cells([0, 0], [1, 0], [0, 1], [1, 1]), weight: 7 },
+      { w: 3, h: 3, c: cells([0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]), weight: 1 },
+      { w: 2, h: 2, c: cells([0, 0], [0, 1], [1, 1]), weight: 5 },
+      { w: 2, h: 2, c: cells([1, 0], [0, 1], [1, 1]), weight: 5 },
+      { w: 2, h: 2, c: cells([0, 0], [1, 0], [0, 1]), weight: 5 },
+      { w: 2, h: 2, c: cells([0, 0], [1, 0], [1, 1]), weight: 5 },
+      { w: 3, h: 2, c: cells([0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]), weight: 3 },
+      { w: 2, h: 3, c: cells([0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]), weight: 3 },
+      { w: 3, h: 3, c: cells([0, 0], [0, 1], [0, 2], [1, 2], [2, 2]), weight: 3 },
+      { w: 3, h: 3, c: cells([2, 0], [2, 1], [0, 2], [1, 2], [2, 2]), weight: 3 },
+      { w: 3, h: 3, c: cells([0, 0], [1, 0], [2, 0], [0, 1], [0, 2]), weight: 3 },
+      { w: 3, h: 3, c: cells([0, 0], [1, 0], [2, 0], [2, 1], [2, 2]), weight: 3 },
+      { w: 3, h: 2, c: cells([0, 0], [1, 0], [2, 0], [1, 1]), weight: 4 },
+      { w: 2, h: 3, c: cells([0, 0], [0, 1], [1, 1], [0, 2]), weight: 4 }
+    ];
+
+    var bag = [];
+    list.forEach(function (shape, index) {
+      shape.index = index;
+      for (var i = 0; i < shape.weight; i++) bag.push(shape);
+    });
+    return { list: list, bag: bag };
+  })();
+
+  function create(host) {
+    var save = host.save;
+    var S = null;
+    var layout = null;
+    var ui = {};
+    var heroStyle = null;
+
+    /* --------------------------------------------------------- helpers -- */
+    function idx(x, y) { return y * N + x; }
+
+    function newPiece(rand) {
+      var shape = rand.pick(SHAPES.bag);
+      return {
+        shape: shape,
+        color: rand.int(0, COLORS.length - 1),
+        placed: false,
+        pop: 0
+      };
+    }
+
+    function fits(piece, gx, gy) {
+      if (!piece || piece.placed) return false;
+      var c = piece.shape.c;
+      for (var i = 0; i < c.length; i++) {
+        var x = gx + c[i][0], y = gy + c[i][1];
+        if (x < 0 || y < 0 || x >= N || y >= N) return false;
+        if (S.grid[idx(x, y)]) return false;
+      }
+      return true;
+    }
+
+    function pieceFitsAnywhere(piece) {
+      if (!piece || piece.placed) return false;
+      for (var y = 0; y <= N - piece.shape.h; y++) {
+        for (var x = 0; x <= N - piece.shape.w; x++) {
+          if (fits(piece, x, y)) return true;
+        }
+      }
+      return false;
+    }
+
+    function anyMoveLeft() {
+      for (var i = 0; i < S.tray.length; i++) {
+        if (pieceFitsAnywhere(S.tray[i])) return true;
+      }
+      return false;
+    }
+
+    function refillTray() {
+      var all = S.tray.every(function (p) { return !p || p.placed; });
+      if (!all) return;
+      S.tray = [newPiece(S.rand), newPiece(S.rand), newPiece(S.rand)];
+      S.trayPop = 0.3;
+    }
+
+    /* ----------------------------------------------------------- state -- */
+    function begin() {
+      S = {
+        rand: A.rng((Date.now() & 0x7fffffff) || 7),
+        grid: new Int8Array(N * N),
+        cellPop: new Float32Array(N * N),
+        tray: null,
+        score: 0,
+        combo: 0,
+        bestCombo: 0,
+        coins: 0,
+        clears: 0,
+        placements: 0,
+        over: false,
+        drag: null,
+        trayPop: 0,
+        heroCheer: 0,
+        undos: save.upUndo,
+        bombs: save.upBomb,
+        history: null,
+        t: 0
+      };
+      S.tray = [newPiece(S.rand), newPiece(S.rand), newPiece(S.rand)];
+
+      // A few pre-set blocks give the first placement something to build against.
+      var seedCount = Math.max(0, 6 - save.upClean * 2);
+      for (var i = 0; i < seedCount; i++) {
+        var x = S.rand.int(0, N - 1), y = S.rand.int(0, N - 1);
+        S.grid[idx(x, y)] = S.rand.int(1, COLORS.length);
+      }
+
+      A.Fx.reset();
+      paintHud();
+    }
+
+    function snapshot() {
+      S.history = {
+        grid: S.grid.slice(0),
+        tray: S.tray.map(function (p) {
+          return p ? { shape: p.shape, color: p.color, placed: p.placed, pop: 0 } : null;
+        }),
+        score: S.score,
+        combo: S.combo,
+        coins: S.coins
+      };
+    }
+
+    function undo() {
+      if (!S.history || S.undos <= 0) return;
+      S.undos--;
+      S.grid.set(S.history.grid);
+      S.tray = S.history.tray;
+      S.score = S.history.score;
+      S.combo = S.history.combo;
+      S.coins = S.history.coins;
+      S.history = null;
+      S.over = false;
+      A.Audio.sfx("select");
+      paintHud();
+    }
+
+    function useBomb(gx, gy) {
+      if (S.bombs <= 0) return false;
+      S.bombs--;
+
+      var cleared = 0;
+      for (var y = gy - 1; y <= gy + 1; y++) {
+        for (var x = gx - 1; x <= gx + 1; x++) {
+          if (x < 0 || y < 0 || x >= N || y >= N) continue;
+          if (S.grid[idx(x, y)]) {
+            S.grid[idx(x, y)] = 0;
+            S.cellPop[idx(x, y)] = 0.3;
+            cleared++;
+            spark(x, y, [255, 145, 77]);
+          }
+        }
+      }
+
+      A.Audio.sfx("hit");
+      A.Fx.kick(0.4);
+      A.vibrate(30);
+      paintHud();
+      return cleared > 0;
+    }
+
+    /* --------------------------------------------------------- placing -- */
+    function place(piece, gx, gy) {
+      snapshot();
+
+      var c = piece.shape.c;
+      for (var i = 0; i < c.length; i++) {
+        var x = gx + c[i][0], y = gy + c[i][1];
+        S.grid[idx(x, y)] = piece.color + 1;
+        S.cellPop[idx(x, y)] = 0.22;
+      }
+
+      piece.placed = true;
+      S.placements++;
+      S.score += c.length;
+
+      resolveClears();
+      refillTray();
+
+      if (!anyMoveLeft()) finish();
+      paintHud();
+    }
+
+    function resolveClears() {
+      var fullRows = [], fullCols = [];
+
+      for (var y = 0; y < N; y++) {
+        var full = true;
+        for (var x = 0; x < N; x++) { if (!S.grid[idx(x, y)]) { full = false; break; } }
+        if (full) fullRows.push(y);
+      }
+      for (var cx = 0; cx < N; cx++) {
+        var fullc = true;
+        for (var cy = 0; cy < N; cy++) { if (!S.grid[idx(cx, cy)]) { fullc = false; break; } }
+        if (fullc) fullCols.push(cx);
+      }
+
+      var lines = fullRows.length + fullCols.length;
+      if (lines === 0) {
+        S.combo = 0;
+        A.Audio.sfx("select");
+        return;
+      }
+
+      S.combo++;
+      S.bestCombo = Math.max(S.bestCombo, S.combo);
+      S.clears += lines;
+
+      fullRows.forEach(function (y) {
+        for (var x = 0; x < N; x++) {
+          var color = COLORS[(S.grid[idx(x, y)] - 1) % COLORS.length];
+          S.grid[idx(x, y)] = 0;
+          S.cellPop[idx(x, y)] = 0.32;
+          spark(x, y, color);
+        }
+      });
+      fullCols.forEach(function (x) {
+        for (var y2 = 0; y2 < N; y2++) {
+          var color2 = COLORS[Math.max(0, S.grid[idx(x, y2)] - 1) % COLORS.length];
+          S.grid[idx(x, y2)] = 0;
+          S.cellPop[idx(x, y2)] = 0.32;
+          spark(x, y2, color2);
+        }
+      });
+
+      // Quadratic in lines, multiplied by the combo streak: clearing two at once
+      // is worth far more than two separate clears, which is the whole game.
+      var gained = lines * lines * 10 * (1 + (S.combo - 1) * 0.5);
+      S.score += Math.round(gained);
+      S.coins += Math.round(lines * 3 * (1 + save.upCoin * 0.15));
+
+      S.heroCheer = 1.1;
+      A.Fx.kick(0.25 + lines * 0.08);
+      A.Fx.flashScreen(0.18 + lines * 0.05, [255, 255, 255]);
+      A.Audio.sfx(lines > 1 ? "levelup" : "good");
+      A.vibrate(lines > 1 ? [15, 30, 20] : 18);
+
+      if (layout) {
+        A.Fx.text(A.View.w / 2, A.View.h * 0.42, 0,
+          (lines > 1 ? lines + "  LINES" : "CLEAR") + (S.combo > 1 ? "   x" + S.combo : ""),
+          lines > 1 ? [255, 194, 75] : [63, 217, 138],
+          { screen: true, scale: 1.2, life: 1, rise: -34 });
+      }
+    }
+
+    function spark(gx, gy, color) {
+      if (!layout) return;
+      var p = cellCentre(gx, gy);
+      A.Fx.burst(p.x, p.y, 0, 5, {
+        color: color, speed: 150, up: 0, gravity: 380, life: 0.5,
+        size: layout.cell * 0.10, screen: true, bounce: false
+      });
+    }
+
+    /* ---------------------------------------------------------- finish -- */
+    function finish() {
+      if (S.over) return;
+      S.over = true;
+
+      var coins = Math.round(S.coins * host.coinMultiplier());
+      save.coins += coins;
+      save.runs++;
+      save.best = Math.max(save.best, S.score);
+      save.bestCombo = Math.max(save.bestCombo, S.bestCombo);
+      host.commit();
+
+      var xp = Math.round((S.score / 90 + S.clears * 2) * host.xpMultiplier());
+      host.addXp(xp);
+      host.progress("run", 1);
+      host.progress("coins", coins);
+
+      A.Audio.sfx("lose");
+      A.vibrate(110);
+
+      var buttons = [];
+      if (S.history && save.upUndo > 0 && S.undos > 0) {
+        buttons.push({
+          label: "UNDO LAST MOVE", className: "gold", sub: S.undos + " left",
+          onClick: function () { undo(); host.modal.hide(); }
+        });
+      }
+      buttons.push({ label: "PLAY AGAIN", className: "go", onClick: function () { host.modal.hide(); begin(); } });
+      buttons.push({ label: "UPGRADES", className: "gold", onClick: openShop });
+      buttons.push({ label: "MENU", className: "ghost", onClick: host.exit });
+
+      host.results({
+        win: false,
+        title: "NO MOVES LEFT",
+        subtitle: S.score > save.best ? "New personal best" : "Best " + A.formatNumber(save.best),
+        stats: [
+          ["Score", A.formatNumber(S.score)],
+          ["Lines", String(S.clears)],
+          ["Best combo", "x" + S.bestCombo],
+          ["Coins", "+" + A.formatNumber(coins)]
+        ],
+        buttons: buttons
+      });
+    }
+
+    function openShop() {
+      var rows = [
+        { key: "upUndo", name: "Rewind", desc: "Start each game with an undo", max: 3,
+          cost: function (l) { return Math.round(200 * Math.pow(1.6, l)); } },
+        { key: "upBomb", name: "Demolition", desc: "Start with a 3x3 bomb charge", max: 3,
+          cost: function (l) { return Math.round(260 * Math.pow(1.6, l)); } },
+        { key: "upClean", name: "Clean Slate", desc: "Fewer pre-set blocks on the board", max: 3,
+          cost: function (l) { return Math.round(320 * Math.pow(1.7, l)); } },
+        { key: "upCoin", name: "Prospector", desc: "+15% coins from clears", max: 10,
+          cost: function (l) { return Math.round(180 * Math.pow(1.35, l)); } }
+      ];
+
+      var card = host.el("div", "card");
+      card.appendChild(host.el("h2", null, "UPGRADES"));
+      card.appendChild(host.el("p", "sub", A.formatNumber(save.coins) + " coins"));
+
+      rows.forEach(function (r) {
+        var row = host.el("div", "shopRow");
+        var left = host.el("div");
+        left.appendChild(host.el("h4", null, r.name + "  ·  LV " + save[r.key]));
+        left.appendChild(host.el("p", null, r.desc));
+        row.appendChild(left);
+
+        var maxed = save[r.key] >= r.max;
+        var cost = r.cost(save[r.key]);
+        var buy = host.el("button", "buy");
+        buy.innerHTML = maxed ? "MAX" : A.formatNumber(cost) + "<small>COINS</small>";
+        buy.disabled = maxed || save.coins < cost;
+        buy.addEventListener("click", function () {
+          if (save.coins >= cost) {
+            save.coins -= cost;
+            save[r.key]++;
+            host.commit();
+            A.Audio.sfx("coin");
+            openShop();
+          }
+        });
+        row.appendChild(buy);
+        card.appendChild(row);
+      });
+
+      card.appendChild(host.button("BACK", "ghost", function () { host.modal.hide(); begin(); }));
+      host.modal.show(card);
+    }
+
+    /* ---------------------------------------------------------- layout -- */
+    function computeLayout() {
+      var w = A.View.w, h = A.View.h;
+      var top = Math.max(118, h * 0.16);
+      var bottomReserve = Math.max(150, h * 0.20);
+      var available = Math.min(w - 32, h - top - bottomReserve);
+      var board = Math.max(180, available);
+      var cell = board / N;
+
+      layout = {
+        cell: cell,
+        board: board,
+        x: (w - board) / 2,
+        y: top,
+        trayY: top + board + Math.max(22, h * 0.035),
+        trayCell: Math.max(14, cell * 0.52)
+      };
+    }
+
+    function cellCentre(gx, gy) {
+      return {
+        x: layout.x + (gx + 0.5) * layout.cell,
+        y: layout.y + (gy + 0.5) * layout.cell
+      };
+    }
+
+    function traySlotRect(i) {
+      var slotW = A.View.w / 3;
+      return { x: slotW * i, y: layout.trayY, w: slotW, h: layout.trayCell * 5 };
+    }
+
+    /* ----------------------------------------------------------- input -- */
+    function update(dt) {
+      S.t += dt;
+      if (S.heroCheer > 0) S.heroCheer -= dt;
+      if (S.trayPop > 0) S.trayPop -= dt;
+      for (var i = 0; i < S.cellPop.length; i++) {
+        if (S.cellPop[i] > 0) S.cellPop[i] = Math.max(0, S.cellPop[i] - dt);
+      }
+
+      if (S.over) return;
+
+      if (A.Input.pressed) {
+        if (S.bombArmed) {
+          var cell = pointToCell(A.Input.x, A.Input.y);
+          if (cell) {
+            useBomb(cell.x, cell.y);
+            S.bombArmed = false;
+            if (!anyMoveLeft()) finish();
+          } else {
+            S.bombArmed = false;
+          }
+          paintHud();
+          return;
+        }
+
+        for (var t = 0; t < 3; t++) {
+          var piece = S.tray[t];
+          if (!piece || piece.placed) continue;
+          var r = traySlotRect(t);
+          if (A.Input.x >= r.x && A.Input.x <= r.x + r.w && A.Input.y >= r.y - 20) {
+            S.drag = { piece: piece, slot: t, x: A.Input.x, y: A.Input.y };
+            A.Audio.sfx("select");
+            break;
+          }
+        }
+      }
+
+      if (S.drag) {
+        S.drag.x = A.Input.x;
+        S.drag.y = A.Input.y;
+
+        // Lift the piece above the finger so it is never hidden by the hand.
+        var target = pointToCell(S.drag.x, S.drag.y - layout.cell * 1.5, S.drag.piece);
+        S.drag.gx = target ? target.x : -1;
+        S.drag.gy = target ? target.y : -1;
+        S.drag.valid = target ? fits(S.drag.piece, target.x, target.y) : false;
+
+        if (A.Input.released) {
+          if (S.drag.valid) place(S.drag.piece, S.drag.gx, S.drag.gy);
+          else A.Audio.sfx("bad");
+          S.drag = null;
+        }
+      }
+    }
+
+    /** Maps a screen point to the top-left grid cell a piece would occupy. */
+    function pointToCell(px, py, piece) {
+      var gx = Math.floor((px - layout.x) / layout.cell);
+      var gy = Math.floor((py - layout.y) / layout.cell);
+
+      if (piece) {
+        gx -= Math.floor((piece.shape.w - 1) / 2);
+        gy -= Math.floor((piece.shape.h - 1) / 2);
+        gx = A.clamp(gx, 0, N - piece.shape.w);
+        gy = A.clamp(gy, 0, N - piece.shape.h);
+        return { x: gx, y: gy };
+      }
+
+      if (gx < 0 || gy < 0 || gx >= N || gy >= N) return null;
+      return { x: gx, y: gy };
+    }
+
+    /* ---------------------------------------------------------- render -- */
+    function render(g) {
+      var w = A.View.w, h = A.View.h;
+
+      var bg = g.createLinearGradient(0, 0, 0, h);
+      bg.addColorStop(0, "#1B1438");
+      bg.addColorStop(1, "#0E0B1E");
+      g.fillStyle = bg;
+      g.fillRect(0, 0, w, h);
+
+      A.Fx.applyShake(g);
+
+      drawBoard(g);
+      drawGhost(g);
+      drawTray(g);
+      drawHero(g);
+      drawDragged(g);
+
+      A.Fx.drawParticles(g, null);
+      A.Fx.drawTexts(g, null);
+
+      g.restore();
+      A.Fx.drawFlash(g, w, h);
+    }
+
+    function roundCell(g, x, y, size, radius) {
+      A.roundRect(g, x, y, size, size, radius);
+    }
+
+    function drawBoard(g) {
+      var l = layout;
+
+      A.roundRect(g, l.x - 8, l.y - 8, l.board + 16, l.board + 16, 18);
+      g.fillStyle = "#241A45";
+      g.fill();
+      g.strokeStyle = "#3A2C68";
+      g.lineWidth = 3;
+      g.stroke();
+
+      var pad = l.cell * 0.06;
+      for (var y = 0; y < N; y++) {
+        for (var x = 0; x < N; x++) {
+          var i = idx(x, y);
+          var value = S.grid[i];
+          var pop = S.cellPop[i];
+          var cx = l.x + x * l.cell + pad;
+          var cy = l.y + y * l.cell + pad;
+          var size = l.cell - pad * 2;
+
+          if (!value) {
+            roundCell(g, cx, cy, size, size * 0.22);
+            g.fillStyle = "rgba(255,255,255,0.045)";
+            g.fill();
+            continue;
+          }
+
+          var grow = pop > 0 ? 1 + Math.sin(A.clamp01(pop / 0.32) * Math.PI) * 0.18 : 1;
+          var s2 = size * grow;
+          var off = (size - s2) / 2;
+          drawBlock(g, cx + off, cy + off, s2, COLORS[(value - 1) % COLORS.length]);
+        }
+      }
+    }
+
+    function drawBlock(g, x, y, size, color) {
+      var r = size * 0.22;
+      roundCell(g, x, y, size, r);
+      g.fillStyle = A.rgb(A.shade(color, -0.35));
+      g.fill();
+
+      roundCell(g, x, y, size, r);
+      var grad = g.createLinearGradient(0, y, 0, y + size);
+      grad.addColorStop(0, A.rgb(A.shade(color, 0.28)));
+      grad.addColorStop(0.55, A.rgb(color));
+      grad.addColorStop(1, A.rgb(A.shade(color, -0.18)));
+      g.fillStyle = grad;
+      g.fill();
+
+      A.roundRect(g, x + size * 0.14, y + size * 0.12, size * 0.72, size * 0.22, size * 0.11);
+      g.fillStyle = "rgba(255,255,255,0.28)";
+      g.fill();
+    }
+
+    function drawGhost(g) {
+      if (!S.drag || S.drag.gx < 0) return;
+      var l = layout;
+      var c = S.drag.piece.shape.c;
+      var pad = l.cell * 0.06;
+
+      for (var i = 0; i < c.length; i++) {
+        var x = S.drag.gx + c[i][0], y = S.drag.gy + c[i][1];
+        if (x < 0 || y < 0 || x >= N || y >= N) continue;
+        roundCell(g, l.x + x * l.cell + pad, l.y + y * l.cell + pad, l.cell - pad * 2, l.cell * 0.2);
+        g.fillStyle = S.drag.valid ? "rgba(63,217,138,0.34)" : "rgba(255,77,109,0.28)";
+        g.fill();
+        g.strokeStyle = S.drag.valid ? "rgba(63,217,138,0.9)" : "rgba(255,77,109,0.8)";
+        g.lineWidth = 2;
+        g.stroke();
+      }
+    }
+
+    function drawTray(g) {
+      var l = layout;
+      for (var t = 0; t < 3; t++) {
+        var piece = S.tray[t];
+        if (!piece || piece.placed) continue;
+        if (S.drag && S.drag.slot === t) continue;
+
+        var r = traySlotRect(t);
+        var scale = S.trayPop > 0 ? 1 + Math.sin(A.clamp01(S.trayPop / 0.3) * Math.PI) * 0.14 : 1;
+        var cell = l.trayCell * scale;
+        var usable = pieceFitsAnywhere(piece);
+
+        var ox = r.x + r.w / 2 - (piece.shape.w * cell) / 2;
+        var oy = r.y + cell * 0.5;
+
+        g.globalAlpha = usable ? 1 : 0.35;
+        for (var i = 0; i < piece.shape.c.length; i++) {
+          drawBlock(g,
+            ox + piece.shape.c[i][0] * cell + cell * 0.06,
+            oy + piece.shape.c[i][1] * cell + cell * 0.06,
+            cell * 0.88, COLORS[piece.color]);
+        }
+        g.globalAlpha = 1;
+      }
+    }
+
+    function drawDragged(g) {
+      if (!S.drag) return;
+      var cell = layout.cell;
+      var piece = S.drag.piece;
+      var ox = S.drag.x - (piece.shape.w * cell) / 2;
+      var oy = S.drag.y - layout.cell * 1.5 - (piece.shape.h * cell) / 2;
+
+      g.globalAlpha = 0.95;
+      for (var i = 0; i < piece.shape.c.length; i++) {
+        drawBlock(g,
+          ox + piece.shape.c[i][0] * cell + cell * 0.06,
+          oy + piece.shape.c[i][1] * cell + cell * 0.06,
+          cell * 0.88, COLORS[piece.color]);
+      }
+      g.globalAlpha = 1;
+    }
+
+    function drawHero(g) {
+      if (!heroStyle) return;
+      var l = layout;
+      var size = Math.min(64, l.cell * 1.5);
+      var x = l.x + l.board - size * 0.5;
+      var y = l.y - 10;
+
+      var cheering = S.heroCheer > 0;
+      var pose = A.Rig.pose(cheering ? "cheer" : "idle",
+        A.wrap(S.t * (cheering ? 3 : 0.5), 1));
+      A.Rig.draw(g, heroStyle, pose, x, y, size, -1, { noShadow: true });
+    }
+
+    /* -------------------------------------------------------------- ui -- */
+    function mount(root) {
+      var hud = host.el("div", "hud");
+
+      var top = host.el("div", "row");
+      ui.score = host.el("div", "chip", "0");
+      ui.combo = host.el("div", "chip gold", "");
+      ui.coins = host.el("div", "chip gold", "0");
+      top.appendChild(ui.score);
+      top.appendChild(ui.combo);
+      top.appendChild(ui.coins);
+      hud.appendChild(top);
+
+      var tools = host.el("div", "row");
+      tools.style.marginTop = "8px";
+      tools.style.pointerEvents = "auto";
+
+      ui.undo = host.el("button", "chip");
+      ui.undo.style.pointerEvents = "auto";
+      ui.undo.style.cursor = "pointer";
+      ui.undo.addEventListener("click", undo);
+      tools.appendChild(ui.undo);
+
+      ui.bomb = host.el("button", "chip");
+      ui.bomb.style.pointerEvents = "auto";
+      ui.bomb.style.cursor = "pointer";
+      ui.bomb.addEventListener("click", function () {
+        if (S.bombs > 0) {
+          S.bombArmed = !S.bombArmed;
+          A.Audio.sfx("select");
+          paintHud();
+        }
+      });
+      tools.appendChild(ui.bomb);
+      hud.appendChild(tools);
+
+      ui.hint = host.el("div", "hint", "Drag a block onto the grid");
+      hud.appendChild(ui.hint);
+
+      root.appendChild(hud);
+    }
+
+    function paintHud() {
+      if (!ui.score) return;
+      ui.score.textContent = A.formatNumber(S.score);
+      ui.coins.textContent = A.formatNumber(S.coins);
+      ui.combo.textContent = S.combo > 1 ? "COMBO x" + S.combo : "";
+      ui.combo.style.opacity = S.combo > 1 ? "1" : "0";
+      ui.undo.textContent = "UNDO " + S.undos;
+      ui.undo.style.opacity = S.undos > 0 && S.history ? "1" : "0.4";
+      ui.bomb.textContent = "BOMB " + S.bombs;
+      ui.bomb.style.opacity = S.bombs > 0 ? "1" : "0.4";
+      ui.bomb.style.borderColor = S.bombArmed ? "#FFC24B" : "";
+      ui.hint.textContent = S.bombArmed ? "Tap a cell to detonate"
+        : (S.placements < 2 ? "Drag a block onto the grid" : "");
+    }
+
+    return {
+      mount: mount,
+      start: function () {
+        if (!heroStyle) {
+          heroStyle = A.Rig.style(6060, {
+            hue: host.hue, helmet: "crest", cape: true, weapon: "none", bulk: 1.0
+          });
+        }
+        computeLayout();
+        begin();
+      },
+      stop: function () { S = null; },
+      update: function (dt) { if (S) update(dt); },
+      render: function (g) { if (S && layout) render(g); },
+      onResize: function () { computeLayout(); }
+    };
+  }
+
+  /* ------------------------------------------------------ registration -- */
+  A.games.push({
+    id: "blocks",
+    name: "Block Storm",
+    tagline: "Eight-by-eight block puzzle. Three pieces at a time, no rotation, chain the combos.",
+    accent: "#5DA8FF",
+    unlock: 1,
+    template: { coins: 0, runs: 0, best: 0, bestCombo: 0,
+                upUndo: 0, upBomb: 0, upClean: 0, upCoin: 0 },
+    bestLine: function (s) {
+      return s.runs ? "Best " + A.formatNumber(s.best) + "  ·  combo x" + s.bestCombo : "New";
+    },
+    thumb: function (g, w, h, t) {
+      g.fillStyle = "#1B1438";
+      g.fillRect(0, 0, w, h);
+
+      var n = 5, pad = 6;
+      var cell = Math.min((w - pad * 2) / n, (h - pad * 2) / n);
+      var ox = (w - cell * n) / 2, oy = (h - cell * n) / 2;
+      var wave = Math.floor(t * 2) % n;
+
+      for (var y = 0; y < n; y++) {
+        for (var x = 0; x < n; x++) {
+          var on = (x + y * 2 + Math.floor(t)) % 3 !== 0;
+          var lit = y === wave;
+          A.roundRect(g, ox + x * cell + 1.5, oy + y * cell + 1.5, cell - 3, cell - 3, 4);
+          if (!on) { g.fillStyle = "rgba(255,255,255,0.07)"; g.fill(); continue; }
+          var c = COLORS[(x + y) % COLORS.length];
+          g.fillStyle = A.rgb(lit ? A.shade(c, 0.35) : c);
+          g.fill();
+        }
+      }
+    },
+    create: create
+  });
+})(window.A);
+
+</script>
+<script>
+/* ---- src/games/pinrescue.js ---- */
+/* ===========================================================================
+   PIN RESCUE
+   The pull-the-pin rescue puzzle: the single most spammed mobile ad format
+   there is. Yank the pins in the right order so the lava drains away from your
+   hero and the gold pours into their basin. Pull them in the wrong order and
+   you cook them.
+
+   Fluids are a falling-sand cellular automaton rather than rigid-body physics:
+   it reads identically to the real thing, it is deterministic, and a 44x60 grid
+   costs nothing on a phone.
+   =========================================================================== */
+(function (A) {
+  "use strict";
+  A.games = A.games || [];
+
+  var EMPTY = 0, WALL = 1, LAVA = 2, GOLD = 3, WATER = 4, HERO = 5, PIN = 6;
+
+  var TINT = {};
+  TINT[WALL] = [86, 74, 122];
+  TINT[LAVA] = [255, 96, 58];
+  TINT[GOLD] = [255, 196, 74];
+  TINT[WATER] = [90, 180, 255];
+  TINT[HERO] = [63, 217, 138];
+
+  /*
+   * Levels are generated into a portrait grid rather than hand drawn, so the
+   * structure is guaranteed rather than hoped for:
+   *
+   *   two top chambers, one lava one gold, each behind a gate pin
+   *   a shaft under each chamber, each with its own side-drain pin
+   *   both shafts merge into the hero basin at the bottom
+   *
+   * The correct play is: open the drain under the lava, dump the lava into the
+   * pit, then drop the gold. Open the wrong drain and the gold is gone; drop the
+   * lava before its drain and you cook the hero. Higher levels add a third
+   * chamber and a shared middle shaft.
+   */
+  /*
+   * Levels are generated on a fixed portrait layout rather than hand drawn, so
+   * the structure is guaranteed rather than hoped for. Columns, left to right:
+   *
+   *   0  wall   1 pit   2 wall+drain   3-6 shaft   7 wall
+   *   8-11 shaft   12 wall+drain   13 pit   14 wall
+   *
+   * Each shaft is a column of material sitting on a floor pin, with a drain pin
+   * in its side wall leading to a dead-end pit. Below the floor pins both shafts
+   * open into a chamber with the hero's basin at the bottom.
+   *
+   * So the play is: drain the lava out the side, then drop the gold through the
+   * floor. Drop the lava instead and you cook the hero. From level 3 a shaft
+   * holds lava stacked on top of gold, which forces drain-then-drop order.
+   */
+  var COLS = 15, ROWS = 18;
+  var SHAFTS = [{ x0: 3, x1: 6, wall: 2, pit: 1 }, { x0: 8, x1: 11, wall: 12, pit: 13 }];
+  var TOP = 1, BOTTOM = 9, DRAIN_ROW = 8, FLOOR_ROW = 10, BASIN_ROW = 15, GROUND_ROW = 16;
+
+  function buildLevel(index) {
+    var rand = A.rng(index * 7919 + 13);
+    var rows = [];
+    for (var y = 0; y < ROWS; y++) rows.push(new Array(COLS).fill("#"));
+
+    function put(x, y, ch) {
+      if (x >= 0 && y >= 0 && x < COLS && y < ROWS) rows[y][x] = ch;
+    }
+
+    // Carve the two shafts and the two pits.
+    for (var y2 = TOP; y2 <= BASIN_ROW; y2++) {
+      SHAFTS.forEach(function (shaft) {
+        for (var x = shaft.x0; x <= shaft.x1; x++) put(x, y2, ".");
+        if (y2 >= TOP + 4) put(shaft.pit, y2, ".");
+      });
+    }
+
+    // Below the floor pins the shafts merge into one chamber above the basin.
+    for (var y3 = FLOOR_ROW + 1; y3 <= BASIN_ROW; y3++) {
+      for (var x2 = SHAFTS[0].x0; x2 <= SHAFTS[1].x1; x2++) put(x2, y3, ".");
+    }
+
+    var goldShaft = rand.int(0, 1);
+    var mixed = index >= 3;
+    var bothMixed = index >= 6;
+    var goldCells = 0;
+
+    SHAFTS.forEach(function (shaft, i) {
+      var isGold = i === goldShaft;
+      var stack = (isGold && mixed) || (bothMixed && !isGold);
+
+      for (var y4 = TOP; y4 <= BOTTOM; y4++) {
+        var kind;
+        if (stack) kind = y4 <= TOP + 3 ? "L" : (isGold ? "G" : "L");
+        else kind = isGold ? "G" : "L";
+
+        for (var x3 = shaft.x0; x3 <= shaft.x1; x3++) {
+          put(x3, y4, kind);
+          if (kind === "G") goldCells++;
+        }
+      }
+
+      // Side drain, then the floor the whole column is resting on.
+      var drain = String.fromCharCode(97 + i * 2);
+      var floor = String.fromCharCode(97 + i * 2 + 1);
+      put(shaft.wall, DRAIN_ROW, drain);
+      for (var x4 = shaft.x0; x4 <= shaft.x1; x4++) put(x4, FLOOR_ROW, floor);
+    });
+
+    // Hero basin, and a floor under everything including the pits.
+    for (var x5 = 0; x5 < COLS; x5++) put(x5, GROUND_ROW, "#");
+    for (var hx = 6; hx <= 8; hx++) put(hx, BASIN_ROW, "H");
+
+    var out = rows.map(function (r) { return r.join(""); });
+    out.goldCells = goldCells;
+    if (typeof window !== "undefined") window.__pinDump = function () { return out.join("\n"); };
+    return out;
+  }
+
+  function create(host) {
+    var save = host.save;
+    var S = null;
+    var layout = null;
+    var ui = {};
+    var heroStyle = null;
+
+    /* ----------------------------------------------------------- setup -- */
+    function levelSpec(index) {
+      return buildLevel(index);
+    }
+
+    function begin() {
+      var spec = levelSpec(save.level);
+      var h = spec.length, w = spec[0].length;
+
+      S = {
+        w: w, h: h,
+        cell: new Uint8Array(w * h),
+        pinOf: new Int8Array(w * h).fill(-1),
+        pins: {},
+        pinOrder: [],
+        gold: 0,
+        goldGoal: 0,
+        collected: 0,
+        lavaHit: false,
+        over: false,
+        won: false,
+        t: 0,
+        settle: 0,
+        heroCells: [],
+        pulls: 0,
+        level: save.level,
+        heroHurt: 0
+      };
+
+      // Extra pins granted by upgrades are not a thing; the shop sells retries
+      // and a coolant that buys you time, so the puzzle stays the puzzle.
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          var ch = spec[y][x];
+          var i = y * w + x;
+
+          if (ch === "#") S.cell[i] = WALL;
+          else if (ch === "L") S.cell[i] = LAVA;
+          else if (ch === "G") { S.cell[i] = GOLD; S.goldGoal++; }
+          else if (ch === "W") S.cell[i] = WATER;
+          else if (ch === "H") { S.cell[i] = EMPTY; S.heroCells.push(i); }
+          else if (ch >= "a" && ch <= "f") {
+            S.cell[i] = PIN;
+            var pinId = ch.charCodeAt(0) - 97;
+            S.pinOf[i] = pinId;
+            if (!S.pins[pinId]) { S.pins[pinId] = { id: pinId, cells: [], pulled: 0, min: x, max: x, y: y }; S.pinOrder.push(pinId); }
+            S.pins[pinId].cells.push(i);
+            S.pins[pinId].min = Math.min(S.pins[pinId].min, x);
+            S.pins[pinId].max = Math.max(S.pins[pinId].max, x);
+          }
+        }
+      }
+
+      // The goal has to be a share of what the basin can actually hold, not of
+      // all the gold in the level: most of it lands outside the catch zone.
+      S.catchMinX = Math.min.apply(null, S.heroCells.map(function (i) { return i % w; }));
+      S.catchMaxX = Math.max.apply(null, S.heroCells.map(function (i) { return i % w; }));
+      S.catchMinY = Math.max(0, Math.floor(S.heroCells[0] / w) - 4);
+      S.catchMaxY = Math.floor(S.heroCells[0] / w);
+      S.goldGoal = A.clamp(Math.round(S.goldGoal * 0.28), 3, 14);
+      S.coolant = save.upCoolant;
+      A.Fx.reset();
+      computeLayout();
+      paintHud();
+
+      if (typeof window !== "undefined") {
+        window.__pinProbe = function () {
+          return { x: layout.x, y: layout.y, cell: layout.cell,
+                   collected: S.collected, goal: S.goalGoal || S.goldGoal,
+                   over: S.over, won: S.won };
+        };
+      }
+    }
+
+    /* ------------------------------------------------------- simulation -- */
+    function at(x, y) {
+      if (x < 0 || y < 0 || x >= S.w || y >= S.h) return WALL;
+      return S.cell[y * S.w + x];
+    }
+
+    function set(x, y, v) { S.cell[y * S.w + x] = v; }
+
+    function isFluid(v) { return v === LAVA || v === GOLD || v === WATER; }
+    function isBlocking(v) { return v === WALL || v === PIN; }
+
+    /**
+     * One pass of falling-sand: down, then diagonals, then sideways for liquids.
+     * Scanned bottom-up with alternating row direction so piles do not lean.
+     */
+    function stepFluid() {
+      var moved = 0;
+
+      for (var y = S.h - 2; y >= 0; y--) {
+        var leftToRight = (S.t * 60 + y) % 2 === 0;
+        for (var k = 0; k < S.w; k++) {
+          var x = leftToRight ? k : S.w - 1 - k;
+          var v = at(x, y);
+          if (!isFluid(v)) continue;
+
+          if (at(x, y + 1) === EMPTY) { set(x, y, EMPTY); set(x, y + 1, v); moved++; continue; }
+
+          var dir = ((x + y + Math.floor(S.t * 12)) % 2) ? 1 : -1;
+          if (at(x + dir, y + 1) === EMPTY) { set(x, y, EMPTY); set(x + dir, y + 1, v); moved++; continue; }
+          if (at(x - dir, y + 1) === EMPTY) { set(x, y, EMPTY); set(x - dir, y + 1, v); moved++; continue; }
+
+          // Liquids spread sideways; gold behaves more like sand and mostly does not.
+          var spread = v === GOLD ? 0.35 : 1;
+          if (Math.random() < spread) {
+            if (at(x + dir, y) === EMPTY) { set(x, y, EMPTY); set(x + dir, y, v); moved++; continue; }
+            if (at(x - dir, y) === EMPTY) { set(x, y, EMPTY); set(x - dir, y, v); moved++; }
+          }
+        }
+      }
+
+      // Water quenches lava on contact, which is the escape valve in later levels.
+      for (var i = 0; i < S.cell.length; i++) {
+        if (S.cell[i] !== LAVA) continue;
+        var lx = i % S.w, ly = (i / S.w) | 0;
+        if (at(lx + 1, ly) === WATER || at(lx - 1, ly) === WATER ||
+            at(lx, ly + 1) === WATER || at(lx, ly - 1) === WATER) {
+          S.cell[i] = WALL;
+          spark(lx, ly, [220, 220, 235]);
+        }
+      }
+
+      return moved;
+    }
+
+    /** Counts what has settled in the column of cells above the hero's basin. */
+    function checkGoal() {
+      var goldInBasin = 0;
+      var lavaInBasin = 0;
+
+      for (var y = S.catchMinY; y <= S.catchMaxY; y++) {
+        for (var x = S.catchMinX; x <= S.catchMaxX; x++) {
+          var v = S.cell[y * S.w + x];
+          if (v === GOLD) goldInBasin++;
+          else if (v === LAVA) lavaInBasin++;
+        }
+      }
+
+      S.collected = goldInBasin;
+
+      if (lavaInBasin > 0 && !S.over) {
+        if (S.coolant > 0) {
+          S.coolant--;
+          S.heroHurt = 1;
+          for (var j = 0; j < S.heroCells.length; j++) {
+            if (S.cell[S.heroCells[j]] === LAVA) S.cell[S.heroCells[j]] = WALL;
+          }
+          host.toast("COOLANT USED");
+          A.Fx.flashScreen(0.4, [120, 200, 255]);
+          paintHud();
+          return;
+        }
+        finish(false);
+      }
+    }
+
+    /* -------------------------------------------------------- pin pull -- */
+    function pullPin(pin) {
+      if (pin.pulled > 0 || S.over) return;
+      pin.pulled = 0.001;
+      S.pulls++;
+      A.Audio.sfx("select");
+      A.vibrate(18);
+    }
+
+    function updatePins(dt) {
+      for (var id in S.pins) {
+        var pin = S.pins[id];
+        if (pin.pulled <= 0 || pin.pulled >= 1) continue;
+
+        pin.pulled = Math.min(1, pin.pulled + dt * 3.4);
+        if (pin.pulled >= 1) {
+          for (var i = 0; i < pin.cells.length; i++) {
+            var index = pin.cells[i];
+            if (S.cell[index] === PIN) S.cell[index] = EMPTY;
+            spark(index % S.w, (index / S.w) | 0, [200, 190, 230]);
+          }
+          A.Fx.kick(0.18);
+          A.Audio.sfx("hit");
+        }
+      }
+    }
+
+    function spark(gx, gy, color) {
+      if (!layout) return;
+      A.Fx.burst(layout.x + (gx + 0.5) * layout.cell, layout.y + (gy + 0.5) * layout.cell, 0, 3, {
+        color: color, speed: 90, up: 0, gravity: 300, life: 0.4,
+        size: layout.cell * 0.16, screen: true, bounce: false
+      });
+    }
+
+    /* ---------------------------------------------------------- finish -- */
+    function finish(won) {
+      if (S.over) return;
+      S.over = true;
+      S.won = won;
+
+      var coins = Math.round((won ? 40 + S.collected * 6 + save.level * 8 : 8) *
+        host.coinMultiplier() * (1 + save.upCoin * 0.15));
+      save.coins += coins;
+      save.runs++;
+      if (won) { save.level++; save.wins++; save.best = Math.max(save.best, save.level - 1); }
+      host.commit();
+
+      var xp = Math.round((won ? 24 + save.level * 3 : 6) * host.xpMultiplier());
+      host.addXp(xp);
+      host.progress("run", 1);
+      host.progress("coins", coins);
+
+      if (won) {
+        A.Audio.sfx("win");
+        A.Fx.flashScreen(0.4, [255, 196, 74]);
+        A.Fx.kick(0.5);
+        A.vibrate([20, 40, 30]);
+      } else {
+        A.Audio.sfx("lose");
+        A.Fx.flashScreen(0.5, [255, 96, 58]);
+        A.vibrate(120);
+      }
+
+      setTimeout(function () {
+        host.results({
+          win: won,
+          title: won ? "RESCUED" : "TOO LATE",
+          subtitle: won ? "Level " + (save.level - 1) + " cleared" : "The lava got there first",
+          stats: [
+            ["Level", String(S.level)],
+            ["Gold saved", S.collected + " / " + S.goldGoal],
+            ["Pins pulled", String(S.pulls)],
+            ["Coins", "+" + A.formatNumber(coins)]
+          ],
+          buttons: [
+            { label: won ? "NEXT LEVEL" : "TRY AGAIN", className: "go",
+              onClick: function () { host.modal.hide(); begin(); } },
+            { label: "UPGRADES", className: "gold", onClick: openShop },
+            { label: "MENU", className: "ghost", onClick: host.exit }
+          ]
+        });
+      }, won ? 700 : 500);
+    }
+
+    function openShop() {
+      var rows = [
+        { key: "upCoolant", name: "Coolant Flask", desc: "Survive one splash of lava per level", max: 3,
+          cost: function (l) { return Math.round(400 * Math.pow(1.8, l)); } },
+        { key: "upCoin", name: "Fortune", desc: "+15% coins from rescues", max: 10,
+          cost: function (l) { return Math.round(220 * Math.pow(1.35, l)); } }
+      ];
+
+      var card = host.el("div", "card");
+      card.appendChild(host.el("h2", null, "UPGRADES"));
+      card.appendChild(host.el("p", "sub", A.formatNumber(save.coins) + " coins"));
+
+      rows.forEach(function (r) {
+        var row = host.el("div", "shopRow");
+        var left = host.el("div");
+        left.appendChild(host.el("h4", null, r.name + "  ·  LV " + save[r.key]));
+        left.appendChild(host.el("p", null, r.desc));
+        row.appendChild(left);
+
+        var maxed = save[r.key] >= r.max;
+        var cost = r.cost(save[r.key]);
+        var buy = host.el("button", "buy");
+        buy.innerHTML = maxed ? "MAX" : A.formatNumber(cost) + "<small>COINS</small>";
+        buy.disabled = maxed || save.coins < cost;
+        buy.addEventListener("click", function () {
+          if (save.coins >= cost) {
+            save.coins -= cost;
+            save[r.key]++;
+            host.commit();
+            A.Audio.sfx("coin");
+            openShop();
+          }
+        });
+        row.appendChild(buy);
+        card.appendChild(row);
+      });
+
+      card.appendChild(host.button("BACK", "ghost", function () { host.modal.hide(); begin(); }));
+      host.modal.show(card);
+    }
+
+    /* ---------------------------------------------------------- layout -- */
+    function computeLayout() {
+      if (!S) return;
+      var vw = A.View.w, vh = A.View.h;
+      var top = Math.max(110, vh * 0.15);
+      var bottom = Math.max(70, vh * 0.10);
+      var cell = Math.min((vw - 28) / S.w, (vh - top - bottom) / S.h);
+
+      layout = {
+        cell: cell,
+        x: (vw - cell * S.w) / 2,
+        y: top + ((vh - top - bottom) - cell * S.h) / 2
+      };
+    }
+
+    /* ----------------------------------------------------------- input -- */
+    function update(dt) {
+      S.t += dt;
+      if (S.heroHurt > 0) S.heroHurt -= dt;
+
+      updatePins(dt);
+
+      // Fluid runs on a fixed sub-step so behaviour does not change with framerate.
+      S.settle += dt;
+      var steps = 0;
+      while (S.settle >= 1 / 60 && steps < 3) {
+        S.settle -= 1 / 60;
+        stepFluid();
+        steps++;
+      }
+
+      checkGoal();
+
+      if (!S.over && S.collected >= S.goldGoal) {
+        var stillFalling = false;
+        for (var i = 0; i < S.cell.length; i++) {
+          if (S.cell[i] === GOLD && S.cell[i + S.w] === EMPTY) { stillFalling = true; break; }
+        }
+        if (!stillFalling) finish(true);
+      }
+
+      if (A.Input.pressed && !S.over) {
+        var gx = Math.floor((A.Input.x - layout.x) / layout.cell);
+        var gy = Math.floor((A.Input.y - layout.y) / layout.cell);
+        for (var id in S.pins) {
+          var pin = S.pins[id];
+          if (pin.pulled > 0) continue;
+          if (gy >= pin.y - 1 && gy <= pin.y + 1 && gx >= pin.min - 1 && gx <= pin.max + 1) {
+            pullPin(pin);
+            break;
+          }
+        }
+        paintHud();
+      }
+    }
+
+    /* ---------------------------------------------------------- render -- */
+    function render(g) {
+      var vw = A.View.w, vh = A.View.h;
+
+      var bg = g.createLinearGradient(0, 0, 0, vh);
+      bg.addColorStop(0, "#2A1836");
+      bg.addColorStop(1, "#140B1E");
+      g.fillStyle = bg;
+      g.fillRect(0, 0, vw, vh);
+
+      A.Fx.applyShake(g);
+
+      var l = layout;
+      A.roundRect(g, l.x - 10, l.y - 10, l.cell * S.w + 20, l.cell * S.h + 20, 16);
+      g.fillStyle = "#1B1030";
+      g.fill();
+      g.strokeStyle = "#4A3568";
+      g.lineWidth = 3;
+      g.stroke();
+
+      // Basin highlight so the goal is never ambiguous.
+      for (var i = 0; i < S.heroCells.length; i++) {
+        var hx = S.heroCells[i] % S.w, hy = (S.heroCells[i] / S.w) | 0;
+        g.fillStyle = "rgba(63,217,138,0.16)";
+        g.fillRect(l.x + hx * l.cell, l.y + hy * l.cell, l.cell + 0.5, l.cell + 0.5);
+      }
+
+      for (var y = 0; y < S.h; y++) {
+        for (var x = 0; x < S.w; x++) {
+          var v = S.cell[y * S.w + x];
+          if (v === EMPTY || v === PIN) continue;
+
+          var px = l.x + x * l.cell, py = l.y + y * l.cell;
+
+          if (v === WALL) {
+            g.fillStyle = "#4B3E70";
+            g.fillRect(px, py, l.cell + 0.5, l.cell + 0.5);
+            g.fillStyle = "rgba(255,255,255,0.07)";
+            g.fillRect(px, py, l.cell + 0.5, l.cell * 0.22);
+            continue;
+          }
+
+          var color = TINT[v];
+          var shimmer = v === LAVA ? Math.sin(S.t * 6 + x * 0.7 + y * 0.4) * 0.12 : 0;
+          g.fillStyle = A.rgb(A.shade(color, shimmer));
+          g.fillRect(px, py, l.cell + 0.5, l.cell + 0.5);
+
+          if (v === GOLD) {
+            g.fillStyle = "rgba(255,255,255,0.35)";
+            g.fillRect(px + l.cell * 0.2, py + l.cell * 0.18, l.cell * 0.3, l.cell * 0.26);
+          }
+        }
+      }
+
+      drawPins(g);
+      drawHero(g);
+
+      A.Fx.drawParticles(g, null);
+      A.Fx.drawTexts(g, null);
+
+      g.restore();
+      A.Fx.drawFlash(g, vw, vh);
+    }
+
+    function drawPins(g) {
+      var l = layout;
+      for (var id in S.pins) {
+        var pin = S.pins[id];
+        if (pin.pulled >= 1) continue;
+
+        var slide = pin.pulled * l.cell * (S.w * 0.6);
+        var x0 = l.x + pin.min * l.cell + slide;
+        var wpx = (pin.max - pin.min + 1) * l.cell;
+        var y = l.y + pin.y * l.cell;
+
+        g.globalAlpha = 1 - pin.pulled * 0.7;
+
+        A.roundRect(g, x0, y + l.cell * 0.12, wpx, l.cell * 0.76, l.cell * 0.38);
+        var grad = g.createLinearGradient(0, y, 0, y + l.cell);
+        grad.addColorStop(0, "#E6E1F5");
+        grad.addColorStop(0.5, "#B9B0D8");
+        grad.addColorStop(1, "#8076A8");
+        g.fillStyle = grad;
+        g.fill();
+        g.strokeStyle = "#2E2547";
+        g.lineWidth = 2;
+        g.stroke();
+
+        // Ring handle on the right, the affordance that says "pull me".
+        g.beginPath();
+        g.arc(x0 + wpx + l.cell * 0.34, y + l.cell * 0.5, l.cell * 0.34, 0, A.TAU);
+        g.lineWidth = Math.max(2, l.cell * 0.16);
+        g.strokeStyle = "#FFC24B";
+        g.stroke();
+
+        g.globalAlpha = 1;
+      }
+    }
+
+    function drawHero(g) {
+      if (!heroStyle || !S.heroCells.length) return;
+      var l = layout;
+
+      var minX = S.w, maxX = 0, maxY = 0;
+      for (var i = 0; i < S.heroCells.length; i++) {
+        var x = S.heroCells[i] % S.w, y = (S.heroCells[i] / S.w) | 0;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+      }
+
+      var cx = l.x + ((minX + maxX + 1) / 2) * l.cell;
+      var cy = l.y + (maxY + 1) * l.cell;
+      var size = l.cell * 2.6;
+
+      var clip = S.over && !S.won ? "die" : (S.over ? "cheer" : (S.heroHurt > 0 ? "hurt" : "idle"));
+      var t = clip === "die" ? A.clamp01(S.t % 1)
+            : clip === "hurt" ? 1 - S.heroHurt
+            : A.wrap(S.t * (clip === "cheer" ? 3 : 0.5), 1);
+
+      var pose = A.Rig.pose(clip, t);
+      A.Rig.draw(g, heroStyle, pose, cx, cy, size, 1, { noShadow: true });
+    }
+
+    /* -------------------------------------------------------------- ui -- */
+    function mount(root) {
+      var hud = host.el("div", "hud");
+
+      var top = host.el("div", "row");
+      ui.level = host.el("div", "chip", "LEVEL 1");
+      ui.goal = host.el("div", "meter");
+      ui.goalFill = host.el("i");
+      ui.goal.appendChild(ui.goalFill);
+      ui.coins = host.el("div", "chip gold", "0");
+      top.appendChild(ui.level);
+      top.appendChild(ui.goal);
+      top.appendChild(ui.coins);
+      hud.appendChild(top);
+
+      ui.cap = host.el("div", "cap", "gold rescued");
+      hud.appendChild(ui.cap);
+
+      ui.hint = host.el("div", "hint", "Tap a pin to pull it");
+      hud.appendChild(ui.hint);
+
+      root.appendChild(hud);
+    }
+
+    function paintHud() {
+      if (!ui.level) return;
+      ui.level.textContent = "LEVEL " + save.level;
+      ui.coins.textContent = A.formatNumber(save.coins);
+      ui.goalFill.style.width = A.clamp01(S.collected / S.goldGoal) * 100 + "%";
+      ui.cap.textContent = S.collected + " / " + S.goldGoal + " gold rescued" +
+        (S.coolant > 0 ? "   ·   " + S.coolant + " coolant" : "");
+      ui.hint.textContent = S.pulls === 0 ? "Tap a pin to pull it" : "";
+    }
+
+    return {
+      mount: mount,
+      start: function () {
+        if (!heroStyle) {
+          heroStyle = A.Rig.style(3300, {
+            hue: host.hue, helmet: "none", cape: false, weapon: "none", bulk: 0.95
+          });
+        }
+        begin();
+      },
+      stop: function () { S = null; },
+      update: function (dt) { if (S && layout) update(dt); },
+      render: function (g) { if (S && layout) render(g); },
+      onResize: computeLayout
+    };
+  }
+
+  /* ------------------------------------------------------ registration -- */
+  A.games.push({
+    id: "pins",
+    name: "Pin Rescue",
+    tagline: "Pull the pins in the right order. Drain the lava, pour the gold, save your hero.",
+    accent: "#FF6B4A",
+    unlock: 1,
+    template: { coins: 0, runs: 0, wins: 0, level: 1, best: 0, upCoolant: 0, upCoin: 0 },
+    bestLine: function (s) {
+      return s.runs ? "Level " + s.level + "  ·  " + s.wins + " rescues" : "New";
+    },
+    thumb: function (g, w, h, t) {
+      g.fillStyle = "#20122E";
+      g.fillRect(0, 0, w, h);
+
+      var pour = (Math.sin(t * 1.6) * 0.5 + 0.5);
+      g.fillStyle = "#FF603A";
+      g.fillRect(w * 0.12, 6, w * 0.28, h * 0.30);
+      g.fillStyle = "#FFC44A";
+      g.fillRect(w * 0.60, 6, w * 0.28, h * 0.30);
+
+      for (var i = 0; i < 7; i++) {
+        var yy = h * 0.36 + i * 4 + pour * 10;
+        if (yy > h * 0.74) continue;
+        g.fillStyle = "#FFC44A";
+        g.fillRect(w * 0.68, yy, 4, 4);
+        g.fillStyle = "#FF603A";
+        g.fillRect(w * 0.22, yy, 4, 4);
+      }
+
+      g.strokeStyle = "#E6E1F5";
+      g.lineWidth = 4;
+      g.beginPath();
+      g.moveTo(w * 0.10, h * 0.36);
+      g.lineTo(w * 0.44 - pour * 8, h * 0.36);
+      g.moveTo(w * 0.58 + pour * 8, h * 0.36);
+      g.lineTo(w * 0.92, h * 0.36);
+      g.stroke();
+
+      g.fillStyle = "#3FD98A";
+      g.fillRect(w * 0.36, h * 0.78, w * 0.28, h * 0.14);
+    },
+    create: create
+  });
+})(window.A);
+
+</script>
+<script>
+/* ---- src/games/helix.js ---- */
+/* ===========================================================================
+   HELIX DROP
+   The Voodoo helix tower. Drag to spin the tower, drop the ball through the
+   gaps, and never land on red. Three platforms cleared without a bounce turns
+   the ball into a smasher that punches straight through everything, which is
+   the entire reason the format is compulsive.
+   =========================================================================== */
+(function (A) {
+  "use strict";
+  A.games = A.games || [];
+
+  var TAU = A.TAU;
+  var SEGMENTS = 12;
+  var SEG = TAU / SEGMENTS;
+
+  var SOLID = 0, GAP = 1, DEADLY = 2;
+
+  var PALETTES = [
+    { top: "#2B1B4D", bot: "#150C29", ring: [124, 92, 255], ring2: [92, 66, 200], ball: [255, 196, 74] },
+    { top: "#0E3346", bot: "#071A26", ring: [64, 200, 190], ring2: [40, 150, 150], ball: [255, 120, 90] },
+    { top: "#3A1430", bot: "#1C0918", ring: [255, 122, 160], ring2: [200, 80, 120], ball: [120, 230, 255] },
+    { top: "#14331F", bot: "#081A10", ring: [104, 214, 120], ring2: [66, 160, 88], ball: [255, 214, 92] }
+  ];
+
+  function create(host) {
+    var save = host.save;
+    var S = null;
+    var ui = {};
+    var heroStyle = null;
+
+    /* ----------------------------------------------------------- level -- */
+    function buildTower(level) {
+      var rand = A.rng(level * 48271 + 7);
+      var count = 12 + Math.min(26, level * 2);
+      var platforms = [];
+
+      for (var i = 0; i < count; i++) {
+        var segs = new Uint8Array(SEGMENTS);
+        var difficulty = A.clamp01(i / count) * A.clamp01(level / 12);
+
+        // Every platform gets one guaranteed run of gaps, so there is always a way through.
+        var gapWidth = Math.max(2, 4 - Math.floor(level / 6));
+        var gapStart = rand.int(0, SEGMENTS - 1);
+        for (var gsi = 0; gsi < gapWidth; gsi++) {
+          segs[(gapStart + gsi) % SEGMENTS] = GAP;
+        }
+
+        var extraGaps = rand.int(0, 2);
+        for (var e = 0; e < extraGaps; e++) segs[rand.int(0, SEGMENTS - 1)] = GAP;
+
+        var deadly = Math.round(A.lerp(1, 5, difficulty)) + (i === 0 ? -1 : 0);
+        for (var d = 0; d < deadly; d++) {
+          var slot = rand.int(0, SEGMENTS - 1);
+          if (segs[slot] === GAP) continue;
+          segs[slot] = DEADLY;
+        }
+
+        platforms.push({ segs: segs, y: i + 1, broken: 0, hit: 0 });
+      }
+
+      return platforms;
+    }
+
+    function begin(keepLevel) {
+      var level = keepLevel ? save.level : save.level;
+      var palette = PALETTES[(level - 1) % PALETTES.length];
+
+      S = {
+        level: level,
+        palette: palette,
+        platforms: buildTower(level),
+        rot: 0,
+        rotVel: 0,
+        ball: { y: 0, vy: 0, squash: 1 },
+        camY: 0,
+        combo: 0,
+        smashing: false,
+        passed: 0,
+        coins: 0,
+        over: false,
+        won: false,
+        t: 0,
+        shield: save.upShield,
+        started: false,
+        heroCheer: 0
+      };
+      A.Fx.reset();
+      paintHud();
+    }
+
+    /* -------------------------------------------------------- mechanics -- */
+    /** Which segment is currently facing the player, at the bottom of the ellipse. */
+    function frontSegment() {
+      return Math.floor(A.wrap(Math.PI / 2 - S.rot, TAU) / SEG) % SEGMENTS;
+    }
+
+    function update(dt) {
+      S.t += dt;
+      if (S.heroCheer > 0) S.heroCheer -= dt;
+      if (S.over) return;
+
+      if (!S.started) {
+        if (A.Input.pressed || A.Input.tapped) {
+          S.started = true;
+          save.runs++;
+          host.commit();
+          if (ui.hint) ui.hint.textContent = "";
+        }
+      }
+
+      // Spin: drag anywhere, or arrow keys.
+      if (A.Input.down) S.rotVel -= (A.Input.dx / A.View.w) * 9;
+      if (A.Input.axis) S.rotVel -= A.Input.axis * 3.4 * dt;
+      S.rot += S.rotVel * dt;
+      S.rotVel *= Math.pow(0.0008, dt);
+
+      if (!S.started) return;
+
+      var previous = S.ball.y;
+      S.ball.vy += 34 * dt;
+      S.ball.y += S.ball.vy * dt;
+      S.ball.squash = A.approach(S.ball.squash, 1, 12, dt);
+
+      for (var i = 0; i < S.platforms.length; i++) {
+        var platform = S.platforms[i];
+        if (platform.broken > 0) continue;
+        if (!(previous < platform.y && S.ball.y >= platform.y)) continue;
+
+        var kind = platform.segs[frontSegment()];
+
+        if (kind === GAP) {
+          S.combo++;
+          S.passed++;
+          S.coins += 1;
+          if (S.combo >= 3 && !S.smashing) {
+            S.smashing = true;
+            host.toast("SMASH");
+            A.Audio.sfx("levelup");
+            A.Fx.flashScreen(0.35, [255, 196, 74]);
+          }
+          A.Audio.sfx("select");
+          continue;
+        }
+
+        if (S.smashing) {
+          platform.broken = 0.001;
+          S.passed++;
+          S.coins += 2;
+          A.Fx.kick(0.3);
+          A.Audio.sfx("hit");
+          A.vibrate(16);
+          burstRing(platform, S.palette.ring);
+          continue;
+        }
+
+        if (kind === DEADLY) {
+          if (S.shield > 0) {
+            S.shield--;
+            platform.broken = 0.001;
+            host.toast("SHIELD USED");
+            A.Fx.flashScreen(0.4, [120, 220, 255]);
+            burstRing(platform, [120, 220, 255]);
+            paintHud();
+            continue;
+          }
+          S.ball.y = platform.y;
+          finish(false);
+          return;
+        }
+
+        // Solid: bounce, lose the streak.
+        S.ball.y = platform.y - 0.001;
+        S.ball.vy = -11;
+        S.ball.squash = 0.62;
+        S.combo = 0;
+        S.smashing = false;
+        platform.hit = 0.22;
+        A.Fx.kick(0.14);
+        A.Audio.sfx("jump");
+        break;
+      }
+
+      for (var b = 0; b < S.platforms.length; b++) {
+        if (S.platforms[b].broken > 0) S.platforms[b].broken += dt * 2.4;
+        if (S.platforms[b].hit > 0) S.platforms[b].hit -= dt;
+      }
+
+      if (S.ball.y > S.platforms.length + 0.6) { finish(true); return; }
+
+      S.camY = A.approach(S.camY, S.ball.y, 9, dt);
+      paintHud();
+    }
+
+    function burstRing(platform, color) {
+      var geo = geometry();
+      var y = geo.screenY(platform.y);
+      A.Fx.burst(A.View.w / 2, y, 0, 16, {
+        color: color, speed: 260, up: 60, gravity: 500, life: 0.6,
+        size: 5, screen: true, bounce: false, square: true
+      });
+    }
+
+    /* ---------------------------------------------------------- finish -- */
+    function finish(won) {
+      if (S.over) return;
+      S.over = true;
+      S.won = won;
+      S.heroCheer = won ? 2 : 0;
+
+      var coins = Math.round((S.coins + (won ? 25 + S.level * 5 : 0)) *
+        host.coinMultiplier() * (1 + save.upCoin * 0.15));
+      save.coins += coins;
+      save.bestDepth = Math.max(save.bestDepth, S.passed);
+      if (won) { save.level++; save.wins++; }
+      host.commit();
+
+      var xp = Math.round((S.passed * 2 + (won ? 20 : 4)) * host.xpMultiplier());
+      host.addXp(xp);
+      host.progress("run", 1);
+      host.progress("coins", coins);
+
+      if (won) {
+        A.Audio.sfx("win");
+        A.Fx.flashScreen(0.45, [255, 214, 92]);
+        A.Fx.kick(0.5);
+        A.vibrate([20, 40, 30]);
+      } else {
+        A.Audio.sfx("lose");
+        A.Fx.flashScreen(0.55, [255, 80, 80]);
+        A.Fx.kick(0.7);
+        A.vibrate(120);
+      }
+
+      setTimeout(function () {
+        host.results({
+          win: won,
+          title: won ? "TOWER CLEARED" : "SPLAT",
+          subtitle: won ? "Level " + (save.level - 1) + " done" : "Landed on red",
+          stats: [
+            ["Level", String(S.level)],
+            ["Platforms", String(S.passed)],
+            ["Best depth", String(save.bestDepth)],
+            ["Coins", "+" + A.formatNumber(coins)]
+          ],
+          buttons: [
+            { label: won ? "NEXT TOWER" : "TRY AGAIN", className: "go",
+              onClick: function () { host.modal.hide(); begin(); } },
+            { label: "UPGRADES", className: "gold", onClick: openShop },
+            { label: "MENU", className: "ghost", onClick: host.exit }
+          ]
+        });
+      }, 620);
+    }
+
+    function openShop() {
+      var rows = [
+        { key: "upShield", name: "Bumper", desc: "Survive one red platform per tower", max: 3,
+          cost: function (l) { return Math.round(350 * Math.pow(1.7, l)); } },
+        { key: "upCoin", name: "Jackpot", desc: "+15% coins", max: 10,
+          cost: function (l) { return Math.round(200 * Math.pow(1.35, l)); } }
+      ];
+
+      var card = host.el("div", "card");
+      card.appendChild(host.el("h2", null, "UPGRADES"));
+      card.appendChild(host.el("p", "sub", A.formatNumber(save.coins) + " coins"));
+
+      rows.forEach(function (r) {
+        var row = host.el("div", "shopRow");
+        var left = host.el("div");
+        left.appendChild(host.el("h4", null, r.name + "  ·  LV " + save[r.key]));
+        left.appendChild(host.el("p", null, r.desc));
+        row.appendChild(left);
+
+        var maxed = save[r.key] >= r.max;
+        var cost = r.cost(save[r.key]);
+        var buy = host.el("button", "buy");
+        buy.innerHTML = maxed ? "MAX" : A.formatNumber(cost) + "<small>COINS</small>";
+        buy.disabled = maxed || save.coins < cost;
+        buy.addEventListener("click", function () {
+          if (save.coins >= cost) {
+            save.coins -= cost;
+            save[r.key]++;
+            host.commit();
+            A.Audio.sfx("coin");
+            openShop();
+          }
+        });
+        row.appendChild(buy);
+        card.appendChild(row);
+      });
+
+      card.appendChild(host.button("BACK", "ghost", function () { host.modal.hide(); begin(); }));
+      host.modal.show(card);
+    }
+
+    /* ---------------------------------------------------------- render -- */
+    function geometry() {
+      var w = A.View.w, h = A.View.h;
+      var radius = Math.min(w * 0.40, h * 0.22);
+      var spacing = Math.max(52, h * 0.115);
+      var ballY = h * 0.34;
+
+      return {
+        cx: w / 2,
+        radius: radius,
+        inner: radius * 0.30,
+        squash: 0.34,
+        spacing: spacing,
+        thickness: Math.max(9, spacing * 0.20),
+        screenY: function (y) { return ballY + (y - S.camY) * spacing; }
+      };
+    }
+
+    function render(g) {
+      var w = A.View.w, h = A.View.h;
+      var geo = geometry();
+
+      var bg = g.createLinearGradient(0, 0, 0, h);
+      bg.addColorStop(0, S.palette.top);
+      bg.addColorStop(1, S.palette.bot);
+      g.fillStyle = bg;
+      g.fillRect(0, 0, w, h);
+
+      A.Fx.applyShake(g);
+
+      drawPillar(g, geo);
+
+      for (var i = 0; i < S.platforms.length; i++) {
+        var platform = S.platforms[i];
+        var y = geo.screenY(platform.y);
+        if (y < -80 || y > h + 80) continue;
+        drawPlatform(g, geo, platform, y);
+      }
+
+      drawGoal(g, geo);
+      drawBall(g, geo);
+
+      A.Fx.drawParticles(g, null);
+      A.Fx.drawTexts(g, null);
+
+      g.restore();
+      A.Fx.drawFlash(g, w, h);
+    }
+
+    function drawPillar(g, geo) {
+      var h = A.View.h;
+      var grad = g.createLinearGradient(geo.cx - geo.inner, 0, geo.cx + geo.inner, 0);
+      grad.addColorStop(0, "rgba(0,0,0,0.55)");
+      grad.addColorStop(0.45, "rgba(255,255,255,0.10)");
+      grad.addColorStop(1, "rgba(0,0,0,0.55)");
+      g.fillStyle = "#1A1230";
+      g.fillRect(geo.cx - geo.inner, 0, geo.inner * 2, h);
+      g.fillStyle = grad;
+      g.fillRect(geo.cx - geo.inner, 0, geo.inner * 2, h);
+    }
+
+    function ringBand(g, geo, y, a0, a1, outer, inner) {
+      g.beginPath();
+      g.ellipse(geo.cx, y, outer, outer * geo.squash, 0, a0, a1);
+      g.ellipse(geo.cx, y, inner, inner * geo.squash, 0, a1, a0, true);
+      g.closePath();
+    }
+
+    function drawPlatform(g, geo, platform, y) {
+      var broken = platform.broken;
+      var lift = broken > 0 ? broken * 26 : 0;
+      var alpha = broken > 0 ? Math.max(0, 1 - broken) : 1;
+      if (alpha <= 0) return;
+
+      var hitDrop = platform.hit > 0 ? Math.sin(A.clamp01(platform.hit / 0.22) * Math.PI) * 4 : 0;
+      var top = y + hitDrop - lift;
+
+      g.globalAlpha = alpha;
+
+      for (var pass = 0; pass < 2; pass++) {
+        var yy = pass === 0 ? top + geo.thickness : top;
+
+        for (var i = 0; i < SEGMENTS; i++) {
+          var kind = platform.segs[i];
+          if (kind === GAP) continue;
+
+          var a0 = i * SEG + S.rot;
+          var a1 = a0 + SEG;
+
+          ringBand(g, geo, yy, a0 + 0.008, a1 - 0.008, geo.radius, geo.inner);
+
+          var base = kind === DEADLY ? [235, 62, 74] : S.palette.ring;
+          g.fillStyle = pass === 0
+            ? A.rgb(A.shade(base, -0.45))
+            : A.rgb(kind === DEADLY ? base : A.shade(base, (i % 2) * 0.12 - 0.02));
+          g.fill();
+        }
+      }
+
+      g.globalAlpha = 1;
+    }
+
+    function drawGoal(g, geo) {
+      var y = geo.screenY(S.platforms.length + 1);
+      if (y < -60 || y > A.View.h + 120) return;
+
+      g.beginPath();
+      g.ellipse(geo.cx, y, geo.radius * 1.05, geo.radius * 1.05 * geo.squash, 0, 0, TAU);
+      g.fillStyle = "rgba(63,217,138,0.30)";
+      g.fill();
+      g.strokeStyle = "#3FD98A";
+      g.lineWidth = 4;
+      g.stroke();
+
+      if (heroStyle) {
+        var cheering = S.heroCheer > 0;
+        var pose = A.Rig.pose(cheering ? "cheer" : "idle", A.wrap(S.t * (cheering ? 3 : 0.5), 1));
+        A.Rig.draw(g, heroStyle, pose, geo.cx, y + 6, Math.min(70, geo.radius * 0.7), 1, { noShadow: true });
+      }
+    }
+
+    function drawBall(g, geo) {
+      var y = geo.screenY(S.ball.y);
+      var r = Math.max(11, geo.radius * 0.17);
+      var sx = r / S.ball.squash, sy = r * S.ball.squash;
+
+      if (S.smashing) {
+        g.globalAlpha = 0.4;
+        g.fillStyle = "#FFC24B";
+        g.beginPath();
+        g.ellipse(geo.cx, y, sx * 1.7, sy * 1.7, 0, 0, TAU);
+        g.fill();
+        g.globalAlpha = 1;
+      }
+
+      var grad = g.createRadialGradient(geo.cx - sx * 0.35, y - sy * 0.4, r * 0.15, geo.cx, y, r * 1.2);
+      var ball = S.smashing ? [255, 236, 150] : S.palette.ball;
+      grad.addColorStop(0, A.rgb(A.shade(ball, 0.5)));
+      grad.addColorStop(0.6, A.rgb(ball));
+      grad.addColorStop(1, A.rgb(A.shade(ball, -0.4)));
+
+      g.fillStyle = grad;
+      g.beginPath();
+      g.ellipse(geo.cx, y, sx, sy, 0, 0, TAU);
+      g.fill();
+      g.strokeStyle = "rgba(20,14,34,0.6)";
+      g.lineWidth = 2.5;
+      g.stroke();
+    }
+
+    /* -------------------------------------------------------------- ui -- */
+    function mount(root) {
+      var hud = host.el("div", "hud");
+
+      var top = host.el("div", "row");
+      ui.level = host.el("div", "chip", "TOWER 1");
+      ui.depth = host.el("div", "meter");
+      ui.depthFill = host.el("i");
+      ui.depth.appendChild(ui.depthFill);
+      ui.coins = host.el("div", "chip gold", "0");
+      top.appendChild(ui.level);
+      top.appendChild(ui.depth);
+      top.appendChild(ui.coins);
+      hud.appendChild(top);
+
+      ui.combo = host.el("div", "bigNum", "");
+      hud.appendChild(ui.combo);
+
+      ui.hint = host.el("div", "hint", "Drag to spin  ·  find the gaps");
+      hud.appendChild(ui.hint);
+
+      root.appendChild(hud);
+    }
+
+    function paintHud() {
+      if (!ui.level) return;
+      ui.level.textContent = "TOWER " + S.level;
+      ui.coins.textContent = A.formatNumber(S.coins);
+      ui.depthFill.style.width = A.clamp01(S.ball.y / (S.platforms.length + 1)) * 100 + "%";
+      ui.combo.textContent = S.smashing ? "SMASH" : (S.combo > 1 ? "x" + S.combo : "");
+      ui.combo.style.color = S.smashing ? "#FFC24B" : "#fff";
+      ui.combo.style.fontSize = S.smashing ? "44px" : "";
+    }
+
+    return {
+      mount: mount,
+      start: function () {
+        if (!heroStyle) {
+          heroStyle = A.Rig.style(8800, {
+            hue: host.hue, helmet: "crest", cape: true, weapon: "none"
+          });
+        }
+        begin();
+      },
+      stop: function () { S = null; },
+      update: function (dt) { if (S) update(dt); },
+      render: function (g) { if (S) render(g); },
+      onResize: function () {}
+    };
+  }
+
+  /* ------------------------------------------------------ registration -- */
+  A.games.push({
+    id: "helix",
+    name: "Helix Drop",
+    tagline: "Spin the tower, drop through the gaps, never touch red. Three in a row and you smash.",
+    accent: "#7C5CFF",
+    unlock: 2,
+    template: { coins: 0, runs: 0, wins: 0, level: 1, bestDepth: 0, upShield: 0, upCoin: 0 },
+    bestLine: function (s) {
+      return s.runs ? "Tower " + s.level + "  ·  best depth " + s.bestDepth : "New";
+    },
+    thumb: function (g, w, h, t) {
+      var bg = g.createLinearGradient(0, 0, 0, h);
+      bg.addColorStop(0, "#2B1B4D");
+      bg.addColorStop(1, "#150C29");
+      g.fillStyle = bg;
+      g.fillRect(0, 0, w, h);
+
+      var cx = w / 2, radius = w * 0.36, inner = radius * 0.3, squash = 0.34;
+      g.fillStyle = "#1A1230";
+      g.fillRect(cx - inner, 0, inner * 2, h);
+
+      for (var p = 0; p < 3; p++) {
+        var y = h * (0.32 + p * 0.24) + Math.sin(t * 1.4 + p) * 2;
+        for (var i = 0; i < 12; i++) {
+          if ((i + p * 4 + Math.floor(t)) % 5 === 0) continue;
+          var a0 = i * (A.TAU / 12) + t * 0.6;
+          g.beginPath();
+          g.ellipse(cx, y, radius, radius * squash, 0, a0 + 0.02, a0 + A.TAU / 12 - 0.02);
+          g.ellipse(cx, y, inner, inner * squash, 0, a0 + A.TAU / 12 - 0.02, a0 + 0.02, true);
+          g.closePath();
+          g.fillStyle = (i + p) % 7 === 0 ? "#EB3E4A" : "#7C5CFF";
+          g.fill();
+        }
+      }
+
+      g.fillStyle = "#FFC44A";
+      g.beginPath();
+      g.arc(cx, h * 0.2 + Math.abs(Math.sin(t * 3)) * 8, w * 0.07, 0, A.TAU);
+      g.fill();
+    },
+    create: create
+  });
+})(window.A);
+
+</script>
+<script>
+/* ---- src/games/splat.js ---- */
+/* ===========================================================================
+   ROLLER SPLAT
+   Voodoo's paint-the-maze puzzle. Swipe a direction, the ball rolls until it
+   hits a wall, painting everything it crosses. Cover every tile to clear.
+   One rule, no timer, and a satisfying "oh, THAT order" moment per level.
+   =========================================================================== */
+(function (A) {
+  "use strict";
+  A.games = A.games || [];
+
+  /* '#' wall, '.' floor, 'o' ball start. Hand built so each has one tidy solution. */
+  var LEVELS = [
+    ["#######",
+     "#o....#",
+     "#.###.#",
+     "#.....#",
+     "#.###.#",
+     "#.....#",
+     "#######"],
+
+    ["#########",
+     "#o......#",
+     "#.#####.#",
+     "#.#...#.#",
+     "#.#.#.#.#",
+     "#...#...#",
+     "#########"],
+
+    ["#########",
+     "#.......#",
+     "#.#####.#",
+     "#o#...#.#",
+     "#.#.#.#.#",
+     "#...#...#",
+     "#.#####.#",
+     "#.......#",
+     "#########"],
+
+    ["##########",
+     "#o.......#",
+     "#.##..##.#",
+     "#.#....#.#",
+     "#....##..#",
+     "#.##....##",
+     "#....##..#",
+     "#.######.#",
+     "#........#",
+     "##########"],
+
+    ["###########",
+     "#o........#",
+     "#.###.###.#",
+     "#...#...#.#",
+     "###.###.#.#",
+     "#.......#.#",
+     "#.#####.#.#",
+     "#.#...#...#",
+     "#.#.#.#####",
+     "#...#.....#",
+     "###########"],
+
+    ["###########",
+     "#....#....#",
+     "#.##.#.##.#",
+     "#.#o....#.#",
+     "#.#.###.#.#",
+     "#...#.#...#",
+     "###.#.#.###",
+     "#.....#...#",
+     "#.#######.#",
+     "#.........#",
+     "###########"],
+
+    ["############",
+     "#o.........#",
+     "#.####.###.#",
+     "#.#......#.#",
+     "#.#.####.#.#",
+     "#.#.#..#.#.#",
+     "#.#.#..#.#.#",
+     "#.#.####.#.#",
+     "#.#......#.#",
+     "#.########.#",
+     "#..........#",
+     "############"],
+
+    ["############",
+     "#....##....#",
+     "#.##.##.##.#",
+     "#.#......#.#",
+     "#.#.####.#.#",
+     "#o..#..#...#",
+     "####.#.#.###",
+     "#....#.#...#",
+     "#.####.####.",
+     "#..........#",
+     "############"]
+  ];
+
+  function create(host) {
+    var save = host.save;
+    var S = null;
+    var layout = null;
+    var ui = {};
+
+    var WALL = 1, FLOOR = 0;
+
+    function begin() {
+      var spec = LEVELS[(save.level - 1) % LEVELS.length];
+      var h = spec.length, w = spec[0].length;
+
+      S = {
+        w: w, h: h,
+        cell: new Uint8Array(w * h),
+        painted: new Uint8Array(w * h),
+        pop: new Float32Array(w * h),
+        total: 0,
+        done: 0,
+        ball: { x: 0, y: 0, sx: 0, sy: 0 },
+        moving: null,
+        moves: 0,
+        over: false,
+        t: 0,
+        trail: [],
+        hue: A.wrap((save.level * 0.13), 1)
+      };
+
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          var ch = spec[y][x] || "#";
+          var i = y * w + x;
+          if (ch === "#") { S.cell[i] = WALL; continue; }
+          S.cell[i] = FLOOR;
+          S.total++;
+          if (ch === "o") { S.ball.x = x; S.ball.y = y; }
+        }
+      }
+
+      S.ball.sx = S.ball.x;
+      S.ball.sy = S.ball.y;
+      paint(S.ball.x, S.ball.y);
+
+      A.Fx.reset();
+      computeLayout();
+      paintHud();
+    }
+
+    function paint(x, y) {
+      var i = y * S.w + x;
+      if (S.cell[i] === WALL || S.painted[i]) return;
+      S.painted[i] = 1;
+      S.pop[i] = 0.26;
+      S.done++;
+    }
+
+    function computeLayout() {
+      if (!S) return;
+      var vw = A.View.w, vh = A.View.h;
+      var top = Math.max(112, vh * 0.16);
+      var bottom = Math.max(80, vh * 0.12);
+      var cell = Math.min((vw - 34) / S.w, (vh - top - bottom) / S.h);
+
+      layout = {
+        cell: cell,
+        x: (vw - cell * S.w) / 2,
+        y: top + ((vh - top - bottom) - cell * S.h) / 2
+      };
+    }
+
+    /* ---------------------------------------------------------- rolling -- */
+    function tryRoll(dx, dy) {
+      if (S.moving || S.over) return;
+
+      var x = S.ball.x, y = S.ball.y;
+      var path = [];
+      while (true) {
+        var nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= S.w || ny >= S.h) break;
+        if (S.cell[ny * S.w + nx] === WALL) break;
+        x = nx; y = ny;
+        path.push([x, y]);
+      }
+
+      if (!path.length) { A.Audio.sfx("bad"); return; }
+
+      S.moving = { path: path, index: 0, timer: 0, step: 0.035 };
+      S.moves++;
+      A.Audio.sfx("select");
+      A.vibrate(10);
+    }
+
+    function update(dt) {
+      S.t += dt;
+
+      for (var i = 0; i < S.pop.length; i++) {
+        if (S.pop[i] > 0) S.pop[i] = Math.max(0, S.pop[i] - dt);
+      }
+
+      if (S.moving) {
+        var m = S.moving;
+        m.timer += dt;
+        while (m.timer >= m.step && m.index < m.path.length) {
+          m.timer -= m.step;
+          var cellPos = m.path[m.index++];
+          S.ball.x = cellPos[0];
+          S.ball.y = cellPos[1];
+          paint(S.ball.x, S.ball.y);
+
+          if (layout) {
+            S.trail.push({ x: S.ball.x, y: S.ball.y, t: 0 });
+          }
+        }
+
+        S.ball.sx = A.approach(S.ball.sx, S.ball.x, 26, dt);
+        S.ball.sy = A.approach(S.ball.sy, S.ball.y, 26, dt);
+
+        if (m.index >= m.path.length &&
+            Math.abs(S.ball.sx - S.ball.x) < 0.03 && Math.abs(S.ball.sy - S.ball.y) < 0.03) {
+          S.moving = null;
+          A.Fx.kick(0.12);
+          A.Audio.sfx("hit");
+          if (S.done >= S.total) finish();
+        }
+      } else {
+        S.ball.sx = A.approach(S.ball.sx, S.ball.x, 26, dt);
+        S.ball.sy = A.approach(S.ball.sy, S.ball.y, 26, dt);
+      }
+
+      for (var t = S.trail.length - 1; t >= 0; t--) {
+        S.trail[t].t += dt;
+        if (S.trail[t].t > 0.5) S.trail.splice(t, 1);
+      }
+
+      var swipe = A.Input.consumeSwipe();
+      if (swipe === "left") tryRoll(-1, 0);
+      else if (swipe === "right") tryRoll(1, 0);
+      else if (swipe === "up") tryRoll(0, -1);
+      else if (swipe === "down") tryRoll(0, 1);
+
+      paintHud();
+    }
+
+    function finish() {
+      if (S.over) return;
+      S.over = true;
+
+      var par = Math.max(4, Math.round(S.total / 7));
+      var stars = S.moves <= par ? 3 : (S.moves <= par * 1.5 ? 2 : 1);
+      var coins = Math.round((25 + save.level * 6 + stars * 15) *
+        host.coinMultiplier() * (1 + save.upCoin * 0.15));
+
+      save.coins += coins;
+      save.runs++;
+      save.level++;
+      save.stars += stars;
+      host.commit();
+
+      var xp = Math.round((16 + save.level * 2) * host.xpMultiplier());
+      host.addXp(xp);
+      host.progress("run", 1);
+      host.progress("coins", coins);
+
+      A.Audio.sfx("win");
+      A.Fx.flashScreen(0.4, [120, 230, 255]);
+      A.Fx.kick(0.4);
+      A.vibrate([18, 36, 24]);
+
+      setTimeout(function () {
+        host.results({
+          win: true,
+          title: "ALL PAINTED",
+          subtitle: "★".repeat(stars) + "☆".repeat(3 - stars),
+          stats: [
+            ["Level", String(save.level - 1)],
+            ["Moves", S.moves + " / " + par],
+            ["Stars", String(save.stars)],
+            ["Coins", "+" + A.formatNumber(coins)]
+          ],
+          buttons: [
+            { label: "NEXT LEVEL", className: "go", onClick: function () { host.modal.hide(); begin(); } },
+            { label: "UPGRADES", className: "gold", onClick: openShop },
+            { label: "MENU", className: "ghost", onClick: host.exit }
+          ]
+        });
+      }, 520);
+    }
+
+    function openShop() {
+      var card = host.el("div", "card");
+      card.appendChild(host.el("h2", null, "UPGRADES"));
+      card.appendChild(host.el("p", "sub", A.formatNumber(save.coins) + " coins"));
+
+      var rows = [
+        { key: "upCoin", name: "Pigment", desc: "+15% coins per level", max: 10,
+          cost: function (l) { return Math.round(160 * Math.pow(1.35, l)); } },
+        { key: "upSkip", name: "Skip Token", desc: "Jump a level you are stuck on", max: 5,
+          cost: function (l) { return Math.round(500 * Math.pow(1.4, l)); } }
+      ];
+
+      rows.forEach(function (r) {
+        var row = host.el("div", "shopRow");
+        var left = host.el("div");
+        left.appendChild(host.el("h4", null, r.name + "  ·  LV " + save[r.key]));
+        left.appendChild(host.el("p", null, r.desc));
+        row.appendChild(left);
+
+        var maxed = save[r.key] >= r.max;
+        var cost = r.cost(save[r.key]);
+        var buy = host.el("button", "buy");
+        buy.innerHTML = maxed ? "MAX" : A.formatNumber(cost) + "<small>COINS</small>";
+        buy.disabled = maxed || save.coins < cost;
+        buy.addEventListener("click", function () {
+          if (save.coins >= cost) {
+            save.coins -= cost;
+            save[r.key]++;
+            host.commit();
+            A.Audio.sfx("coin");
+            openShop();
+          }
+        });
+        row.appendChild(buy);
+        card.appendChild(row);
+      });
+
+      if (save.upSkip > 0) {
+        card.appendChild(host.button("SKIP THIS LEVEL", "gold", function () {
+          save.upSkip--;
+          save.level++;
+          host.commit();
+          host.modal.hide();
+          begin();
+        }, save.upSkip + " tokens"));
+      }
+
+      card.appendChild(host.button("BACK", "ghost", function () { host.modal.hide(); begin(); }));
+      host.modal.show(card);
+    }
+
+    /* ---------------------------------------------------------- render -- */
+    function render(g) {
+      var vw = A.View.w, vh = A.View.h;
+      var l = layout;
+
+      var paintColor = A.hsl(S.hue, 0.72, 0.58);
+      var bg = g.createLinearGradient(0, 0, 0, vh);
+      bg.addColorStop(0, "#15102C");
+      bg.addColorStop(1, "#0B0818");
+      g.fillStyle = bg;
+      g.fillRect(0, 0, vw, vh);
+
+      A.Fx.applyShake(g);
+
+      A.roundRect(g, l.x - 12, l.y - 12, l.cell * S.w + 24, l.cell * S.h + 24, 20);
+      g.fillStyle = "#1D1638";
+      g.fill();
+      g.strokeStyle = "#332A5C";
+      g.lineWidth = 3;
+      g.stroke();
+
+      for (var y = 0; y < S.h; y++) {
+        for (var x = 0; x < S.w; x++) {
+          var i = y * S.w + x;
+          var px = l.x + x * l.cell, py = l.y + y * l.cell;
+
+          if (S.cell[i] === WALL) {
+            A.roundRect(g, px + 1, py + 1, l.cell - 2, l.cell - 2, l.cell * 0.16);
+            g.fillStyle = "#2C2450";
+            g.fill();
+            continue;
+          }
+
+          A.roundRect(g, px + 2, py + 2, l.cell - 4, l.cell - 4, l.cell * 0.18);
+          g.fillStyle = "rgba(255,255,255,0.05)";
+          g.fill();
+
+          if (!S.painted[i]) continue;
+
+          var grow = S.pop[i] > 0 ? 1 + Math.sin(A.clamp01(S.pop[i] / 0.26) * Math.PI) * 0.25 : 1;
+          var size = (l.cell - 3) * grow;
+          var off = (l.cell - size) / 2;
+          A.roundRect(g, px + off, py + off, size, size, size * 0.22);
+          g.fillStyle = A.rgb(paintColor);
+          g.fill();
+        }
+      }
+
+      // Ball
+      var bx = l.x + (S.ball.sx + 0.5) * l.cell;
+      var by = l.y + (S.ball.sy + 0.5) * l.cell;
+      var r = l.cell * 0.34;
+
+      g.fillStyle = "rgba(0,0,0,0.35)";
+      g.beginPath();
+      g.ellipse(bx, by + r * 0.55, r * 0.9, r * 0.35, 0, 0, A.TAU);
+      g.fill();
+
+      var grad = g.createRadialGradient(bx - r * 0.35, by - r * 0.4, r * 0.1, bx, by, r * 1.2);
+      grad.addColorStop(0, A.rgb(A.shade(paintColor, 0.55)));
+      grad.addColorStop(0.6, A.rgb(paintColor));
+      grad.addColorStop(1, A.rgb(A.shade(paintColor, -0.4)));
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(bx, by, r, 0, A.TAU);
+      g.fill();
+      g.strokeStyle = "rgba(15,11,28,0.65)";
+      g.lineWidth = 2.5;
+      g.stroke();
+
+      A.Fx.drawParticles(g, null);
+      A.Fx.drawTexts(g, null);
+
+      g.restore();
+      A.Fx.drawFlash(g, vw, vh);
+    }
+
+    /* -------------------------------------------------------------- ui -- */
+    function mount(root) {
+      var hud = host.el("div", "hud");
+
+      var top = host.el("div", "row");
+      ui.level = host.el("div", "chip", "LEVEL 1");
+      ui.meter = host.el("div", "meter");
+      ui.fill = host.el("i");
+      ui.meter.appendChild(ui.fill);
+      ui.coins = host.el("div", "chip gold", "0");
+      top.appendChild(ui.level);
+      top.appendChild(ui.meter);
+      top.appendChild(ui.coins);
+      hud.appendChild(top);
+
+      ui.cap = host.el("div", "cap", "");
+      hud.appendChild(ui.cap);
+
+      ui.hint = host.el("div", "hint", "Swipe to roll  ·  paint every tile");
+      hud.appendChild(ui.hint);
+
+      root.appendChild(hud);
+    }
+
+    function paintHud() {
+      if (!ui.level) return;
+      ui.level.textContent = "LEVEL " + save.level;
+      ui.coins.textContent = A.formatNumber(save.coins);
+      ui.fill.style.width = A.clamp01(S.done / S.total) * 100 + "%";
+      ui.cap.textContent = S.done + " / " + S.total + " painted   ·   " + S.moves + " moves";
+      if (S.moves > 0) ui.hint.textContent = "";
+    }
+
+    return {
+      mount: mount,
+      start: begin,
+      stop: function () { S = null; },
+      update: function (dt) { if (S && layout) update(dt); },
+      render: function (g) { if (S && layout) render(g); },
+      onResize: computeLayout
+    };
+  }
+
+  A.games.push({
+    id: "splat",
+    name: "Roller Splat",
+    tagline: "Swipe the ball, it rolls until it hits a wall. Paint every tile in the maze.",
+    accent: "#5DE0FF",
+    unlock: 1,
+    template: { coins: 0, runs: 0, level: 1, stars: 0, upCoin: 0, upSkip: 0 },
+    bestLine: function (s) { return s.runs ? "Level " + s.level + "  ·  " + s.stars + " stars" : "New"; },
+    thumb: function (g, w, h, t) {
+      g.fillStyle = "#15102C";
+      g.fillRect(0, 0, w, h);
+
+      var n = 6, cell = Math.min(w, h) / n;
+      var ox = (w - cell * n) / 2, oy = (h - cell * n) / 2;
+      var progress = A.wrap(t * 0.35, 1);
+
+      for (var y = 0; y < n; y++) {
+        for (var x = 0; x < n; x++) {
+          var wall = (x === 2 && y > 0 && y < 4) || (x === 4 && y < 3);
+          A.roundRect(g, ox + x * cell + 1, oy + y * cell + 1, cell - 2, cell - 2, 3);
+          if (wall) { g.fillStyle = "#2C2450"; g.fill(); continue; }
+          var order = (y * n + x) / (n * n);
+          g.fillStyle = order < progress ? "#5DE0FF" : "rgba(255,255,255,0.06)";
+          g.fill();
+        }
+      }
+
+      var bi = Math.floor(progress * n * n);
+      g.fillStyle = "#BFF3FF";
+      g.beginPath();
+      g.arc(ox + ((bi % n) + 0.5) * cell, oy + (Math.floor(bi / n) + 0.5) * cell, cell * 0.34, 0, A.TAU);
+      g.fill();
+    },
+    create: create
+  });
+})(window.A);
+
+</script>
+<script>
+/* ---- src/games/paperio.js ---- */
+/* ===========================================================================
+   PAPER TERRITORY
+   Voodoo's paper.io. Drive out of your own colour, loop back, and everything
+   you enclosed becomes yours. Get clipped on your own trail, or anyone else's,
+   and you lose the lot. Three rivals do the same thing to you.
+   =========================================================================== */
+(function (A) {
+  "use strict";
+  A.games = A.games || [];
+
+  var W = 56, H = 56;
+  var TAU = A.TAU;
+
+  var COLORS = [
+    [90, 170, 255],   // player
+    [255, 110, 110],
+    [110, 220, 150],
+    [255, 190, 80]
+  ];
+
+  var DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+
+  function create(host) {
+    var save = host.save;
+    var S = null;
+    var ui = {};
+
+    function idx(x, y) { return y * W + x; }
+    function inside(x, y) { return x >= 0 && y >= 0 && x < W && y < H; }
+
+    /* ----------------------------------------------------------- setup -- */
+    function begin() {
+      S = {
+        owner: new Uint8Array(W * H),      // 0 = neutral, else player index + 1
+        trail: new Uint8Array(W * H),      // same encoding, marks live trails
+        players: [],
+        t: 0,
+        over: false,
+        won: false,
+        coins: 0,
+        peak: 0,
+        kills: 0,
+        goal: 0.32 + Math.min(0.2, save.level * 0.012),
+        level: save.level,
+        shield: save.upShield
+      };
+
+      var spots = [[12, 12], [W - 13, 12], [12, H - 13], [W - 13, H - 13]];
+      A.rng(save.runs * 131 + 5).shuffle(spots);
+
+      for (var p = 0; p < 4; p++) {
+        var spot = spots[p];
+        var player = {
+          index: p,
+          x: spot[0], y: spot[1],
+          fx: spot[0], fy: spot[1],
+          dir: p % 4,
+          nextDir: p % 4,
+          alive: true,
+          out: 0,
+          trailCells: [],
+          ai: p > 0,
+          plan: 0,
+          share: 0,
+          speed: p === 0 ? 7.2 + save.upSpeed * 0.35 : 6.6 + Math.random() * 0.6
+        };
+        S.players.push(player);
+
+        for (var dy = -3; dy <= 3; dy++) {
+          for (var dx = -3; dx <= 3; dx++) {
+            if (inside(spot[0] + dx, spot[1] + dy)) {
+              S.owner[idx(spot[0] + dx, spot[1] + dy)] = p + 1;
+            }
+          }
+        }
+      }
+
+      recount();
+      A.Fx.reset();
+      paintHud();
+    }
+
+    function recount() {
+      var counts = [0, 0, 0, 0];
+      for (var i = 0; i < S.owner.length; i++) {
+        var o = S.owner[i];
+        if (o) counts[o - 1]++;
+      }
+      for (var p = 0; p < 4; p++) S.players[p].share = counts[p] / (W * H);
+      S.peak = Math.max(S.peak, S.players[0].share);
+    }
+
+    /* -------------------------------------------------------- capturing -- */
+    /**
+     * Flood from the border across everything that is not mine and not my trail.
+     * Whatever the flood cannot reach was enclosed, so it becomes mine.
+     */
+    function capture(player) {
+      var mine = player.index + 1;
+      var seen = new Uint8Array(W * H);
+      var queue = [];
+
+      for (var x = 0; x < W; x++) {
+        if (!seen[idx(x, 0)]) { seen[idx(x, 0)] = 1; queue.push(idx(x, 0)); }
+        if (!seen[idx(x, H - 1)]) { seen[idx(x, H - 1)] = 1; queue.push(idx(x, H - 1)); }
+      }
+      for (var y = 0; y < H; y++) {
+        if (!seen[idx(0, y)]) { seen[idx(0, y)] = 1; queue.push(idx(0, y)); }
+        if (!seen[idx(W - 1, y)]) { seen[idx(W - 1, y)] = 1; queue.push(idx(W - 1, y)); }
+      }
+
+      // Border cells that are already mine do not let the flood through.
+      queue = queue.filter(function (i) {
+        if (S.owner[i] === mine || S.trail[i] === mine) { seen[i] = 0; return false; }
+        return true;
+      });
+
+      while (queue.length) {
+        var current = queue.pop();
+        var cx = current % W, cy = (current / W) | 0;
+        for (var d = 0; d < 4; d++) {
+          var nx = cx + DIRS[d][0], ny = cy + DIRS[d][1];
+          if (!inside(nx, ny)) continue;
+          var ni = idx(nx, ny);
+          if (seen[ni]) continue;
+          if (S.owner[ni] === mine || S.trail[ni] === mine) continue;
+          seen[ni] = 1;
+          queue.push(ni);
+        }
+      }
+
+      var gained = 0;
+      for (var i2 = 0; i2 < S.owner.length; i2++) {
+        if (seen[i2]) continue;
+        if (S.owner[i2] !== mine) gained++;
+        S.owner[i2] = mine;
+      }
+
+      for (var t = 0; t < player.trailCells.length; t++) S.trail[player.trailCells[t]] = 0;
+      player.trailCells.length = 0;
+      player.out = 0;
+
+      if (gained > 0 && player.index === 0) {
+        S.coins += Math.round(gained * 0.35 * (1 + save.upCoin * 0.15));
+        A.Audio.sfx("coin");
+        A.Fx.kick(0.2);
+        A.Fx.flashScreen(0.14, COLORS[0]);
+      }
+
+      recount();
+      return gained;
+    }
+
+    function killPlayer(player, byPlayer) {
+      if (!player.alive) return;
+
+      if (player.index === 0 && S.shield > 0) {
+        S.shield--;
+        for (var s = 0; s < player.trailCells.length; s++) S.trail[player.trailCells[s]] = 0;
+        player.trailCells.length = 0;
+        player.out = 0;
+        host.toast("SHIELD USED");
+        A.Fx.flashScreen(0.4, [120, 220, 255]);
+        paintHud();
+        return;
+      }
+
+      player.alive = false;
+      for (var i = 0; i < player.trailCells.length; i++) S.trail[player.trailCells[i]] = 0;
+      player.trailCells.length = 0;
+
+      // Their land goes neutral, which is what makes hunting rivals worth it.
+      var mark = player.index + 1;
+      for (var c = 0; c < S.owner.length; c++) if (S.owner[c] === mark) S.owner[c] = 0;
+
+      A.Fx.burst(player.x, 0, player.y, 20, {
+        color: COLORS[player.index], speed: 6, up: 6, life: 0.7, size: 0.6, bounce: false
+      });
+
+      if (player.index === 0) {
+        A.Audio.sfx("lose");
+        A.vibrate(120);
+        finish(false);
+      } else {
+        if (byPlayer && byPlayer.index === 0) {
+          S.kills++;
+          S.coins += 60;
+          host.toast("RIVAL ELIMINATED");
+          A.Audio.sfx("levelup");
+        }
+        recount();
+      }
+    }
+
+    /* -------------------------------------------------------- stepping -- */
+    function stepInto(player, nx, ny) {
+      if (!inside(nx, ny)) { killPlayer(player, null); return; }
+
+      var target = idx(nx, ny);
+      var mine = player.index + 1;
+
+      // Running into any live trail kills its owner.
+      var trailOwner = S.trail[target];
+      if (trailOwner) {
+        if (trailOwner === mine) { killPlayer(player, null); return; }
+        killPlayer(S.players[trailOwner - 1], player);
+      }
+
+      player.x = nx;
+      player.y = ny;
+
+      if (S.owner[target] === mine) {
+        if (player.trailCells.length) capture(player);
+      } else {
+        S.trail[target] = mine;
+        player.trailCells.push(target);
+        player.out++;
+      }
+    }
+
+    function updatePlayer(player, dt) {
+      if (!player.alive) return;
+
+      var d = DIRS[player.dir];
+      player.fx += d[0] * player.speed * dt;
+      player.fy += d[1] * player.speed * dt;
+
+      while (Math.abs(player.fx - player.x) >= 1 || Math.abs(player.fy - player.y) >= 1) {
+        var nx = player.x + d[0], ny = player.y + d[1];
+        stepInto(player, nx, ny);
+        if (!player.alive) return;
+
+        // Turns only land on cell boundaries, which keeps the trail on the grid.
+        if (player.nextDir !== player.dir && (player.nextDir + 2) % 4 !== player.dir) {
+          player.dir = player.nextDir;
+          d = DIRS[player.dir];
+          player.fx = player.x;
+          player.fy = player.y;
+        }
+      }
+    }
+
+    function updateAi(player, dt) {
+      if (!player.alive) return;
+      player.plan -= dt;
+      if (player.plan > 0) return;
+
+      player.plan = 0.25 + Math.random() * 0.5;
+      var mine = player.index + 1;
+
+      // Head home once the excursion is long enough, otherwise wander outward.
+      if (player.out > 14 + Math.random() * 20) {
+        var best = -1, bestScore = Infinity;
+        for (var d = 0; d < 4; d++) {
+          if ((d + 2) % 4 === player.dir) continue;
+          var nx = player.x + DIRS[d][0] * 3, ny = player.y + DIRS[d][1] * 3;
+          if (!inside(nx, ny)) continue;
+          if (S.trail[idx(nx, ny)] === mine) continue;
+          var score = nearestOwnDistance(player, nx, ny);
+          if (score < bestScore) { bestScore = score; best = d; }
+        }
+        if (best >= 0) player.nextDir = best;
+      } else if (Math.random() < 0.5) {
+        var options = [];
+        for (var d2 = 0; d2 < 4; d2++) {
+          if ((d2 + 2) % 4 === player.dir) continue;
+          var tx = player.x + DIRS[d2][0] * 2, ty = player.y + DIRS[d2][1] * 2;
+          if (!inside(tx, ty)) continue;
+          if (S.trail[idx(tx, ty)] === mine) continue;
+          options.push(d2);
+        }
+        if (options.length) player.nextDir = options[(Math.random() * options.length) | 0];
+      }
+    }
+
+    function nearestOwnDistance(player, x, y) {
+      var mine = player.index + 1;
+      var best = 1e9;
+      for (var r = 1; r < 14; r++) {
+        for (var a = 0; a < 8; a++) {
+          var px = x + Math.round(Math.cos(a / 8 * TAU) * r);
+          var py = y + Math.round(Math.sin(a / 8 * TAU) * r);
+          if (!inside(px, py)) continue;
+          if (S.owner[idx(px, py)] === mine) return r;
+        }
+      }
+      return best;
+    }
+
+    /* --------------------------------------------------------- update --- */
+    function update(dt) {
+      S.t += dt;
+      if (S.over) return;
+
+      var swipe = A.Input.consumeSwipe();
+      var me = S.players[0];
+      if (swipe === "right") me.nextDir = 0;
+      else if (swipe === "down") me.nextDir = 1;
+      else if (swipe === "left") me.nextDir = 2;
+      else if (swipe === "up") me.nextDir = 3;
+
+      if (A.Input.keys["arrowright"] || A.Input.keys["d"]) me.nextDir = 0;
+      if (A.Input.keys["arrowdown"] || A.Input.keys["s"]) me.nextDir = 1;
+      if (A.Input.keys["arrowleft"] || A.Input.keys["a"]) me.nextDir = 2;
+      if (A.Input.keys["arrowup"] || A.Input.keys["w"]) me.nextDir = 3;
+
+      for (var p = 0; p < S.players.length; p++) {
+        if (S.players[p].ai) updateAi(S.players[p], dt);
+        updatePlayer(S.players[p], dt);
+      }
+
+      if (!S.over && S.players[0].share >= S.goal) finish(true);
+
+      var rivals = S.players.filter(function (x) { return x.ai && x.alive; });
+      if (!S.over && rivals.length === 0) finish(true);
+
+      paintHud();
+    }
+
+    /* --------------------------------------------------------- finish --- */
+    function finish(won) {
+      if (S.over) return;
+      S.over = true;
+      S.won = won;
+
+      var share = Math.round(S.peak * 100);
+      var coins = Math.round((S.coins + (won ? 60 + save.level * 8 : 0)) * host.coinMultiplier());
+      save.coins += coins;
+      save.runs++;
+      save.bestShare = Math.max(save.bestShare, share);
+      if (won) { save.level++; save.wins++; }
+      host.commit();
+
+      var xp = Math.round((share * 1.2 + S.kills * 12 + (won ? 20 : 0)) * host.xpMultiplier());
+      host.addXp(xp);
+      host.progress("run", 1);
+      host.progress("coins", coins);
+
+      if (won) { A.Audio.sfx("win"); A.Fx.flashScreen(0.4, COLORS[0]); A.vibrate([20, 40, 30]); }
+
+      setTimeout(function () {
+        host.results({
+          win: won,
+          title: won ? "TERRITORY HELD" : "CUT OFF",
+          subtitle: won ? "Target reached" : "Something crossed your trail",
+          stats: [
+            ["Land", share + "%"],
+            ["Target", Math.round(S.goal * 100) + "%"],
+            ["Rivals out", String(S.kills)],
+            ["Coins", "+" + A.formatNumber(coins)]
+          ],
+          buttons: [
+            { label: won ? "NEXT MAP" : "TRY AGAIN", className: "go",
+              onClick: function () { host.modal.hide(); begin(); } },
+            { label: "UPGRADES", className: "gold", onClick: openShop },
+            { label: "MENU", className: "ghost", onClick: host.exit }
+          ]
+        });
+      }, 520);
+    }
+
+    function openShop() {
+      var rows = [
+        { key: "upSpeed", name: "Sprinter", desc: "Move faster than the rivals", max: 6,
+          cost: function (l) { return Math.round(300 * Math.pow(1.45, l)); } },
+        { key: "upShield", name: "Safety Line", desc: "Survive one cut per map", max: 3,
+          cost: function (l) { return Math.round(450 * Math.pow(1.7, l)); } },
+        { key: "upCoin", name: "Land Value", desc: "+15% coins per capture", max: 10,
+          cost: function (l) { return Math.round(200 * Math.pow(1.35, l)); } }
+      ];
+
+      var card = host.el("div", "card");
+      card.appendChild(host.el("h2", null, "UPGRADES"));
+      card.appendChild(host.el("p", "sub", A.formatNumber(save.coins) + " coins"));
+
+      rows.forEach(function (r) {
+        var row = host.el("div", "shopRow");
+        var left = host.el("div");
+        left.appendChild(host.el("h4", null, r.name + "  ·  LV " + save[r.key]));
+        left.appendChild(host.el("p", null, r.desc));
+        row.appendChild(left);
+
+        var maxed = save[r.key] >= r.max;
+        var cost = r.cost(save[r.key]);
+        var buy = host.el("button", "buy");
+        buy.innerHTML = maxed ? "MAX" : A.formatNumber(cost) + "<small>COINS</small>";
+        buy.disabled = maxed || save.coins < cost;
+        buy.addEventListener("click", function () {
+          if (save.coins >= cost) {
+            save.coins -= cost;
+            save[r.key]++;
+            host.commit();
+            A.Audio.sfx("coin");
+            openShop();
+          }
+        });
+        row.appendChild(buy);
+        card.appendChild(row);
+      });
+
+      card.appendChild(host.button("BACK", "ghost", function () { host.modal.hide(); begin(); }));
+      host.modal.show(card);
+    }
+
+    /* --------------------------------------------------------- render --- */
+    function render(g) {
+      var vw = A.View.w, vh = A.View.h;
+      var me = S.players[0];
+
+      var view = 26;
+      var cell = Math.max(6, Math.min(vw, vh * 0.78) / view);
+      var camX = me.fx, camY = me.fy;
+      var ox = vw / 2 - camX * cell;
+      var oy = vh * 0.52 - camY * cell;
+
+      g.fillStyle = "#0D0B1A";
+      g.fillRect(0, 0, vw, vh);
+
+      A.Fx.applyShake(g);
+
+      var x0 = Math.max(0, Math.floor(-ox / cell) - 1);
+      var x1 = Math.min(W - 1, Math.ceil((vw - ox) / cell) + 1);
+      var y0 = Math.max(0, Math.floor(-oy / cell) - 1);
+      var y1 = Math.min(H - 1, Math.ceil((vh - oy) / cell) + 1);
+
+      g.fillStyle = "#171233";
+      g.fillRect(ox, oy, W * cell, H * cell);
+
+      for (var y = y0; y <= y1; y++) {
+        for (var x = x0; x <= x1; x++) {
+          var i = idx(x, y);
+          var owner = S.owner[i];
+          var trail = S.trail[i];
+          if (!owner && !trail) continue;
+
+          var px = ox + x * cell, py = oy + y * cell;
+
+          if (owner) {
+            g.fillStyle = A.rgb(A.shade(COLORS[owner - 1], -0.18));
+            g.fillRect(px, py, cell + 0.5, cell + 0.5);
+          }
+          if (trail) {
+            g.fillStyle = A.rgb(A.shade(COLORS[trail - 1], 0.35));
+            g.fillRect(px + cell * 0.16, py + cell * 0.16, cell * 0.68, cell * 0.68);
+          }
+        }
+      }
+
+      g.strokeStyle = "rgba(255,255,255,0.16)";
+      g.lineWidth = 3;
+      g.strokeRect(ox, oy, W * cell, H * cell);
+
+      for (var p = 0; p < S.players.length; p++) {
+        var player = S.players[p];
+        if (!player.alive) continue;
+
+        var bx = ox + (player.fx + 0.5) * cell;
+        var by = oy + (player.fy + 0.5) * cell;
+        var r = cell * 0.62;
+
+        g.fillStyle = "rgba(0,0,0,0.35)";
+        A.roundRect(g, bx - r, by - r + 2, r * 2, r * 2, r * 0.38);
+        g.fill();
+
+        A.roundRect(g, bx - r, by - r, r * 2, r * 2, r * 0.38);
+        g.fillStyle = A.rgb(COLORS[p]);
+        g.fill();
+        g.strokeStyle = "rgba(12,9,24,0.75)";
+        g.lineWidth = 2;
+        g.stroke();
+
+        g.fillStyle = "#12091F";
+        var eye = r * 0.22;
+        g.beginPath();
+        g.arc(bx - r * 0.3, by - r * 0.12, eye, 0, TAU);
+        g.arc(bx + r * 0.3, by - r * 0.12, eye, 0, TAU);
+        g.fill();
+      }
+
+      drawMinimap(g, vw, vh);
+
+      A.Fx.drawParticles(g, function (x, y, z) {
+        return { x: ox + (x + 0.5) * cell, y: oy + (z + 0.5) * cell - y * cell, s: cell };
+      });
+      A.Fx.drawTexts(g, null);
+
+      g.restore();
+      A.Fx.drawFlash(g, vw, vh);
+    }
+
+    function drawMinimap(g, vw, vh) {
+      var size = Math.min(96, vw * 0.26);
+      var px = vw - size - 14;
+      var py = vh - size - 18;
+      var scale = size / W;
+
+      A.roundRect(g, px - 4, py - 4, size + 8, size + 8, 10);
+      g.fillStyle = "rgba(10,8,22,0.8)";
+      g.fill();
+      g.strokeStyle = "rgba(255,255,255,0.18)";
+      g.lineWidth = 2;
+      g.stroke();
+
+      var step = 2;
+      for (var y = 0; y < H; y += step) {
+        for (var x = 0; x < W; x += step) {
+          var owner = S.owner[idx(x, y)];
+          if (!owner) continue;
+          g.fillStyle = A.rgb(COLORS[owner - 1]);
+          g.fillRect(px + x * scale, py + y * scale, scale * step, scale * step);
+        }
+      }
+
+      var me = S.players[0];
+      g.fillStyle = "#FFFFFF";
+      g.fillRect(px + me.fx * scale - 1.5, py + me.fy * scale - 1.5, 3, 3);
+    }
+
+    /* -------------------------------------------------------------- ui -- */
+    function mount(root) {
+      var hud = host.el("div", "hud");
+
+      var top = host.el("div", "row");
+      ui.share = host.el("div", "chip", "0%");
+      ui.meter = host.el("div", "meter");
+      ui.fill = host.el("i");
+      ui.meter.appendChild(ui.fill);
+      ui.coins = host.el("div", "chip gold", "0");
+      top.appendChild(ui.share);
+      top.appendChild(ui.meter);
+      top.appendChild(ui.coins);
+      hud.appendChild(top);
+
+      ui.cap = host.el("div", "cap", "");
+      hud.appendChild(ui.cap);
+
+      ui.hint = host.el("div", "hint", "Swipe to turn  ·  loop back to claim");
+      hud.appendChild(ui.hint);
+
+      root.appendChild(hud);
+    }
+
+    function paintHud() {
+      if (!ui.share) return;
+      var me = S.players[0];
+      var pct = me.share * 100;
+      ui.share.textContent = pct.toFixed(1) + "%";
+      ui.coins.textContent = A.formatNumber(S.coins);
+      ui.fill.style.width = A.clamp01(me.share / S.goal) * 100 + "%";
+      ui.cap.textContent = "target " + Math.round(S.goal * 100) + "%" +
+        (S.shield > 0 ? "   ·   " + S.shield + " safety line" : "");
+      if (S.t > 3) ui.hint.textContent = "";
+    }
+
+    return {
+      mount: mount,
+      start: begin,
+      stop: function () { S = null; },
+      update: function (dt) { if (S) update(dt); },
+      render: function (g) { if (S) render(g); },
+      onResize: function () {}
+    };
+  }
+
+  A.games.push({
+    id: "paper",
+    name: "Paper Territory",
+    tagline: "Drive out, loop back, claim the ground. Three rivals want the same map.",
+    accent: "#5AAAFF",
+    unlock: 2,
+    template: { coins: 0, runs: 0, wins: 0, level: 1, bestShare: 0,
+                upSpeed: 0, upShield: 0, upCoin: 0 },
+    bestLine: function (s) { return s.runs ? "Map " + s.level + "  ·  best " + s.bestShare + "%" : "New"; },
+    thumb: function (g, w, h, t) {
+      g.fillStyle = "#171233";
+      g.fillRect(0, 0, w, h);
+
+      var n = 12, cell = Math.max(w, h) / n;
+      for (var y = 0; y < n; y++) {
+        for (var x = 0; x < n; x++) {
+          var d = Math.hypot(x - 4, y - 6);
+          var d2 = Math.hypot(x - 9, y - 4);
+          if (d < 3.4 + Math.sin(t) * 0.5) { g.fillStyle = "#3E77C4"; g.fillRect(x * cell, y * cell, cell, cell); }
+          else if (d2 < 2.6) { g.fillStyle = "#C45A5A"; g.fillRect(x * cell, y * cell, cell, cell); }
+        }
+      }
+
+      var ang = t * 1.2;
+      var bx = w * 0.5 + Math.cos(ang) * w * 0.3;
+      var by = h * 0.5 + Math.sin(ang) * h * 0.28;
+      g.fillStyle = "#8CC6FF";
+      for (var i = 0; i < 6; i++) {
+        var a2 = ang - i * 0.16;
+        g.fillRect(w * 0.5 + Math.cos(a2) * w * 0.3 - 2, h * 0.5 + Math.sin(a2) * h * 0.28 - 2, 4, 4);
+      }
+      A.roundRect(g, bx - 6, by - 6, 12, 12, 3);
+      g.fillStyle = "#5AAAFF";
+      g.fill();
     },
     create: create
   });
@@ -5571,26 +8688,29 @@ window.A = window.A || {};
       tile.style.setProperty("--accent", def.accent);
 
       var canvas = document.createElement("canvas");
-      canvas.width = 208; canvas.height = 176;
+      canvas.width = 320; canvas.height = 220;
       tile.appendChild(canvas);
-      tileCanvases.push({ def: def, ctx: canvas.getContext("2d"), w: 104, h: 88 });
-      canvas.getContext("2d").scale(2, 2);
-
-      var mid = Hub.el("div");
-      mid.appendChild(Hub.el("h3", null, def.name));
-      mid.appendChild(Hub.el("p", null, def.tagline));
+      var tileCtx = canvas.getContext("2d");
+      tileCtx.scale(2, 2);
+      tileCanvases.push({ def: def, ctx: tileCtx, w: 160, h: 110 });
 
       var slot = A.Save.game(def.id, def.template || {});
-      if (unlocked && def.bestLine) {
-        mid.appendChild(Hub.el("div", "best", def.bestLine(slot)));
-      } else if (!unlocked) {
-        mid.appendChild(Hub.el("div", "best", "Unlocks at account level " + def.unlock));
-      }
-      tile.appendChild(mid);
+      var fresh = !slot.runs;
 
-      var go = Hub.el("div", "go", unlocked ? "PLAY" : "LOCKED");
-      go.style.background = unlocked ? def.accent : "";
-      tile.appendChild(go);
+      var flag = Hub.el("div", "flag", unlocked ? (fresh ? "NEW" : "PLAY") : "LV " + def.unlock);
+      if (unlocked && !fresh) flag.style.background = def.accent;
+      tile.appendChild(flag);
+
+      var body = Hub.el("div", "body");
+      body.appendChild(Hub.el("h3", null, def.name));
+      body.appendChild(Hub.el("p", null, def.tagline));
+
+      if (unlocked && def.bestLine) {
+        body.appendChild(Hub.el("div", "best", def.bestLine(slot)));
+      } else if (!unlocked) {
+        body.appendChild(Hub.el("div", "best", "Reach account level " + def.unlock));
+      }
+      tile.appendChild(body);
 
       if (unlocked) {
         tile.addEventListener("click", function () {

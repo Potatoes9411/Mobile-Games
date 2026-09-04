@@ -18,7 +18,7 @@ Four ways to run the game on a Windows 11 machine, ordered from "zero setup" to 
 
 ### How it works
 
-The launcher is a 222 KB native Win32 program (`desktop/win-launcher/main.c`) with the entire game
+The launcher is a 322 KB native Win32 program (`desktop/win-launcher/main.c`) with the entire game
 embedded in its data section as a byte array. On launch it:
 
 1. Creates `%LOCALAPPDATA%\MobClashGateSiege\` and writes `game.html` there (overwriting each run,

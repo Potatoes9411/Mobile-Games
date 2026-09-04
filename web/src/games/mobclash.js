@@ -297,7 +297,7 @@
   };
 
   var TOWER = { roomW: 3.5, roomH: 2.7, floorH: 3.7, baseY: 1.5, slot: 4.7, depth: 1.3 };
-  var MAX_UNITS = 260;
+  var MAX_UNITS = 220;
   var SIEGE_UNITS = 130;
 
   function create(host) {
@@ -307,6 +307,36 @@
     var S = null;
     var ui = {};
     var clouds = null;
+    var grads = null;
+
+    function buildGradients(g) {
+      var w = A.View.w, h = A.View.h;
+      var bottom = cam.horizon + 2;
+
+      var sky = g.createLinearGradient(0, 0, 0, bottom);
+      sky.addColorStop(0, A.rgb(PAL.skyTop));
+      sky.addColorStop(0.52, A.rgb(PAL.skyMid));
+      sky.addColorStop(0.88, A.rgb(A.mix(PAL.skyMid, PAL.skyLow, 0.75)));
+      sky.addColorStop(1, A.rgb(PAL.skyLow));
+
+      var ground = g.createLinearGradient(0, cam.horizon, 0, h);
+      ground.addColorStop(0, A.rgb(PAL.fog));
+      ground.addColorStop(0.06, A.rgb(A.mix(PAL.grass, PAL.fog, 0.62)));
+      ground.addColorStop(0.35, A.rgb(PAL.grass));
+      ground.addColorStop(1, A.rgb(PAL.grassDark));
+
+      var road = g.createLinearGradient(0, cam.horizon, 0, h);
+      road.addColorStop(0, A.rgb(PAL.fog));
+      road.addColorStop(0.08, A.rgb(A.mix(PAL.road, PAL.fog, 0.55)));
+      road.addColorStop(0.4, A.rgb(PAL.road));
+      road.addColorStop(1, A.rgb(PAL.roadDark));
+
+      var vig = g.createRadialGradient(w / 2, h * 0.52, h * 0.28, w / 2, h * 0.52, h * 0.78);
+      vig.addColorStop(0, "rgba(20,14,38,0)");
+      vig.addColorStop(1, "rgba(20,14,38,0.45)");
+
+      grads = { sky: sky, ground: ground, road: road, vig: vig, w: w, h: h, horizon: cam.horizon };
+    }
 
     /* ------------------------------------------------------ economy ----- */
     function startingCrowd() { return 20 + save.upCrowd * 2; }
@@ -813,6 +843,7 @@
 
     function render(g) {
       var w = A.View.w, h = A.View.h;
+      if (!grads || grads.w !== w || grads.h !== h || grads.horizon !== cam.horizon) buildGradients(g);
       A.Fx.applyShake(g);
 
       drawSky(g, w, h);
@@ -836,10 +867,7 @@
       A.Fx.drawParticles(g, cam.project);
       A.Fx.drawTexts(g, cam.project);
 
-      var vig = g.createRadialGradient(w / 2, h * 0.52, h * 0.28, w / 2, h * 0.52, h * 0.78);
-      vig.addColorStop(0, "rgba(20,14,38,0)");
-      vig.addColorStop(1, "rgba(20,14,38,0.45)");
-      g.fillStyle = vig;
+      g.fillStyle = grads.vig;
       g.fillRect(0, 0, w, h);
 
       g.restore();
@@ -848,12 +876,7 @@
 
     function drawSky(g, w, h) {
       var bottom = cam.horizon + 2;
-      var grad = g.createLinearGradient(0, 0, 0, bottom);
-      grad.addColorStop(0, A.rgb(PAL.skyTop));
-      grad.addColorStop(0.52, A.rgb(PAL.skyMid));
-      grad.addColorStop(0.88, A.rgb(A.mix(PAL.skyMid, PAL.skyLow, 0.75)));
-      grad.addColorStop(1, A.rgb(PAL.skyLow));
-      g.fillStyle = grad;
+      g.fillStyle = grads.sky;
       g.fillRect(0, 0, w, bottom);
 
       var sunX = w * 0.5 - cam.x * 2.2;
@@ -908,23 +931,13 @@
       var nearZ = cam.z + 3.2, farZ = cam.z + 210;
       var h = A.View.h, w = A.View.w;
 
-      var ground = g.createLinearGradient(0, cam.horizon, 0, h);
-      ground.addColorStop(0, A.rgb(PAL.fog));
-      ground.addColorStop(0.06, A.rgb(A.mix(PAL.grass, PAL.fog, 0.62)));
-      ground.addColorStop(0.35, A.rgb(PAL.grass));
-      ground.addColorStop(1, A.rgb(PAL.grassDark));
-      g.fillStyle = ground;
+      g.fillStyle = grads.ground;
       g.fillRect(0, cam.horizon, w, h - cam.horizon);
 
       A.strip(g, cam, -hw - 2.6, hw + 2.6, 0.02, 0.02, nearZ, farZ,
         A.rgb(A.mix(PAL.roadDark, PAL.grassDark, 0.35)));
 
-      var road = g.createLinearGradient(0, cam.horizon, 0, h);
-      road.addColorStop(0, A.rgb(PAL.fog));
-      road.addColorStop(0.08, A.rgb(A.mix(PAL.road, PAL.fog, 0.55)));
-      road.addColorStop(0.4, A.rgb(PAL.road));
-      road.addColorStop(1, A.rgb(PAL.roadDark));
-      A.strip(g, cam, -hw, hw, 0.04, 0.04, nearZ, farZ, road);
+      A.strip(g, cam, -hw, hw, 0.04, 0.04, nearZ, farZ, grads.road);
 
       var start = Math.floor(nearZ / 6) * 6;
       for (var z = start; z < Math.min(farZ, nearZ + 130); z += 6) {

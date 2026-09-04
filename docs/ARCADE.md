@@ -1,6 +1,6 @@
 # Pocket Arcade
 
-Three complete games behind one hub, sharing an engine, a progression layer and a
+Seven complete games behind one hub, sharing an engine, a progression layer and a
 procedural character system. Everything runs from `web/index.html` with classic
 `<script>` tags, so it works from a `file://` double-click with no bundler.
 
@@ -14,6 +14,11 @@ web/
   src/engine/fx.js            particles, floating text, shake, hit stop, flash
   src/engine/view3d.js        pinhole camera for the lane games
   src/games/mobclash.js       Mob Clash: Gate Siege
+  src/games/blockblast.js     Block Storm
+  src/games/pinrescue.js      Pin Rescue
+  src/games/helix.js          Helix Drop
+  src/games/splat.js          Roller Splat
+  src/games/paperio.js        Paper Territory
   src/games/horde.js          Horde Arena
   src/games/runner.js         Rooftop Run
 ```
@@ -59,7 +64,7 @@ being animated by the same rig that draws the hero live.
 The hub owns everything that survives a run.
 
 * **Account level** — every game awards account XP. Levels grant gems and unlock
-  games (Horde Arena at 2, Rooftop Run at 3).
+  games (Helix Drop and Paper Territory at 2, Horde Arena at 2, Rooftop Run at 3).
 * **Gems** — the premium-shaped currency. Earned from levels, daily streaks and
   missions; spent in the **prestige shop** on permanent cross-game multipliers
   (coin gain, XP gain, extra revives) and a squad recolour.
@@ -78,27 +83,34 @@ and the account feeds every game. There is always something a few minutes away.
 
 ## The games
 
-### Mob Clash: Gate Siege
-Swerve a crowd down a track, gamble it through `+ − × ÷` gates, then spend the
-horde storming a keep one room at a time. Rooms unlock floor by floor and
-conquering one absorbs its defenders. The pacing generator is documented in
-[`PACING_MATH.md`](PACING_MATH.md) — it simulates a reference run and proves every
-tower it produces is solvable before shipping it.
+Seven games, chosen against what is actually charting rather than from memory:
+puzzle is the second largest mobile genre by revenue and block-drop leads global
+downloads, so the arcade covers that; the rest are the formats you have seen a
+thousand ad impressions of.
 
-### Horde Arena
-A survivor-style auto-battler. You only steer; weapons fire themselves. Kills drop
-XP, XP levels you mid-run, and every level you draft one of three upgrades from a
-pool of six weapons and eight perks. Four weapons **evolve** when carried to max
-alongside a specific perk — Blaster + Haste becomes Storm Repeater, Arc Chain +
-Focus becomes Tesla Cascade. Twenty waves, a boss every fifth.
+| Game | Format | The hook |
+| --- | --- | --- |
+| **Mob Clash: Gate Siege** | Crowd runner + puzzle | Gamble a mob through `+ − × ÷` gates, then storm a keep room by room |
+| **Block Storm** | Block puzzle | Three pieces, no rotation, clear rows and columns, chain the combo multiplier |
+| **Pin Rescue** | Pull-the-pin | Drain the lava out the side, then drop the gold. Wrong order cooks your hero |
+| **Helix Drop** | Helix tower | Spin the tower into the gaps; three clean drops and the ball smashes through |
+| **Roller Splat** | Paint maze | Swipe, the ball rolls until it hits a wall, painting everything it crosses |
+| **Paper Territory** | Territory io | Drive out, loop back, claim what you enclosed; three rivals want the same map |
+| **Horde Arena** | Survivor auto-battler | Steer only; draft an upgrade per level and evolve weapons across 20 waves |
+| **Rooftop Run** | Endless runner | Three lanes, vault and slide, stack magnet, shield and boost |
 
-### Rooftop Run
-Three-lane endless runner. Swipe across to switch lanes, up to vault, down to
-slide; each obstacle carries a chevron telling you which. Speed climbs with
-distance. Magnet, shield and boost pickups stack, and the shop turns coins into
-longer power-ups, a starting shield and a head start.
+Two implementation notes worth knowing:
 
----
+**Pin Rescue fluids** are a falling-sand cellular automaton, not rigid-body
+physics. It reads identically to the real thing, it is deterministic, and a
+15x18 grid costs nothing. Levels are generated onto a fixed portrait layout
+(shaft, side drain, dead-end pit, shared basin) so the structure is guaranteed
+rather than hoped for, and the win threshold is a share of what the basin can
+physically hold rather than of all the gold in the level.
+
+**Paper Territory captures** by flooding from the arena border across everything
+that is not yours and not your live trail; whatever the flood cannot reach was
+enclosed, so it becomes yours. That is one BFS per capture over 3,136 cells.
 
 ## Adding a game
 
