@@ -88,7 +88,14 @@
     Fx._hitStop = Math.max(Fx._hitStop, duration);
   };
 
+  /* Games call Fx.update themselves and so does the hub. Without a token the
+     particles advanced twice per step and ran at double speed. */
+  Fx._token = 0;
+  Fx.beginStep = function () { Fx._token++; Fx._done = -1; };
+
   Fx.update = function (dt) {
+    if (Fx._done === Fx._token) return;
+    Fx._done = Fx._token;
     if (Fx._hitStop > 0) {
       Fx._hitStop -= dt;
       Fx.timeScale = 0.25;

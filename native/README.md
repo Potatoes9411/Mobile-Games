@@ -63,6 +63,36 @@ position at the origin landed inside the MENU button and walked straight out of
 the game being captured. A drag that happens to end over a card should not
 launch it either.
 
+## Frame rate independence
+
+The simulation runs on a **fixed timestep** of 1/120s. The platform accumulates
+real frame deltas and advances the game in whole steps, rendering once per
+displayed frame; on a 240Hz panel the loop simply renders four times per
+simulated step instead of running the game four times as fast.
+
+This is not belt-and-braces. Feeding raw frame deltas into the games looked
+delta-correct in the arithmetic and was still wrong: anything with per-frame
+damping, an integer counter, or an event that fires on a threshold behaves
+differently at a different cadence, and the whole suite ran fast on a
+high-refresh display. Edge-triggered input (`pressed`, `released`, `tapped`,
+`swipe`, `key_pressed`) is consumed by exactly one step, or a single tap fires
+once per catch-up step.
+
+Verified by driving the same game for the same simulated duration at different
+rates:
+
+| Rate | Frames | Sim steps | Final frame |
+| --- | --- | --- | --- |
+| 60Hz | 240 | 480 | identical |
+| 120Hz | 480 | 480 | identical |
+| 240Hz | 960 | 480 | identical |
+| 144Hz | 576 | 479 | one step of accumulator residue |
+
+Step count is a function of simulated time alone. 144Hz lands on 479 or 481
+depending on where the residue falls, never on 960 or 1920.
+
+`--hz N --seconds S` on the headless capture is what runs that comparison.
+
 ## Two bugs worth remembering
 
 `pa_mix` originally wrote `PA_R(b) - (int)PA_R(a)`. The extraction macros yield

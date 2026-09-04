@@ -371,6 +371,18 @@ window.A = window.A || {};
       return !!A.Input.keys[key];
     },
 
+    /** Clears only the edge-triggered flags. The fixed-timestep loop may run
+        several simulation steps per displayed frame, and a tap or a swipe
+        belongs to exactly one of them - leaving them set fires the same input
+        once per catch-up step. */
+    clearEdges: function () {
+      var self = A.Input;
+      self.pressed = false;
+      self.released = false;
+      self.tapped = false;
+      self.swipe = "";
+    },
+
     /** Drops every held key and pointer flag. Called on every game unload so a
         key held while backing out cannot leak into the next game. */
     reset: function () {

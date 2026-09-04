@@ -11,9 +11,11 @@
 
 extern const PA_Game PA_GAME_SPLAT;
 extern const PA_Game PA_GAME_ROADHOPPER;
+extern const PA_Game PA_GAME_VOIDMUNCHER;
 
 static const PA_Game *const GAMES[] = {
     &PA_GAME_ROADHOPPER,
+    &PA_GAME_VOIDMUNCHER,
     &PA_GAME_SPLAT
 };
 #define GAME_COUNT ((int)(sizeof(GAMES) / sizeof(GAMES[0])))
@@ -103,7 +105,7 @@ static void go_home(void) {
 }
 
 /* ------------------------------------------------------------------ home -- */
-static void draw_home(PA_Canvas *c, const PA_Input *in) {
+static void draw_home(PA_Canvas *c) {
     PA_Paint bg = pa_linear(0, 0, 0, (float)c->h);
     pa_stop(&bg, 0.0f, pa_hex(0x1A1436));
     pa_stop(&bg, 0.55f, pa_hex(0x120E28));
@@ -168,21 +170,20 @@ static void draw_home(PA_Canvas *c, const PA_Input *in) {
         }, 4, 1, hot ? 2.6f : 1.4f, hot ? g->accent : PA_RGBA(255, 255, 255, 34));
     }
 
-    (void)in;
 }
 
 /* ----------------------------------------------------------------- frame -- */
-void pa_app_frame(PA_Canvas *c, float dt, const PA_Input *in) {
+/* Set when the MENU button is tapped; acted on at render time so the teardown
+   never happens midway through a batch of fixed update steps. */
+static int g_pending_quit_home;
+
+void pa_app_update(float dt, const PA_Input *in) {
     g_time += dt;
-    if (g_view_w != c->w || g_view_h != c->h) {
-        g_view_w = c->w;
-        g_view_h = c->h;
-        layout_cards();
-    }
     if (g_fade > 0.0f) g_fade = pa_clampf(g_fade - dt * 3.4f, 0.0f, 1.0f);
 
     if (g_screen == SCREEN_HOME) {
         g_hover = -1;
+        layout_cards();
         for (int i = 0; i < GAME_COUNT; i++) {
             Rect r = g_cards[i];
             if (in->x >= r.x && in->x <= r.x + r.w && in->y >= r.y && in->y <= r.y + r.h) {
@@ -194,24 +195,36 @@ void pa_app_frame(PA_Canvas *c, float dt, const PA_Input *in) {
             }
         }
         if (in->key_pressed[PA_KEY_ESC]) g_quit = 1;
-        draw_home(c, in);
-    } else {
-        if (in->key_pressed[PA_KEY_ESC]) {
-            g_screen = (g_screen == SCREEN_PAUSE) ? SCREEN_GAME : SCREEN_PAUSE;
-            pa_sfx("select");
-        }
+        return;
+    }
 
-        if (g_active) {
-            /* A paused game keeps painting but stops updating, so the overlay
-               sits over a live scene rather than a frozen buffer. */
-            if (g_screen == SCREEN_GAME && g_active->update) g_active->update(dt, in);
-            if (g_active->render) g_active->render(c);
-        }
+    if (in->key_pressed[PA_KEY_ESC]) {
+        g_screen = (g_screen == SCREEN_PAUSE) ? SCREEN_GAME : SCREEN_PAUSE;
+        pa_sfx("select");
+    }
+    if (in->tapped && in->x < 96.0f && in->y < 56.0f) { g_pending_quit_home = 1; return; }
+
+    /* A paused game keeps painting but stops updating, so the overlay sits over
+       a live scene rather than a frozen buffer. */
+    if (g_active && g_screen == SCREEN_GAME && g_active->update) g_active->update(dt, in);
+}
+
+void pa_app_render(PA_Canvas *c) {
+    if (g_view_w != c->w || g_view_h != c->h) {
+        g_view_w = c->w;
+        g_view_h = c->h;
+        layout_cards();
+    }
+    if (g_pending_quit_home) { g_pending_quit_home = 0; go_home(); }
+
+    if (g_screen == SCREEN_HOME) {
+        draw_home(c);
+    } else {
+        if (g_active && g_active->render) g_active->render(c);
 
         /* Menu button, top left, matching the browser build. */
         pa_round_rect(c, 14.0f, 14.0f, 74.0f, 32.0f, 10.0f, PA_RGBA(14, 11, 30, 200));
         pa_text(c, "MENU", 51.0f, 36.0f, 13.0f, PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 2.0f);
-        if (in->tapped && in->x < 96.0f && in->y < 56.0f) { go_home(); return; }
 
         if (g_screen == SCREEN_PAUSE) {
             pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(10, 8, 24, 220));

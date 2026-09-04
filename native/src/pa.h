@@ -186,9 +186,13 @@ struct PA_Game {
     void  (*thumb)(PA_Canvas *c, float x, float y, float w, float h, float t);
 };
 
-/* Implemented by hub.c, called by the platform layer. */
+/* Implemented by hub.c, called by the platform layer.
+   Update and render are separate so the platform can run the simulation on a
+   fixed timestep and draw once, which is what makes behaviour identical on a
+   60Hz panel and a 240Hz one. */
 void pa_app_init(int w, int h);
-void pa_app_frame(PA_Canvas *c, float dt, const PA_Input *in);
+void pa_app_update(float dt, const PA_Input *in);
+void pa_app_render(PA_Canvas *c);
 void pa_app_shutdown(void);
 /** Non-zero once the app wants the window closed. */
 int  pa_app_should_quit(void);

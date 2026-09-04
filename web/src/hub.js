@@ -725,16 +725,45 @@
     A.GameManager.boot(function () { Hub.paintTiles(); });
     Hub.paintTiles();
 
+    /*
+     * Fixed timestep. requestAnimationFrame fires at the display's refresh
+     * rate, so feeding its delta straight into the games made every one of them
+     * run fast on a 120Hz or 144Hz panel: the arithmetic looked delta-correct,
+     * but anything with per-frame damping, an integer counter, or an event that
+     * fires on a threshold behaves differently at a different cadence. The
+     * simulation now always advances in FIXED chunks and a fast display simply
+     * renders more often between them.
+     */
+    var FIXED = 1 / 120;
+    var MAX_STEPS = 8;
+    var accumulator = 0;
+
     A.Loop.start(function (dt) {
       var g = A.View.ctx;
-      var scaled = dt * A.Fx.timeScale;
 
       if (active) {
         var halted = Hub.modal.visible() || Hub.pause.visible();
-        if (!halted && active.update) active.update(scaled);
-        A.Fx.update(scaled);
+
+        accumulator += dt * A.Fx.timeScale;
+        /* A long stall must not queue hundreds of catch-up steps. */
+        if (accumulator > 0.25) accumulator = 0.25;
+
+        var steps = 0;
+        while (accumulator >= FIXED && steps < MAX_STEPS) {
+          A.Fx.beginStep();
+          if (!halted && active.update) active.update(FIXED);
+          A.Fx.update(FIXED);
+          accumulator -= FIXED;
+          steps++;
+          A.Input.clearEdges();
+        }
+        /* Hit the ceiling: the machine cannot keep up, so drop the debt rather
+           than spiral. */
+        if (steps >= MAX_STEPS) accumulator = 0;
+
         if (active.render) active.render(g);
       } else {
+        accumulator = 0;
         g.clearRect(0, 0, A.View.w, A.View.h);
         drawAvatar(A.Loop.time);
         drawTiles(A.Loop.time);
