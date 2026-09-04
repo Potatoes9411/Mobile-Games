@@ -206,12 +206,20 @@ static PA_Vec2 project(float col, float row, float z) {
 }
 
 /* ---------------------------------------------------------------- palette -- */
-static PA_Color pal_sky(void)    { return pa_hex(0x8FD4E8); }
-static PA_Color pal_grass_a(void){ return pa_hex(0x4FAE63); }
-static PA_Color pal_grass_b(void){ return pa_shade(pa_hex(0x4FAE63), -0.10f); }
-static PA_Color pal_road(void)   { return pa_hex(0x4A4F5A); }
-static PA_Color pal_water(void)  { return pa_hex(0x2E7BD6); }
-static PA_Color pal_rail(void)   { return pa_hex(0x6B6257); }
+/*
+ * Flat-shaded voxel art carries no lighting information, so the colour has to
+ * do the work: the reference style is vivid and high-value, with the road kept
+ * dark specifically so the bright bands either side of it read as safe ground.
+ * The first pass measured at value 0.68 / saturation 0.55 on grass and 0.35 /
+ * 0.18 on road - the three largest surfaces were all muddy, which is why the
+ * whole screen looked washed out however good the geometry was.
+ */
+static PA_Color pal_sky(void)    { return pa_hex(0x8ED8F0); }
+static PA_Color pal_grass_a(void){ return pa_hex(0x63C95F); }
+static PA_Color pal_grass_b(void){ return pa_hex(0x57B855); }
+static PA_Color pal_road(void)   { return pa_hex(0x4B5162); }
+static PA_Color pal_water(void)  { return pa_hex(0x3AA5EE); }
+static PA_Color pal_rail(void)   { return pa_hex(0x7B6C57); }
 
 /* ------------------------------------------------------------- generation -- */
 static uint32_t row_seed(int index) {
@@ -254,7 +262,7 @@ static void build_row(int index) {
                 int c = pa_rng_int(&r, 0, COLS - 1);
                 if (row->has_tree[c]) continue;
                 row->has_tree[c] = 1;
-                row->tree_h[c] = pa_rng_range(&r, 0.55f, 1.45f);
+                row->tree_h[c] = pa_rng_range(&r, 0.85f, 1.75f);
                 row->tree_s[c] = pa_rng_range(&r, 0.62f, 0.90f);
             }
         }
@@ -290,7 +298,7 @@ static void build_row(int index) {
             int c = pa_rng_int(&r, 0, COLS - 1);
             if (row->has_tree[c]) continue;
             row->has_tree[c] = 1;
-            row->tree_h[c] = pa_rng_range(&r, 0.55f, 1.35f);
+            row->tree_h[c] = pa_rng_range(&r, 0.80f, 1.60f);
             row->tree_s[c] = pa_rng_range(&r, 0.62f, 0.86f);
             placed++;
         }
@@ -592,6 +600,13 @@ static void hopper_update(float dt, const PA_Input *in) {
  * side. Everything in the world is made of these, which is why the scene stays
  * consistent without a single texture.
  */
+/** Ground contact shadow for a prop of world width `w` sitting on `row`. */
+static void prop_shadow(PA_Canvas *c, float col, float row, float w, float strength) {
+    PA_Vec2 g = project(col, row, 0.0f);
+    pa_shadow(c, g.x, g.y + L.depth * 0.10f,
+              w * L.tile * 0.62f, w * L.depth * 0.40f, strength);
+}
+
 static void box(PA_Canvas *c, float col, float row, float z,
                 float w, float h, float d, PA_Color colour) {
     PA_Vec2 p = project(col, row, z + h);
@@ -656,6 +671,20 @@ static void draw_row(PA_Canvas *c, Row *r) {
     PA_Vec2 surface[4] = { a, b, cc, d };
     pa_fill_poly(c, surface, 4, col);
 
+    if (r->type == ROW_GRASS) {
+        /* Tufts. A flat field of one green is the single clearest tell of an
+           unfinished scene; the reference art breaks it up constantly. The
+           pattern is derived from the row index so it never shimmers. */
+        uint32_t bits = (uint32_t)row_seed(r->index);
+        for (int t = -HALF; t <= HALF; t++) {
+            if (!((bits >> ((t + HALF) & 15)) & 1)) continue;
+            float jitter = (float)((bits >> ((t + 3) & 13)) & 3) * 0.12f - 0.18f;
+            PA_Vec2 tp = project((float)t + jitter, (float)r->index + jitter * 0.6f, 0.0f);
+            pa_fill_ellipse(c, tp.x, tp.y, L.tile * 0.13f, L.depth * 0.10f,
+                            pa_shade(col, -0.14f));
+        }
+    }
+
     if (r->type == ROW_ROAD && r->markings) {
         PA_Vec2 m1 = project(-EDGE, (float)r->index, 0.0f);
         PA_Vec2 m2 = project( EDGE, (float)r->index, 0.0f);
@@ -681,10 +710,17 @@ static void draw_row(PA_Canvas *c, Row *r) {
     }
 
     if (r->type == ROW_RAIL) {
-        for (int s = -1; s <= 1; s += 2) {
-            PA_Vec2 r1 = project(-EDGE, (float)r->index + (float)s * 0.16f, 0.0f);
-            PA_Vec2 r2 = project( EDGE, (float)r->index + (float)s * 0.16f, 0.0f);
-            pa_line(c, r1.x, r1.y, r2.x, r2.y, L.tile * 0.08f, PA_RGBA(30, 26, 20, 140));
+        /* Sleepers under the rails: without them the row is two lines on a
+           brown band and reads as a fence, not a track. */
+        for (int sl = -HALF; sl <= HALF; sl++) {
+            PA_Vec2 sp = project((float)sl, (float)r->index, 0.0f);
+            pa_fill_rect(c, sp.x - L.tile * 0.30f, sp.y - L.depth * 0.20f,
+                         L.tile * 0.60f, L.depth * 0.40f, pa_hex(0x5E4E3A));
+        }
+        for (int s2 = -1; s2 <= 1; s2 += 2) {
+            PA_Vec2 r1 = project(-EDGE, (float)r->index + (float)s2 * 0.16f, 0.0f);
+            PA_Vec2 r2 = project( EDGE, (float)r->index + (float)s2 * 0.16f, 0.0f);
+            pa_line(c, r1.x, r1.y, r2.x, r2.y, L.tile * 0.09f, pa_hex(0x9AA0A8));
         }
         if (r->warn) {
             int blink = ((int)(H.time * 6.0f) % 2) == 0;
@@ -717,45 +753,94 @@ static void draw_row_props(PA_Canvas *c, Row *r) {
             if (!r->has_tree[i]) continue;
             float cx = (float)(i - HALF);
             float s = r->tree_s[i], h = r->tree_h[i];
-            /* Narrow trunk, wide crown, lighter cap. Matching the crown to the
-               trunk width turned every tree into a green domino. */
-            box(c, cx, (float)r->index, 0.0f, 0.26f, 0.34f, 0.26f, pa_hex(0x6B4A2E));
-            box(c, cx, (float)r->index, 0.30f, s, h * 0.62f, s, pa_hex(0x2E7A47));
-            box(c, cx, (float)r->index - 0.04f, 0.30f + h * 0.42f,
-                s * 0.68f, h * 0.34f, s * 0.68f, pa_hex(0x3EA063));
+            /*
+             * Three stacked blocks, not one. A single box with a lighter top is
+             * a green domino; a visible trunk under a crown that steps inward
+             * as it rises is a tree, and stepping the silhouette is the whole
+             * reason the reference style reads at a glance without lighting.
+             */
+            /*
+             * The trunk has to clear the crown's front face or it is invisible:
+             * a box's front face hangs down from its top, so a crown based at
+             * 0.42 covered a trunk that only reached 0.46 and every tree came
+             * out a green block with a brown sliver. Crown starts at 0.72 now,
+             * and the whole thing is roughly two tiles tall like the reference.
+             */
+            prop_shadow(c, cx, (float)r->index, s * 1.05f, 0.34f);
+            box(c, cx, (float)r->index, 0.0f, 0.26f, 0.74f, 0.26f, pa_hex(0x7A5333));
+            box(c, cx, (float)r->index, 0.72f, s, h * 0.62f, s, pa_hex(0x2F8C47));
+            box(c, cx, (float)r->index - 0.03f, 0.72f + h * 0.56f,
+                s * 0.76f, h * 0.44f, s * 0.76f, pa_hex(0x3FA855));
+            box(c, cx, (float)r->index - 0.05f, 0.72f + h * 0.94f,
+                s * 0.46f, h * 0.26f, s * 0.46f, pa_hex(0x57C466));
         }
     } else if (r->type == ROW_ROAD) {
         for (int i = 0; i < r->mover_count; i++) {
             Mover *m = &r->movers[i];
             if (fabsf(m->x) > EDGE + 4.0f) continue;
-            PA_Color body = pa_hsl(m->hue, 0.72f, 0.56f);
+            /* Saturation and lightness pinned, not random: letting the hue
+               wander is fine, letting the value wander gives a lane of traffic
+               that half disappears against the tarmac. */
+            PA_Color body = pa_hsl(m->hue, 0.78f, 0.58f);
             float flip = (float)r->dir;
+            float idx = (float)r->index;
 
-            box(c, m->x, (float)r->index, 0.05f, m->len, 0.30f, 0.62f, body);
-            if (m->big) {
-                box(c, m->x - flip * m->len * 0.28f, (float)r->index, 0.35f,
-                    m->len * 0.40f, 0.26f, 0.56f, pa_shade(body, 0.22f));
-                box(c, m->x + flip * m->len * 0.24f, (float)r->index, 0.35f,
-                    m->len * 0.48f, 0.16f, 0.54f, pa_shade(body, -0.30f));
-            } else {
-                box(c, m->x - flip * m->len * 0.06f, (float)r->index, 0.30f,
-                    m->len * 0.46f, 0.18f, 0.46f, pa_shade(body, 0.30f));
-                PA_Vec2 scr = project(m->x + flip * m->len * 0.14f, (float)r->index, 0.48f);
-                pa_fill_rect(c, scr.x - m->len * 0.05f * L.tile, scr.y - L.depth * 0.22f,
-                             m->len * 0.10f * L.tile, L.depth * 0.44f, PA_RGBA(26, 34, 54, 158));
+            prop_shadow(c, m->x, idx, m->len * 0.92f, 0.34f);
+
+            /* Wheels first, so the body sits over them. Two dark blocks under
+               the chassis are what stop a car reading as a floating brick. */
+            for (int wq = -1; wq <= 1; wq += 2) {
+                box(c, m->x + (float)wq * m->len * 0.30f, idx, 0.0f,
+                    m->len * 0.20f, 0.13f, 0.70f, pa_hex(0x27272F));
             }
-            /* Headlights on the leading edge, so oncoming traffic reads at once. */
-            PA_Vec2 lp = project(m->x + flip * (m->len * 0.5f), (float)r->index, 0.16f);
-            pa_fill_ellipse(c, lp.x, lp.y, L.tile * 0.06f, L.tile * 0.05f,
-                            PA_RGBA(255, 246, 200, 235));
+
+            box(c, m->x, idx, 0.10f, m->len, 0.26f, 0.62f, body);
+            /* A darker skirt below the waistline gives the body two tones
+               without needing a light source. */
+            box(c, m->x, idx, 0.10f, m->len * 1.005f, 0.09f, 0.635f, pa_shade(body, -0.22f));
+
+            if (m->big) {
+                box(c, m->x - flip * m->len * 0.26f, idx, 0.36f,
+                    m->len * 0.44f, 0.30f, 0.58f, pa_shade(body, 0.20f));
+                box(c, m->x + flip * m->len * 0.22f, idx, 0.36f,
+                    m->len * 0.50f, 0.14f, 0.55f, pa_shade(body, -0.28f));
+            } else {
+                box(c, m->x - flip * m->len * 0.05f, idx, 0.36f,
+                    m->len * 0.52f, 0.19f, 0.50f, pa_shade(body, 0.26f));
+                /* Glass wraps the cabin rather than sitting as one dark patch. */
+                box(c, m->x - flip * m->len * 0.05f, idx - 0.16f, 0.40f,
+                    m->len * 0.44f, 0.13f, 0.16f, pa_hex(0x2B3A5C));
+            }
+
+            /* Headlights on the leading edge, tail lights behind, so which way
+               a lane is travelling is readable without watching it move. */
+            PA_Vec2 lp = project(m->x + flip * (m->len * 0.48f), idx, 0.22f);
+            PA_Vec2 tp = project(m->x - flip * (m->len * 0.48f), idx, 0.22f);
+            for (int side = -1; side <= 1; side += 2) {
+                float off = (float)side * L.depth * 0.20f;
+                pa_fill_ellipse(c, lp.x, lp.y + off, L.tile * 0.055f, L.tile * 0.045f,
+                                PA_RGBA(255, 248, 214, 245));
+                pa_fill_ellipse(c, tp.x, tp.y + off, L.tile * 0.045f, L.tile * 0.038f,
+                                PA_RGBA(226, 62, 62, 220));
+            }
         }
     } else if (r->type == ROW_WATER) {
         for (int i = 0; i < r->mover_count; i++) {
             Mover *m = &r->movers[i];
             if (fabsf(m->x) > EDGE + 5.0f) continue;
-            box(c, m->x, (float)r->index, 0.0f, m->len, 0.20f, 0.66f, pa_hex(0x7A5433));
-            box(c, m->x, (float)r->index - 0.02f, 0.20f, m->len * 0.98f, 0.05f, 0.60f,
-                pa_hex(0x8E653F));
+            PA_Vec2 lsp = project(m->x, (float)r->index + 0.10f, 0.0f);
+            pa_fill_ellipse(c, lsp.x, lsp.y, m->len * L.tile * 0.48f, L.depth * 0.30f,
+                            PA_RGBA(14, 60, 110, 90));
+            /* Three bands along the log so it reads as timber rather than as a
+               brown bar, plus cut ends a shade lighter. */
+            box(c, m->x, (float)r->index, 0.0f, m->len, 0.22f, 0.66f, pa_hex(0x7A5433));
+            box(c, m->x, (float)r->index - 0.02f, 0.22f, m->len * 0.98f, 0.06f, 0.58f,
+                pa_hex(0x96683F));
+            for (int seg = 0; seg < 3; seg++) {
+                float t = -0.28f + (float)seg * 0.28f;
+                box(c, m->x + m->len * t, (float)r->index - 0.02f, 0.28f,
+                    m->len * 0.05f, 0.02f, 0.54f, pa_hex(0x6A4527));
+            }
         }
     } else if (r->type == ROW_RAIL && r->train_on) {
         box(c, r->train_x, (float)r->index, 0.05f, 9.0f, 0.78f, 0.78f, pa_hex(0xC2453D));
@@ -775,8 +860,7 @@ static void draw_player(PA_Canvas *c) {
 
     PA_Vec2 sp = project(H.draw_x, H.draw_y, 0.0f);
     float shrink = 1.0f - z * 0.5f;
-    pa_fill_ellipse(c, sp.x, sp.y, L.tile * 0.30f * shrink, L.depth * 0.30f * shrink,
-                    PA_RGBA(0, 0, 0, 60));
+    pa_shadow(c, sp.x, sp.y, L.tile * 0.30f * shrink, L.depth * 0.28f * shrink, 0.34f);
 
     if (H.over && H.death == 0) {
         /* Pancaked: flatten the whole stack in place. */
@@ -850,6 +934,10 @@ static void hopper_render(PA_Canvas *c) {
         pa_fill_poly(c, wing, 5, pa_hex(0x2A2438));
         pa_fill_ellipse(c, p.x, p.y + w * 0.06f, w * 0.28f, w * 0.20f, pa_hex(0x5A4B6E));
     }
+
+    pa_vignette(c, 0.55f);
+
+    pa_hud_scrim(c, 96.0f);
 
     /* HUD. Left of x=104 belongs to the hub's MENU button. */
     char buf[48];

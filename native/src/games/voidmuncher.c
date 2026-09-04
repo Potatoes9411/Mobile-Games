@@ -549,18 +549,32 @@ static void draw_prop(PA_Canvas *c, Prop *p) {
     float hh = p->type->h * sc * shrink;
     PA_Color col = pa_hex(p->type->colour);
 
-    pa_fill_ellipse(c, px, py + d * 0.10f, w * 0.60f, d * 0.60f, PA_RGBA(12, 10, 26, 76));
+    /* Soft contact shadow. Flat-shaded art has no lighting to read depth from,
+       so this is carrying all of it - a hard ellipse reads as a sticker. */
+    pa_shadow(c, px, py + d * 0.14f, w * 0.56f, d * 0.50f, 0.34f);
 
+    float radius = w * 0.14f < 5.0f ? w * 0.14f : 5.0f;
     PA_Color side = pa_shade(col, -0.34f);
+    PA_Color skirt = pa_shade(col, -0.48f);
+
     if (p->type->round) {
         pa_fill_rect(c, px - w * 0.5f, py - hh, w, hh, side);
         pa_fill_ellipse(c, px, py, w * 0.5f, d * 0.5f, side);
+        /* A darker band at the base grounds a cylinder that would otherwise be
+           one flat column of colour. */
+        pa_fill_ellipse(c, px, py - hh * 0.14f, w * 0.5f, d * 0.5f, skirt);
         pa_fill_ellipse(c, px, py - hh, w * 0.5f, d * 0.5f, col);
     } else {
-        pa_round_rect(c, px - w * 0.5f, py - hh, w, hh + d * 0.5f,
-                      w * 0.14f < 5.0f ? w * 0.14f : 5.0f, side);
-        pa_round_rect(c, px - w * 0.5f, py - hh - d * 0.5f, w, d,
-                      w * 0.14f < 5.0f ? w * 0.14f : 5.0f, col);
+        pa_round_rect(c, px - w * 0.5f, py - hh, w, hh + d * 0.5f, radius, side);
+        pa_round_rect(c, px - w * 0.5f, py - hh * 0.22f, w, hh * 0.22f + d * 0.5f,
+                      radius, skirt);
+        pa_round_rect(c, px - w * 0.5f, py - hh - d * 0.5f, w, d, radius, col);
+        /* A lighter parapet inset on the roof: the single cheapest thing that
+           separates a building from a coloured brick. */
+        if (p->type->tier >= 4 && w > 14.0f) {
+            pa_round_rect(c, px - w * 0.36f, py - hh - d * 0.34f, w * 0.72f, d * 0.68f,
+                          radius * 0.6f, pa_shade(col, 0.18f));
+        }
     }
 
     /* Windows on anything tall enough to read as a building. */
@@ -573,10 +587,14 @@ static void draw_prop(PA_Canvas *c, Prop *p) {
         for (int cx = 0; cx < cols; cx++) {
             for (int cy = 0; cy < rows; cy++) {
                 if ((p->mask >> ((cx * 3 + cy) % 16)) & 1) continue;
+                /* Two window tints rather than one, so a tower is not a
+                   perfectly regular grid of identical dots. */
+                int warm = ((cx * 5 + cy * 3 + (int)(p->mask & 7)) % 3) != 0;
                 pa_fill_rect(c,
                     px - w * 0.5f + ((float)cx + 0.5f) * (w / (float)cols) - ww * 0.5f,
                     py - hh + ((float)cy + 0.4f) * (hh / (float)rows) - wh * 0.5f,
-                    ww, wh, PA_RGBA(255, 242, 196, 140));
+                    ww, wh,
+                    warm ? PA_RGBA(255, 240, 190, 165) : PA_RGBA(150, 205, 255, 120));
             }
         }
     }
@@ -624,17 +642,21 @@ static void muncher_render(PA_Canvas *c) {
         L.unit = (float)(c->w < c->h ? c->w : c->h);
     }
 
-    pa_clear(c, pa_hex(0x1D2233));
+    pa_clear(c, pa_hex(0x181D2C));
 
     PA_Vec2 tl = to_screen(-V.half_x, -V.half_y);
     PA_Vec2 br = to_screen(V.half_x, V.half_y);
-    pa_fill_rect(c, tl.x, tl.y, br.x - tl.x, br.y - tl.y, pa_hex(0x2B3145));
+    pa_fill_rect(c, tl.x, tl.y, br.x - tl.x, br.y - tl.y, pa_hex(0x333A50));
 
     for (int i = 0; i < V.block_count; i++) {
         Block *b = &V.blocks[i];
         PA_Vec2 p = to_screen(b->x - b->w * 0.5f, b->y - b->h * 0.5f);
-        pa_round_rect(c, p.x, p.y, b->w * V.cam_scale, b->h * V.cam_scale,
-                      8.0f * V.cam_scale, pa_hex(0x3A6E52));
+        float bw = b->w * V.cam_scale, bh = b->h * V.cam_scale;
+        /* A kerb under each block: the grid was blocks floating on tarmac with
+           nothing marking where one ends. */
+        pa_round_rect(c, p.x - 2.0f, p.y - 2.0f, bw + 4.0f, bh + 4.0f,
+                      9.0f * V.cam_scale, pa_hex(0x8E97A8));
+        pa_round_rect(c, p.x, p.y, bw, bh, 8.0f * V.cam_scale, pa_hex(0x49A05F));
     }
 
     /* Painter's algorithm: sort by world y so a hole sits in front of the bus
@@ -688,6 +710,10 @@ static void muncher_render(PA_Canvas *c) {
         };
         pa_fill_poly(c, tri, 3, danger ? PA_RGBA(226, 69, 95, 230) : pa_alpha(rv->tint, 0.6f));
     }
+
+    pa_vignette(c, 0.5f);
+
+    pa_hud_scrim(c, 96.0f);
 
     /* HUD */
     char buf[64];

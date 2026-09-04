@@ -456,6 +456,38 @@ void pa_round_rect(PA_Canvas *c, float x, float y, float w, float h, float r, PA
     pa_round_rect_paint(c, x, y, w, h, r, &p);
 }
 
+/* ---------------------------------------------------------------- shadow -- */
+void pa_shadow(PA_Canvas *c, float cx, float cy, float rx, float ry, float strength) {
+    if (rx <= 0.5f || ry <= 0.2f) return;
+    /* Two thirds of the radius is solid, then it falls away. A linear falloff
+       from the centre looks like a smudge; holding the core keeps the contact
+       point readable while the edge stays soft. */
+    PA_Paint p = pa_radial(cx, cy, rx * 0.45f, rx * 1.15f);
+    pa_stop(&p, 0.0f, PA_RGBA(8, 10, 20, (int)(pa_clamp01(strength) * 255.0f)));
+    pa_stop(&p, 0.55f, PA_RGBA(8, 10, 20, (int)(pa_clamp01(strength) * 130.0f)));
+    pa_stop(&p, 1.0f, PA_RGBA(8, 10, 20, 0));
+    pa_fill_ellipse_paint(c, cx, cy, rx * 1.15f, ry * 1.15f, &p);
+}
+
+void pa_hud_scrim(PA_Canvas *c, float height) {
+    if (height <= 0.0f) return;
+    PA_Paint p = pa_linear(0, 0, 0, height);
+    pa_stop(&p, 0.0f, PA_RGBA(8, 10, 22, 175));
+    pa_stop(&p, 0.62f, PA_RGBA(8, 10, 22, 92));
+    pa_stop(&p, 1.0f, PA_RGBA(8, 10, 22, 0));
+    pa_fill_rect_paint(c, 0, 0, (float)c->w, height, &p);
+}
+
+void pa_vignette(PA_Canvas *c, float strength) {
+    float w = (float)c->w, h = (float)c->h;
+    float r = (w > h ? w : h) * 0.78f;
+    PA_Paint p = pa_radial(w * 0.5f, h * 0.46f, r * 0.42f, r);
+    pa_stop(&p, 0.0f, PA_RGBA(0, 0, 0, 0));
+    pa_stop(&p, 0.62f, PA_RGBA(6, 8, 18, (int)(strength * 60.0f)));
+    pa_stop(&p, 1.0f, PA_RGBA(6, 8, 18, (int)(strength * 255.0f)));
+    pa_fill_rect_paint(c, 0, 0, w, h, &p);
+}
+
 /* --------------------------------------------------------------- strokes -- */
 /*
  * A stroke is drawn as one quad per segment plus a round join disc at each

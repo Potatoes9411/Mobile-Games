@@ -271,6 +271,9 @@ static void splat_render(PA_Canvas *c) {
     pa_fill_ellipse_paint(c, bx, by, r, r, &ball);
     pa_stroke_circle(c, bx, by, r, 2.5f, PA_RGBA(15, 11, 28, 165));
 
+    pa_vignette(c, 0.42f);
+    pa_hud_scrim(c, 96.0f);
+
     /* HUD */
     char buf[64];
     snprintf(buf, sizeof(buf), "LEVEL %d", S.level + 1);

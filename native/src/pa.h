@@ -112,6 +112,20 @@ void pa_fill_ellipse_paint(PA_Canvas *c, float cx, float cy, float rx, float ry,
 void pa_round_rect(PA_Canvas *c, float x, float y, float w, float h, float r, PA_Color col);
 void pa_round_rect_paint(PA_Canvas *c, float x, float y, float w, float h, float r, const PA_Paint *p);
 
+/** Soft contact shadow: a radial falloff, not a flat ellipse. Flat-shaded art
+    has no lighting to read depth from, so the shadow is doing all of that work
+    and a hard-edged one reads as a sticker rather than as contact. */
+void pa_shadow(PA_Canvas *c, float cx, float cy, float rx, float ry, float strength);
+
+/** Dark gradient strip behind the top HUD. Flat-shaded playfields are bright
+    and busy, and white text laid straight over one is unreadable wherever a
+    pale prop happens to sit. */
+void pa_hud_scrim(PA_Canvas *c, float height);
+
+/** Screen vignette. Frames the playfield and stops flat colour fields from
+    running off the edge of the panel. */
+void pa_vignette(PA_Canvas *c, float strength);
+
 void pa_stroke_poly(PA_Canvas *c, const PA_Vec2 *pts, int n, int closed, float width, PA_Color col);
 void pa_stroke_rect(PA_Canvas *c, float x, float y, float w, float h, float width, PA_Color col);
 void pa_stroke_circle(PA_Canvas *c, float cx, float cy, float r, float width, PA_Color col);
