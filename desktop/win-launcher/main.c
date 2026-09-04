@@ -3,7 +3,8 @@
  *
  * A ~100 KB native Win32 executable with the entire game embedded inside it.
  * On launch it unpacks the game next to the user's app data and opens it in a
- * chrome-less browser window (Edge or Chrome in --app mode), which on Windows 11
+ * chrome-less browser window (Chrome, Brave, Vivaldi, Opera or Chromium in --app
+ * mode, with Edge only as a last resort), which on Windows 11
  * looks and behaves like a native application window: no tabs, no address bar,
  * its own taskbar entry. If neither browser is found it falls back to the
  * default browser so the game always starts.
@@ -124,17 +125,34 @@ int main(void)
 
     wchar_t programFiles[MAX_PATH] = L"";
     wchar_t programFilesX86[MAX_PATH] = L"";
+    wchar_t localAppData[MAX_PATH] = L"";
     GetEnvironmentVariableW(L"ProgramFiles", programFiles, MAX_PATH);
     GetEnvironmentVariableW(L"ProgramFiles(x86)", programFilesX86, MAX_PATH);
+    /*
+     * Chrome's default installer is per-user and lands in LOCALAPPDATA, not
+     * Program Files. Leaving that root out meant a machine with a perfectly
+     * good Chrome install still fell through to Edge.
+     */
+    GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH);
 
-    const wchar_t *roots[3] = { programFilesX86, programFiles, base };
-    const wchar_t *suffixes[2] = {
-        L"\\Microsoft\\Edge\\Application\\msedge.exe",
-        L"\\Google\\Chrome\\Application\\chrome.exe"
+    const wchar_t *roots[4] = { localAppData, programFiles, programFilesX86, base };
+
+    /*
+     * Search order is the preference order. Edge sits at the very bottom: it is
+     * the one Chromium browser guaranteed to exist on Windows 11, so it stays
+     * as a last resort, but anything else installed wins ahead of it.
+     */
+    const wchar_t *suffixes[6] = {
+        L"\\Google\\Chrome\\Application\\chrome.exe",
+        L"\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+        L"\\Vivaldi\\Application\\vivaldi.exe",
+        L"\\Programs\\Opera\\opera.exe",
+        L"\\Chromium\\Application\\chrome.exe",
+        L"\\Microsoft\\Edge\\Application\\msedge.exe"
     };
 
-    for (int s = 0; s < 2; s++) {
-        for (int r = 0; r < 3; r++) {
+    for (int s = 0; s < 6; s++) {
+        for (int r = 0; r < 4; r++) {
             if (roots[r][0] == L'\0') continue;
 
             wchar_t candidate[MAX_PATH];

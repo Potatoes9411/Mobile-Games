@@ -47,6 +47,49 @@
    * bundle working from a file:// double click, where injecting a relative
    * script would fail silently.
    */
+  var vendorLoads = {};
+
+  /**
+   * Loads a vendored library once, resolving immediately if its global is
+   * already present.
+   *
+   * Libraries are vendored into the repo rather than pulled from a CDN because
+   * the desktop build unpacks a single HTML file and opens it from disk: a
+   * remote script tag would leave the physics games dead with no network, and
+   * the bundler inlines these files anyway, at which point the global exists
+   * before this ever runs.
+   */
+  GM.require = function (src, globalName) {
+    if (globalName && window[globalName]) return Promise.resolve(window[globalName]);
+    if (vendorLoads[src]) return vendorLoads[src];
+
+    vendorLoads[src] = new Promise(function (resolve, reject) {
+      var el = document.createElement("script");
+      el.src = src;
+      el.async = false;
+      el.onload = function () {
+        if (globalName && !window[globalName]) {
+          reject(new Error(src + " loaded but did not define " + globalName));
+          return;
+        }
+        resolve(globalName ? window[globalName] : true);
+      };
+      el.onerror = function () { reject(new Error("Failed to load " + src)); };
+      document.head.appendChild(el);
+    });
+
+    vendorLoads[src]["catch"](function () { delete vendorLoads[src]; });
+    return vendorLoads[src];
+  };
+
+  /** Every vendor dependency a manifest row declares, in order. */
+  function loadVendors(row) {
+    var deps = row.vendor || [];
+    return deps.reduce(function (chain, dep) {
+      return chain.then(function () { return GM.require(dep.src, dep.global); });
+    }, Promise.resolve());
+  }
+
   GM.ensure = function (id) {
     if (GM.isLoaded(id)) return Promise.resolve(GM.definition(id));
     if (loading[id]) return loading[id];
@@ -54,18 +97,20 @@
     var row = A.manifestRow(id);
     if (!row) return Promise.reject(new Error("No manifest row for game: " + id));
 
-    loading[id] = new Promise(function (resolve, reject) {
-      var el = document.createElement("script");
-      el.src = row.script;
-      el.async = false;
-      el.setAttribute("data-game", id);
-      el.onload = function () {
-        var def = GM.definition(id);
-        if (def) resolve(def);
-        else reject(new Error("Script loaded but did not register: " + id));
-      };
-      el.onerror = function () { reject(new Error("Failed to load " + row.script)); };
-      document.head.appendChild(el);
+    loading[id] = loadVendors(row).then(function () {
+      return new Promise(function (resolve, reject) {
+        var el = document.createElement("script");
+        el.src = row.script;
+        el.async = false;
+        el.setAttribute("data-game", id);
+        el.onload = function () {
+          var def = GM.definition(id);
+          if (def) resolve(def);
+          else reject(new Error("Script loaded but did not register: " + id));
+        };
+        el.onerror = function () { reject(new Error("Failed to load " + row.script)); };
+        document.head.appendChild(el);
+      });
     });
 
     /* A failed load must not poison the cache - the player may well have just

@@ -22,6 +22,13 @@
     { id: "voidmuncher", title: "Void Muncher",   genre: "Arena",          script: "src/games/voidmuncher.js" },
     { id: "roadhopper",  title: "Road Hopper",    genre: "Endless Hopper", script: "src/games/roadhopper.js" },
     { id: "chromerush",  title: "Chrome Rush",    genre: "Endless Driver", script: "src/games/chromerush.js" },
+    {
+      id: "avian", title: "Avian Artillery", genre: "Physics Slingshot",
+      script: "src/games/avian.js",
+      /* Vendored, not from a CDN: the desktop build runs from disk with no
+         network, and a remote script would leave this game dead there. */
+      vendor: [{ src: "vendor/matter.min.js", global: "Matter" }]
+    },
     { id: "blocks",      title: "Block Storm",    genre: "Puzzle",         script: "src/games/blockblast.js" },
     { id: "pins",        title: "Pin Rescue",     genre: "Physics Puzzle", script: "src/games/pinrescue.js" },
     { id: "helix",       title: "Helix Drop",     genre: "Arcade",         script: "src/games/helix.js" },

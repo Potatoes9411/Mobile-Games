@@ -44,6 +44,21 @@ while ((rowMatch = rowPattern.exec(manifestSrc)) !== null) scriptPaths.push(rowM
 
 if (scriptPaths.length === 0) throw new Error("No game scripts found in the manifest");
 
+/* Vendored libraries first, deduped: a game script may assume its global. */
+const vendorPaths = [];
+const vendorPattern = /src:\s*"(vendor\/[^"]+)"/g;
+let vendorMatch;
+while ((vendorMatch = vendorPattern.exec(manifestSrc)) !== null) {
+  if (!vendorPaths.includes(vendorMatch[1])) vendorPaths.push(vendorMatch[1]);
+}
+
+const vendorBlobs = vendorPaths.map((src) => {
+  const file = path.join(webDir, src);
+  if (!fs.existsSync(file)) throw new Error("Manifest points at a missing vendor file: " + src);
+  inlined++;
+  return "<script>\n/* ---- " + src + " ---- */\n" + fs.readFileSync(file, "utf8") + "\n</script>";
+});
+
 const gameBlobs = scriptPaths.map((src) => {
   const file = path.join(webDir, src);
   if (!fs.existsSync(file)) throw new Error("Manifest points at a missing file: " + src);
@@ -54,7 +69,7 @@ const gameBlobs = scriptPaths.map((src) => {
 if (!html.includes("<!--ARCADE_GAME_SCRIPTS-->")) {
   throw new Error("index.html is missing the ARCADE_GAME_SCRIPTS placeholder");
 }
-html = html.replace("<!--ARCADE_GAME_SCRIPTS-->", gameBlobs.join("\n"));
+html = html.replace("<!--ARCADE_GAME_SCRIPTS-->", vendorBlobs.concat(gameBlobs).join("\n"));
 
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(outFile, html);
