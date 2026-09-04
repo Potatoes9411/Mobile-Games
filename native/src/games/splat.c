@@ -171,7 +171,9 @@ static void try_roll(int dx, int dy) {
 }
 
 static void splat_start(void) {
-    load_level(0);
+    /* Resume at the furthest level reached rather than restarting the whole
+       campaign every launch. */
+    load_level(pa_save_get("splat.level", 0));
     g_score = 0;
 }
 
@@ -182,7 +184,12 @@ static void splat_update(float dt, const PA_Input *in) {
         S.clear_t += dt;
         if (S.clear_t > 1.1f) {
             g_score += 500 + S.total * 10;
-            load_level(S.level + 1);
+            int next = S.level + 1;
+            if (next > pa_save_get("splat.level", 0)) {
+                pa_save_set("splat.level", next);
+                pa_save_flush();
+            }
+            load_level(next);
         }
         return;
     }

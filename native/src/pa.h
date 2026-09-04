@@ -157,6 +157,17 @@ void pa_tone(float from_hz, float to_hz, float seconds, int shape, float gain);
 void pa_noise(float seconds, float gain);
 void pa_sfx(const char *name);
 
+/* ------------------------------------------------------------------ save -- */
+/*
+ * A tiny key/value store persisted beside the executable. Scores and settings
+ * are the only state worth keeping, and a plain text file means a corrupted or
+ * hand-edited save degrades to defaults rather than to a crash.
+ */
+void  pa_save_load(void);
+void  pa_save_flush(void);
+int   pa_save_get(const char *key, int fallback);
+void  pa_save_set(const char *key, int value);
+
 /* ------------------------------------------------------------------ game -- */
 typedef struct PA_Game PA_Game;
 

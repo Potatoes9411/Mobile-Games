@@ -66,10 +66,10 @@ PA_Color pa_mix(PA_Color a, PA_Color b, float t) {
     int bl = (int)((float)ab + (float)(bb - ab) * t + 0.5f);
     int al = (int)((float)aa + (float)(ba - aa) * t + 0.5f);
 
-    if (r < 0) r = 0; if (r > 255) r = 255;
-    if (g < 0) g = 0; if (g > 255) g = 255;
-    if (bl < 0) bl = 0; if (bl > 255) bl = 255;
-    if (al < 0) al = 0; if (al > 255) al = 255;
+    r  = r  < 0 ? 0 : (r  > 255 ? 255 : r);
+    g  = g  < 0 ? 0 : (g  > 255 ? 255 : g);
+    bl = bl < 0 ? 0 : (bl > 255 ? 255 : bl);
+    al = al < 0 ? 0 : (al > 255 ? 255 : al);
 
     return PA_RGBA(r, g, bl, al);
 }

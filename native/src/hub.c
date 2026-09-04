@@ -10,8 +10,10 @@
 #include <math.h>
 
 extern const PA_Game PA_GAME_SPLAT;
+extern const PA_Game PA_GAME_ROADHOPPER;
 
 static const PA_Game *const GAMES[] = {
+    &PA_GAME_ROADHOPPER,
     &PA_GAME_SPLAT
 };
 #define GAME_COUNT ((int)(sizeof(GAMES) / sizeof(GAMES[0])))
@@ -71,12 +73,14 @@ void pa_app_init(int w, int h) {
     g_quit = 0;
     g_scroll = 0.0f;
     layout_cards();
-    pa_audio_set_volume(0.8f);
+    pa_save_load();
+    pa_audio_set_volume((float)pa_save_get("volume", 80) / 100.0f);
 }
 
 void pa_app_shutdown(void) {
     if (g_active && g_active->stop) g_active->stop();
     g_active = NULL;
+    pa_save_flush();
 }
 
 int pa_app_should_quit(void) { return g_quit; }
@@ -183,7 +187,10 @@ void pa_app_frame(PA_Canvas *c, float dt, const PA_Input *in) {
             Rect r = g_cards[i];
             if (in->x >= r.x && in->x <= r.x + r.w && in->y >= r.y && in->y <= r.y + r.h) {
                 g_hover = i;
-                if (in->released) launch(i);
+                /* A tap, not a bare release: a drag that happens to end over a
+                   card should not launch it, and a release carrying a stale
+                   pointer position should not launch anything at all. */
+                if (in->tapped) launch(i);
             }
         }
         if (in->key_pressed[PA_KEY_ESC]) g_quit = 1;
@@ -204,7 +211,7 @@ void pa_app_frame(PA_Canvas *c, float dt, const PA_Input *in) {
         /* Menu button, top left, matching the browser build. */
         pa_round_rect(c, 14.0f, 14.0f, 74.0f, 32.0f, 10.0f, PA_RGBA(14, 11, 30, 200));
         pa_text(c, "MENU", 51.0f, 36.0f, 13.0f, PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 2.0f);
-        if (in->released && in->x < 96.0f && in->y < 56.0f) { go_home(); return; }
+        if (in->tapped && in->x < 96.0f && in->y < 56.0f) { go_home(); return; }
 
         if (g_screen == SCREEN_PAUSE) {
             pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(10, 8, 24, 220));

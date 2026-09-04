@@ -207,7 +207,7 @@ static int write_bmp(const char *path, const PA_Canvas *c) {
 
 void pa_app_debug_launch(int index);
 
-static int run_headless(const char *path, double seconds, int frames_hint, int play) {
+static int run_headless(const char *path, double seconds, int frames_hint, int play, int autoplay) {
     if (!pa_canvas_init(&g_canvas, g_client_w, g_client_h)) return 1;
     pa_app_init(g_canvas.w, g_canvas.h);
     if (play >= 0) pa_app_debug_launch(play);
@@ -219,6 +219,18 @@ static int run_headless(const char *path, double seconds, int frames_hint, int p
     double start = now_seconds();
     for (int i = 0; i < frames; i++) {
         begin_frame();
+        /* Synthetic input so a capture shows a game in motion rather than its
+           first frame. `autoplay` is the swipe direction issued every 10th
+           frame: 1 up, 2 left, 3 right. */
+        if (autoplay && (i % 10) == 9) {
+            g_input.swipe = (autoplay == 2) ? PA_SWIPE_LEFT
+                          : (autoplay == 3) ? PA_SWIPE_RIGHT : PA_SWIPE_UP;
+            /* Park the synthetic pointer mid-screen. At the origin it sits
+               inside the hub's MENU button, and a swipe there walks straight
+               out of the game being captured. */
+            g_input.x = (float)g_canvas.w * 0.5f;
+            g_input.y = (float)g_canvas.h * 0.5f;
+        }
         pa_app_frame(&g_canvas, 1.0f / 60.0f, &g_input);
         end_frame();
     }
@@ -234,15 +246,16 @@ static int run_headless(const char *path, double seconds, int frames_hint, int p
 }
 
 int main(int argc, char **argv) {
-    int play = -1;
+    int play = -1, autoplay = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--play") && i + 1 < argc) play = atoi(argv[i + 1]);
+        if (!strcmp(argv[i], "--auto") && i + 1 < argc) autoplay = atoi(argv[i + 1]);
     }
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--shot") && i + 1 < argc) {
             const char *path = argv[i + 1];
             int frames = (i + 2 < argc) ? atoi(argv[i + 2]) : 60;
-            return run_headless(path, 0.0, frames, play);
+            return run_headless(path, 0.0, frames, play, autoplay);
         }
         if (!strcmp(argv[i], "--size") && i + 2 < argc) {
             g_client_w = atoi(argv[i + 1]);

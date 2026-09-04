@@ -21,6 +21,7 @@ runs on a clean Windows box with no mingw runtime present.
 | `src/audio.c` | WinMM streaming mixer and the synth |
 | `src/platform_win32.c` | window, frame clock, input, `StretchDIBits` present, headless capture |
 | `src/hub.c` | the shell: card grid, launch/exit, pause |
+| `src/save.c` | the key/value save file |
 | `src/games/*.c` | one file per game |
 
 ## The rasterizer
@@ -47,11 +48,20 @@ from a Linux box with no Windows and no display:
 ```
 wine dist/PocketArcadeNative.exe --shot out.bmp 40        # 40 frames, then capture
 wine dist/PocketArcadeNative.exe --play 0 --shot g.bmp 30 # launch game 0 first
+wine dist/PocketArcadeNative.exe --play 0 --auto 1 --shot g.bmp 200  # drive it too
 wine dist/PocketArcadeNative.exe --size 720 1280          # windowed, custom size
 ```
 
-It prints the frame count and elapsed time, so a performance regression shows up
-in the same run as a visual one.
+`--auto` feeds a synthetic swipe every tenth frame (1 forward, 2 left, 3 right),
+so a capture shows a game in motion rather than its first frame. It prints the
+frame count and elapsed time, so a performance regression shows up in the same
+run as a visual one.
+
+Synthetic input found a real bug on its first use: the hub tested `released`
+rather than `tapped` for its buttons, so a release carrying a stale pointer
+position at the origin landed inside the MENU button and walked straight out of
+the game being captured. A drag that happens to end over a card should not
+launch it either.
 
 ## Two bugs worth remembering
 
@@ -66,6 +76,15 @@ The rasterizer's edge list is file static, not automatic. At 80KB a frame it
 relied on Windows growing the stack correctly through guard-page probing from a
 deep call chain, and the failure mode there is silent garbage rather than a
 crash.
+
+## Saves
+
+`pa_save_get` / `pa_save_set` over one flat `key=value` text file written beside
+the executable, not in the working directory - a shortcut can launch the game
+from anywhere and the save should still be found. Deliberately not a binary
+blob: a save that gets truncated, hand edited, or copied between builds degrades
+to defaults rather than to a crash. A read-only install simply fails the write
+and plays on.
 
 ## Porting a game
 

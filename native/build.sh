@@ -11,6 +11,7 @@ sources=(
   "$here/src/raster.c"
   "$here/src/font.c"
   "$here/src/audio.c"
+  "$here/src/save.c"
   "$here/src/hub.c"
   "$here/src/platform_win32.c"
 )
