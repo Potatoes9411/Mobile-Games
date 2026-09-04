@@ -170,9 +170,11 @@ h2.section::after{content:"";flex:1;height:1px;background:var(--line)}
   text-shadow:0 5px 0 rgba(20,15,35,.6);transition:transform .09s;
 }
 .bigNum.pop{transform:scale(1.13)}
-.cap{text-align:center;font-size:12px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.6);
+.cap{text-align:center;font-size:12px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.72);
+     text-shadow:0 1px 3px rgba(6,4,16,.9),0 0 10px rgba(6,4,16,.7);
      text-transform:uppercase;margin-top:-1px;text-shadow:0 2px 3px rgba(0,0,0,.6)}
 .hint{margin-top:auto;text-align:center;font-size:14px;font-weight:700;letter-spacing:.18em;
+      text-shadow:0 1px 3px rgba(6,4,16,.9),0 0 10px rgba(6,4,16,.7);
       text-transform:uppercase;color:rgba(255,255,255,.75);text-shadow:0 2px 4px rgba(0,0,0,.7)}
 .backBtn{
   position:absolute;top:max(12px,env(safe-area-inset-top));right:14px;pointer-events:auto;
@@ -180,6 +182,24 @@ h2.section::after{content:"";flex:1;height:1px;background:var(--line)}
   color:var(--ink);font-family:var(--display);font-size:13px;border-radius:11px;
   padding:8px 11px 6px;cursor:pointer;
 }
+
+/* An in-game action button. Sits above the thumb rest on the right so it never
+   overlaps the steering half of the screen. */
+.fireBtn{
+  position:absolute;right:16px;bottom:max(24px,calc(env(safe-area-inset-bottom) + 18px));
+  pointer-events:auto;appearance:none;cursor:pointer;
+  width:76px;height:76px;border-radius:50%;
+  border:3px solid rgba(255,255,255,.16);background:rgba(14,11,30,.66);
+  color:rgba(255,255,255,.45);font-family:var(--display);font-size:12px;
+  letter-spacing:.04em;line-height:1.05;padding:0 6px;
+  transition:background .15s,color .15s,border-color .15s,transform .1s;
+}
+.fireBtn.ready{
+  border-color:rgba(93,224,255,.85);color:#EAFBFF;
+  background:radial-gradient(70% 70% at 50% 35%,rgba(93,224,255,.42),rgba(14,11,30,.82));
+  box-shadow:0 0 22px rgba(93,224,255,.35);
+}
+.fireBtn:active{transform:scale(.94)}
 
 /* ---------------------------------------------------------- overlays ---- */
 #modal{position:absolute;inset:0;pointer-events:auto;display:flex;flex-direction:column;
@@ -553,6 +573,14 @@ window.A = window.A || {};
                         }); break;
         case "jump":    A.Audio.tone(320, 620, 0.10, "triangle", 0.10); break;
         case "slide":   A.Audio.noise(0.20, 0.10); break;
+        case "hop":     A.Audio.tone(560, 900, 0.06, "square", 0.06); break;
+        case "thud":    A.Audio.tone(180, 90, 0.09, "sine", 0.09); break;
+        case "pop":     A.Audio.tone(700, 1300, 0.07, "sine", 0.09); break;
+        case "boom":    A.Audio.noise(0.30, 0.24); A.Audio.tone(160, 48, 0.30, "sawtooth", 0.14); break;
+        case "horn":    A.Audio.tone(240, 210, 0.34, "sawtooth", 0.10); break;
+        case "splash":  A.Audio.noise(0.22, 0.16); break;
+        case "buy":     A.Audio.tone(620, 990, 0.13, "triangle", 0.12); break;
+        case "engine":  A.Audio.tone(90, 130, 0.18, "sawtooth", 0.05); break;
       }
     }
   };
@@ -8401,6 +8429,2823 @@ window.A = window.A || {};
       if (!thumbStyle) thumbStyle = A.Rig.style(5150, { hue: 0.36, helmet: "hood", cape: true });
       var pose = A.Rig.pose("run", A.wrap(t * 1.8, 1));
       A.Rig.draw(g, thumbStyle, pose, w * 0.5, h * 0.94, 54, 1, { noShadow: true });
+    },
+    create: create
+  });
+})(window.A);
+
+</script>
+<script>
+/* ---- src/games/voidmuncher.js ---- */
+/* ===========================================================================
+   VOID MUNCHER
+   The "you are a hole, eat the city" format. Drag to steer a void across a
+   generated district. It swallows anything smaller than its mouth, grows with
+   every bite, and three rival voids are doing exactly the same thing to the
+   same city. Ninety seconds, then whoever ate most wins the block.
+
+   The whole appeal is the growth curve crossing thresholds: the moment your
+   hole gets wide enough to take a bus is the moment the run gets loud, so the
+   prop tiers below are spaced to guarantee three or four of those moments.
+   =========================================================================== */
+(function (A) {
+  "use strict";
+  A.games = A.games || [];
+
+  /* Prop tiers. `r` is the footprint radius the void has to beat, `value` the
+     score, `h` the extruded height in world units. Tier gaps are deliberate -
+     each one is a visible upgrade in what the city looks like from inside. */
+  var PROPS = [
+    { key: "cone",    tier: 0, r: 6,  h: 9,  w: 11, value: 1,    color: 0xF2803C, round: true,  weight: 12 },
+    { key: "bin",     tier: 0, r: 7,  h: 12, w: 13, value: 2,    color: 0x4E7A63, round: true,  weight: 9 },
+    { key: "sign",    tier: 0, r: 6,  h: 17, w: 8,  value: 2,    color: 0xC9D3DE, round: true,  weight: 8 },
+    { key: "bench",   tier: 1, r: 11, h: 8,  w: 26, value: 4,    color: 0x9A6A3F, round: false, weight: 8 },
+    { key: "tree",    tier: 1, r: 12, h: 30, w: 24, value: 5,    color: 0x3E8F5A, round: true,  weight: 11 },
+    { key: "walker",  tier: 1, r: 9,  h: 20, w: 12, value: 6,    color: 0xE8B48A, round: true,  weight: 10 },
+    { key: "scooter", tier: 2, r: 15, h: 14, w: 30, value: 10,   color: 0xE2455F, round: false, weight: 7 },
+    { key: "kiosk",   tier: 2, r: 17, h: 26, w: 34, value: 14,   color: 0xE9C33F, round: false, weight: 5 },
+    { key: "car",     tier: 3, r: 21, h: 18, w: 46, value: 26,   color: 0x3D8BFF, round: false, weight: 9 },
+    { key: "cab",     tier: 3, r: 21, h: 18, w: 46, value: 28,   color: 0xF6C24B, round: false, weight: 5 },
+    { key: "van",     tier: 3, r: 24, h: 26, w: 52, value: 34,   color: 0xEDEDF2, round: false, weight: 4 },
+    { key: "bus",     tier: 4, r: 33, h: 32, w: 78, value: 70,   color: 0xD9483C, round: false, weight: 4 },
+    { key: "truck",   tier: 4, r: 35, h: 34, w: 82, value: 78,   color: 0x5F6B8A, round: false, weight: 3 },
+    { key: "hut",     tier: 4, r: 36, h: 44, w: 74, value: 84,   color: 0xB0663F, round: false, weight: 3 },
+    { key: "house",   tier: 5, r: 52, h: 78, w: 106, value: 190, color: 0xD5B48A, round: false, weight: 4 },
+    { key: "shop",    tier: 5, r: 56, h: 92, w: 114, value: 210, color: 0x7A6DC4, round: false, weight: 3 },
+    { key: "tower",   tier: 6, r: 78, h: 168, w: 156, value: 640, color: 0x8C9AB4, round: false, weight: 2 },
+    { key: "spire",   tier: 6, r: 70, h: 210, w: 138, value: 720, color: 0xB6C2D4, round: false, weight: 1 }
+  ];
+
+  var RIVAL_NAMES = ["ABYSS", "GULP", "NIL", "CHASM", "MAW", "SINK", "PIT", "HOLLOW"];
+  var RIVAL_TINTS = [0xE2455F, 0x8C5BFF, 0x2FD6A4, 0xF6A33F];
+
+  /* Nine well spread swallow milestones. Crossing one is worth a callout. */
+  var MILESTONES = [
+    { r: 14, text: "BENCHES" }, { r: 18, text: "TREES" }, { r: 24, text: "SCOOTERS" },
+    { r: 30, text: "CARS" }, { r: 40, text: "VANS" }, { r: 52, text: "BUSES" },
+    { r: 70, text: "HOUSES" }, { r: 92, text: "SHOPS" }, { r: 120, text: "TOWERS" }
+  ];
+
+  function create(host) {
+    var save = host.save;
+    var S = null;
+    var ui = {};
+    var layout = null;
+
+    /* ------------------------------------------------------------ tuning -- */
+    function startRadius() { return 16 + save.upStart * 2.0; }
+    function growthScale() { return 1 + save.upGrow * 0.12; }
+    function moveSpeed() { return 250 + save.upSpeed * 26; }
+    function runSeconds() { return 90 + save.upTime * 8; }
+
+    /* --------------------------------------------------------- generation -- */
+    /** Weighted prop pick, biased by how deep into the district we are. */
+    function rollProp(rand, level, ring) {
+      /* Outer rings hold the big stuff so early growth stays near the middle
+         and the player has a reason to spiral outward as they get bigger. */
+      var pool = [];
+      for (var i = 0; i < PROPS.length; i++) {
+        var p = PROPS[i];
+        var want = ring * 6.4;                       // preferred tier for this ring
+        var gap = Math.abs(p.tier - want);
+        var w = p.weight * Math.exp(-gap * gap * 0.55);
+        if (p.tier >= 5 && level < 2) w *= 0.35;     // no skyline on the first district
+        if (w > 0.02) pool.push({ p: p, w: w });
+      }
+      var total = 0, k;
+      for (k = 0; k < pool.length; k++) total += pool[k].w;
+      var roll = rand() * total;
+      for (k = 0; k < pool.length; k++) {
+        roll -= pool[k].w;
+        if (roll <= 0) return pool[k].p;
+      }
+      return pool[pool.length - 1].p;
+    }
+
+    function buildCity(level) {
+      var rand = A.rng(0x5EED ^ (level * 7919));
+      var props = [];
+      var blocks = [];
+
+      /* City is laid out on a road grid. Props sit inside blocks, never on the
+         roads, so the void always has clean lanes to travel down - a solid
+         wall of scenery would make steering feel like wading.
+
+         The grid is deliberately not square: a square district on a portrait
+         screen leaves fat empty bands top and bottom once the camera has zoomed
+         out far enough to show all of it. */
+      var cellsX = 6 + Math.min(3, Math.floor(level / 3));
+      var aspect = A.clamp((A.View.h || 800) / (A.View.w || 460), 1, 2.4);
+      var cellsY = A.clamp(Math.round(cellsX * aspect), cellsX, 16);
+      var span = (1240 + level * 60) / cellsX;
+      var road = span * 0.28;
+      var halfX = span * cellsX * 0.5;
+      var halfY = span * cellsY * 0.5;
+      var half = Math.max(halfX, halfY);
+
+      for (var cy = 0; cy < cellsY; cy++) {
+        for (var cx = 0; cx < cellsX; cx++) {
+          var bx = -halfX + span * (cx + 0.5);
+          var by = -halfY + span * (cy + 0.5);
+          var bw = span - road, bh = span - road;
+          blocks.push({ x: bx, y: by, w: bw, h: bh });
+
+          /* Ring is the normalised distance from the district centre. */
+          var ring = A.clamp01(Math.sqrt(bx * bx + by * by) / (half * 1.05));
+          var count = Math.round(A.lerp(30, 13, ring) * (1 + level * 0.04));
+          var placed = 0;
+
+          /* Fixed attempt budget rather than retrying until success: a dense
+             block can genuinely run out of room, and the old retry loop could
+             spin on that. A missing prop is invisible; a hang is not. */
+          for (var n = 0; n < count * 4 && placed < count; n++) {
+            var proto = rollProp(rand, level, ring);
+            var px = bx + rand.range(-bw * 0.44, bw * 0.44);
+            var py = by + rand.range(-bh * 0.44, bh * 0.44);
+
+            var ok = true;
+            for (var t = props.length - 1; t >= 0; t--) {
+              var q = props[t];
+              if (q.bx !== cx || q.by !== cy) continue;
+              var need = (q.r + proto.r) * 0.88;
+              if (A.dist2(px, py, q.x, q.y) < need * need) { ok = false; break; }
+            }
+            if (!ok) continue;
+            placed++;
+
+            props.push({
+              x: px, y: py, bx: cx, by: cy,
+              r: proto.r, h: proto.h, w: proto.w,
+              value: proto.value, tier: proto.tier,
+              round: proto.round, key: proto.key,
+              color: A.hex(proto.color),
+              spin: rand.range(0, A.TAU),
+              sink: 0, taken: false, ang: 0, dropX: 0, dropY: 0
+            });
+          }
+        }
+      }
+
+      /* Clear a landing pad so the opening seconds are never a wall of trucks. */
+      for (var i = props.length - 1; i >= 0; i--) {
+        if (props[i].tier >= 2 && A.dist2(props[i].x, props[i].y, 0, 0) < 165 * 165) {
+          props.splice(i, 1);
+        }
+      }
+
+      return {
+        half: half, halfX: halfX, halfY: halfY,
+        props: props, blocks: blocks, span: span, road: road,
+        cellsX: cellsX, cellsY: cellsY
+      };
+    }
+
+    /* -------------------------------------------------------------- run --- */
+    function begin() {
+      var level = save.level;
+      var city = buildCity(level);
+
+      var voids = [{
+        player: true, name: "YOU", x: 0, y: 0, r: startRadius(),
+        score: 0, tint: A.hex(0x5DE0FF), vx: 0, vy: 0, target: null, think: 0, alive: true
+      }];
+
+      var rivalCount = A.clamp(2 + Math.floor(level / 2), 2, 4);
+      var rand = A.rng(0xC0FFEE ^ (level * 131));
+      for (var i = 0; i < rivalCount; i++) {
+        var ang = A.TAU * (i + 0.5) / rivalCount;
+        voids.push({
+          player: false,
+          name: RIVAL_NAMES[(level * 3 + i) % RIVAL_NAMES.length],
+          x: Math.cos(ang) * city.halfX * 0.60,
+          y: Math.sin(ang) * city.halfY * 0.60,
+          /* Rivals start a touch behind so the first thirty seconds feel like a
+             lead you earned, then their growth rate catches up. */
+          r: startRadius() * 0.9,
+          score: 0, tint: A.hex(RIVAL_TINTS[i % RIVAL_TINTS.length]),
+          vx: 0, vy: 0, target: null, think: rand.range(0, 0.4), alive: true,
+          skill: A.clamp01(0.42 + level * 0.05 + rand.range(-0.06, 0.06))
+        });
+      }
+
+      S = {
+        level: level,
+        city: city,
+        voids: voids,
+        me: voids[0],
+        time: runSeconds(),
+        over: false,
+        camX: 0, camY: 0, camScale: 1,
+        milestone: 0,
+        eaten: 0,
+        combo: 0, comboTimer: 0,
+        shockwave: 0,
+        /* Opening grace. Long enough to reach the first cluster of props. */
+        grace: 9
+      };
+
+      A.Fx.reset();
+      computeLayout();
+      paintHud();
+      host.toast("DISTRICT " + level + "  ·  swallow the block");
+    }
+
+    function computeLayout() {
+      layout = { w: A.View.w, h: A.View.h, unit: A.View.unit() };
+      if (S) {
+        S.camX = S.me.x;
+        S.camY = S.me.y;
+        S.camScale = targetScale(S.me.r);
+      }
+    }
+
+    /** Zoom out as the void grows, so it always occupies a similar screen share.
+        The constant matters more than it looks: too tight and the district reads
+        as two enormous blocks with a dot in the middle, and the whole point of
+        the format - watching the city shrink around you - never lands. */
+    function targetScale(r) {
+      if (!layout) return 1;
+      /* Never zoom out past the point where the whole district fits: past that
+         the city becomes a postage stamp in a sea of background, which is the
+         opposite of the "the world is shrinking" feeling the zoom is for. */
+      var floorScale = S
+        ? Math.max(layout.w / (S.city.halfX * 2 + 150), layout.h / (S.city.halfY * 2 + 150))
+        : 0.2;
+      return A.clamp(layout.unit / (r * 22 + 330), floorScale, 1.1);
+    }
+
+    /* ------------------------------------------------------------- eating -- */
+    /** Radius after absorbing `area`. Areas add, radii do not - that keeps the
+        curve honest: doubling the mouth needs four times the city. */
+    function grow(v, area) {
+      /* Rivals bank less of what they eat. Without the handicap a bot that
+         happens to spawn on a dense block snowballs past the player inside the
+         first three seconds, which reads as the game cheating rather than as a
+         race. */
+      var gain = area * (v.player ? growthScale() : 0.62);
+      var a = Math.PI * v.r * v.r + gain;
+      v.r = Math.sqrt(a / Math.PI);
+    }
+
+    function canEat(v, p) { return !p.taken && p.r <= v.r * 0.94; }
+
+    function swallow(v, p) {
+      p.taken = true;
+      p.sink = 0.0001;
+      p.ang = Math.atan2(p.y - v.y, p.x - v.x);
+      p.dropX = v.x;
+      p.dropY = v.y;
+      p.eater = v;
+
+      grow(v, Math.PI * p.r * p.r * 0.62);
+      v.score += p.value;
+
+      if (v.player) {
+        S.eaten++;
+        S.combo++;
+        S.comboTimer = 1.5;
+        A.Audio.sfx(p.tier >= 4 ? "boom" : "pop");
+
+        if (p.tier >= 4) {
+          A.Fx.kick(p.tier >= 5 ? 9 : 5);
+          A.Fx.burst(v.x, v.y, 0, 14, { color: p.color, speed: 190, life: 0.5 });
+          S.shockwave = 1;
+        }
+        if (S.combo >= 3 && S.combo % 5 === 0) {
+          A.Fx.text(v.x, v.y - v.r - 22, 0, "x" + S.combo, [255, 214, 84], { life: 0.7, rise: 60 });
+        }
+      }
+    }
+
+    /* One void can swallow another. The bar is deliberately high (1.35x, centre
+       well inside the mouth) so a narrow lead never turns into an instant
+       unrecoverable loss, and the player gets a grace period on top. */
+    function tryDevourVoids() {
+      for (var i = 0; i < S.voids.length; i++) {
+        var a = S.voids[i];
+        if (!a.alive) continue;
+        for (var j = 0; j < S.voids.length; j++) {
+          if (i === j) continue;
+          var b = S.voids[j];
+          if (!b.alive || a.r < b.r * 1.35) continue;
+          if (b.player && S.grace > 0) continue;
+          var bite = a.r * 0.70;
+          if (A.dist2(a.x, a.y, b.x, b.y) > bite * bite) continue;
+
+          b.alive = false;
+          grow(a, Math.PI * b.r * b.r * 0.5);
+          a.score += Math.round(b.score * 0.5);
+
+          if (a.player) {
+            host.toast("SWALLOWED " + b.name);
+            A.Fx.kick(11);
+            A.Fx.flashScreen(0.3, [93, 224, 255]);
+          } else if (b.player) {
+            finish("eaten by " + a.name);
+            return;
+          }
+        }
+      }
+    }
+
+    /* ------------------------------------------------------------- rivals -- */
+    function steerRival(v, dt) {
+      v.think -= dt;
+
+      if (v.think <= 0 || !v.target || v.target.taken) {
+        v.think = A.lerp(0.55, 0.16, v.skill);
+
+        /* Score every candidate by value over travel time, then take the best.
+           Low skill rivals sample a small random slice instead, which makes
+           them wander plausibly rather than looking broken. */
+        var best = null, bestScore = -1;
+        var props = S.city.props;
+        var samples = Math.round(A.lerp(26, 150, v.skill));
+        var step = Math.max(1, Math.floor(props.length / samples));
+        var offset = Math.floor(Math.random() * step);
+
+        for (var i = offset; i < props.length; i += step) {
+          var p = props[i];
+          if (!canEat(v, p)) continue;
+          var d = Math.sqrt(A.dist2(v.x, v.y, p.x, p.y)) + 1;
+          var s = p.value / d;
+          if (s > bestScore) { bestScore = s; best = p; }
+        }
+
+        /* A big rival that has run out of food goes hunting smaller voids. */
+        if (!best) {
+          for (var k = 0; k < S.voids.length; k++) {
+            var o = S.voids[k];
+            if (o === v || !o.alive || v.r < o.r * 1.3) continue;
+            best = { x: o.x, y: o.y, taken: false, chase: o };
+            break;
+          }
+        }
+        v.target = best;
+      }
+
+      if (!v.target) return;
+      var tx = v.target.chase ? v.target.chase.x : v.target.x;
+      var ty = v.target.chase ? v.target.chase.y : v.target.y;
+      var dx = tx - v.x, dy = ty - v.y;
+      var len = Math.hypot(dx, dy) || 1;
+      var speed = (148 + S.level * 7) * A.lerp(0.80, 1.04, v.skill);
+      v.vx = (dx / len) * speed;
+      v.vy = (dy / len) * speed;
+    }
+
+    /* -------------------------------------------------------------- step -- */
+    function update(dt) {
+      A.Fx.update(dt);
+      if (S.over) return;
+
+      S.time -= dt;
+      if (S.time <= 0) { S.time = 0; finish("time"); return; }
+
+      S.shockwave = Math.max(0, S.shockwave - dt * 2.4);
+      if (S.grace > 0) S.grace = Math.max(0, S.grace - dt);
+      if (S.comboTimer > 0) {
+        S.comboTimer -= dt;
+        if (S.comboTimer <= 0) S.combo = 0;
+      }
+
+      /* Player steering: drag anywhere, the void chases the finger offset.
+         Keyboard falls back to the arrow keys for the desktop build. */
+      var me = S.me;
+      var speed = moveSpeed();
+      if (A.Input.down && layout) {
+        var dx = A.Input.x - layout.w / 2;
+        var dy = A.Input.y - layout.h / 2;
+        var len = Math.hypot(dx, dy);
+        var reach = layout.unit * 0.22;
+        var mag = A.clamp01(len / reach);
+        if (len > 4) {
+          me.vx = (dx / len) * speed * mag;
+          me.vy = (dy / len) * speed * mag;
+        }
+      } else {
+        var kx = 0, ky = 0;
+        if (A.Input.keyPressed("arrowleft") || A.Input.keyPressed("a")) kx -= 1;
+        if (A.Input.keyPressed("arrowright") || A.Input.keyPressed("d")) kx += 1;
+        if (A.Input.keyPressed("arrowup") || A.Input.keyPressed("w")) ky -= 1;
+        if (A.Input.keyPressed("arrowdown") || A.Input.keyPressed("s")) ky += 1;
+        if (kx || ky) {
+          var kl = Math.hypot(kx, ky);
+          me.vx = (kx / kl) * speed;
+          me.vy = (ky / kl) * speed;
+        } else {
+          me.vx *= Math.exp(-7 * dt);
+          me.vy *= Math.exp(-7 * dt);
+        }
+      }
+
+      var i;
+      for (i = 1; i < S.voids.length; i++) {
+        if (S.voids[i].alive) steerRival(S.voids[i], dt);
+      }
+
+      var boundX = S.city.halfX + 40, boundY = S.city.halfY + 40;
+      for (i = 0; i < S.voids.length; i++) {
+        var v = S.voids[i];
+        if (!v.alive) continue;
+        v.x = A.clamp(v.x + v.vx * dt, -boundX, boundX);
+        v.y = A.clamp(v.y + v.vy * dt, -boundY, boundY);
+      }
+
+      /* Eating pass. Props are static so a plain distance test is enough; at
+         a few hundred props over four voids this stays comfortably cheap. */
+      var props = S.city.props;
+      for (i = 0; i < props.length; i++) {
+        var p = props[i];
+        if (p.taken) continue;
+        for (var j = 0; j < S.voids.length; j++) {
+          var vv = S.voids[j];
+          if (!vv.alive || !canEat(vv, p)) continue;
+          /* Bite when the prop centre is inside the mouth, minus a little so
+             things visibly reach the lip before they tip in. */
+          var reach = vv.r * 0.86;
+          if (A.dist2(vv.x, vv.y, p.x, p.y) < reach * reach) { swallow(vv, p); break; }
+        }
+      }
+
+      /* Sink animation: spiral in, shrink, then stop drawing. */
+      for (i = 0; i < props.length; i++) {
+        if (props[i].taken && props[i].sink < 1) {
+          props[i].sink = Math.min(1, props[i].sink + dt * 2.6);
+        }
+      }
+
+      tryDevourVoids();
+      if (S.over) return;
+
+      /* Milestone callouts. */
+      while (S.milestone < MILESTONES.length && me.r >= MILESTONES[S.milestone].r) {
+        host.toast("BIG ENOUGH FOR " + MILESTONES[S.milestone].text);
+        A.Audio.sfx("levelup");
+        A.Fx.flashScreen(0.16, [93, 224, 255]);
+        S.milestone++;
+      }
+
+      /* Camera. */
+      S.camX = A.approach(S.camX, me.x, 7, dt);
+      S.camY = A.approach(S.camY, me.y, 7, dt);
+      S.camScale = A.approach(S.camScale, targetScale(me.r), 2.4, dt);
+
+      /* Keep the district filling the frame. Once the view is wider than the
+         city on an axis the camera locks to the centre on that axis. */
+      var limX = S.city.halfX + 30, limY = S.city.halfY + 30;
+      var halfViewX = (layout.w * 0.5) / S.camScale;
+      var halfViewY = (layout.h * 0.5) / S.camScale;
+      S.camX = halfViewX >= limX ? 0 : A.clamp(S.camX, -(limX - halfViewX), limX - halfViewX);
+      S.camY = halfViewY >= limY ? 0 : A.clamp(S.camY, -(limY - halfViewY), limY - halfViewY);
+
+      paintHud();
+    }
+
+    /* ------------------------------------------------------------ results -- */
+    function standings() {
+      var list = S.voids.slice();
+      list.sort(function (a, b) {
+        if (a.alive !== b.alive) return a.alive ? -1 : 1;
+        return b.score - a.score;
+      });
+      return list;
+    }
+
+    function finish(reason) {
+      if (S.over) return;
+      S.over = true;
+
+      var order = standings();
+      var place = order.indexOf(S.me) + 1;
+      var won = place === 1 && S.me.alive;
+
+      var coins = Math.round(S.me.score * 0.42 * host.coinMultiplier() * (won ? 1.6 : 1));
+      save.coins += coins;
+      save.runs++;
+      if (S.me.score > save.best) save.best = S.me.score;
+      if (won) {
+        save.wins++;
+        save.level++;
+      }
+      host.commit();
+
+      var xp = Math.round((22 + S.me.score * 0.05) * host.xpMultiplier());
+      host.addXp(xp);
+      host.progress("run", 1);
+      host.progress("coins", coins);
+      if (won) host.progress("win", 1);
+
+      A.Audio.sfx(won ? "win" : "lose");
+
+      var lines = [];
+      for (var i = 0; i < order.length; i++) {
+        var v = order[i];
+        lines.push({
+          label: (i + 1) + ".  " + v.name + (v.alive ? "" : "  (out)"),
+          value: A.formatNumber(v.score)
+        });
+      }
+
+      host.results({
+        title: won ? "DISTRICT TAKEN" : (reason === "time" ? "OUT OF TIME" : "SWALLOWED"),
+        subtitle: won
+          ? "District " + save.level + " unlocked"
+          : (reason === "time" ? "Finished " + place + " of " + order.length : "A bigger void got you"),
+        rows: [
+          { label: "Score", value: A.formatNumber(S.me.score) },
+          { label: "Props eaten", value: S.eaten },
+          { label: "Final size", value: Math.round(S.me.r) },
+          { label: "Coins", value: "+" + A.formatNumber(coins) },
+          { label: "XP", value: "+" + xp }
+        ].concat(lines),
+        actions: [
+          { label: won ? "NEXT DISTRICT" : "RETRY", className: "go", onClick: function () { host.modal.hide(); begin(); } },
+          { label: "UPGRADES", className: "gold", onClick: function () { host.modal.hide(); openShop(); } },
+          { label: "MENU", className: "ghost", onClick: host.exit }
+        ]
+      });
+    }
+
+    /* --------------------------------------------------------------- shop -- */
+    function openShop() {
+      var rows = [
+        { key: "upStart", name: "Wider Mouth", desc: "Start each district bigger", base: 140 },
+        { key: "upGrow",  name: "Deeper Void", desc: "Every bite grows you more",  base: 220 },
+        { key: "upSpeed", name: "Slipstream",  desc: "Move faster across the block", base: 180 },
+        { key: "upTime",  name: "Slow Clock",  desc: "+8 seconds on the timer",    base: 260 }
+      ];
+
+      var card = host.el("div", "card");
+      card.appendChild(host.el("h2", null, "VOID UPGRADES"));
+      card.appendChild(host.el("p", "sub", A.formatNumber(save.coins) + " coins"));
+
+      rows.forEach(function (r) {
+        var level = save[r.key];
+        var cost = Math.round(r.base * Math.pow(1.55, level));
+        var row = host.el("div", "shopRow");
+        var left = host.el("div");
+        left.appendChild(host.el("h4", null, r.name + "  ·  LV " + level));
+        left.appendChild(host.el("p", null, r.desc));
+        row.appendChild(left);
+
+        var buy = host.el("button", "buy");
+        if (level >= 12) {
+          buy.textContent = "MAX";
+          buy.disabled = true;
+        } else {
+          buy.textContent = A.formatNumber(cost);
+          buy.disabled = save.coins < cost;
+          buy.addEventListener("click", function () {
+            if (save.coins < cost) return;
+            save.coins -= cost;
+            save[r.key]++;
+            host.commit();
+            A.Audio.sfx("buy");
+            host.modal.hide();
+            openShop();
+          });
+        }
+        row.appendChild(buy);
+        card.appendChild(row);
+      });
+
+      card.appendChild(host.button("BACK", "ghost", function () { host.modal.hide(); begin(); }));
+      host.modal.show(card);
+    }
+
+    /* ------------------------------------------------------------- render -- */
+    function toScreen(wx, wy) {
+      return {
+        x: layout.w / 2 + (wx - S.camX) * S.camScale,
+        y: layout.h / 2 + (wy - S.camY) * S.camScale
+      };
+    }
+
+    function drawProp(g, p, sc) {
+      var s = toScreen(p.x, p.y);
+      var shrink = p.taken ? (1 - A.smooth(p.sink)) : 1;
+      if (shrink <= 0.02) return;
+
+      var px = s.x, py = s.y;
+      if (p.taken) {
+        /* Spiral into the eater's mouth while shrinking. */
+        var e = p.eater;
+        var mouth = toScreen(e ? e.x : p.dropX, e ? e.y : p.dropY);
+        var t = A.smooth(p.sink);
+        var ang = p.ang + t * 3.1;
+        var rad = (1 - t) * Math.hypot(px - mouth.x, py - mouth.y);
+        px = mouth.x + Math.cos(ang) * rad;
+        py = mouth.y + Math.sin(ang) * rad + t * 18 * sc;
+      }
+
+      var w = p.w * sc * shrink;
+      var d = w * 0.60;
+      var hh = p.h * sc * shrink;
+      if (w < 1.2) return;
+
+      var col = p.color;
+      var round = p.round;
+
+      g.fillStyle = "rgba(12,10,26,0.30)";
+      g.beginPath();
+      g.ellipse(px, py + d * 0.10, w * 0.60, d * 0.60, 0, 0, A.TAU);
+      g.fill();
+
+      /* Extruded side. */
+      g.fillStyle = A.rgb(A.shade(col, -0.34));
+      if (round) {
+        g.beginPath();
+        g.moveTo(px - w / 2, py);
+        g.lineTo(px - w / 2, py - hh);
+        g.lineTo(px + w / 2, py - hh);
+        g.lineTo(px + w / 2, py);
+        g.ellipse(px, py, w / 2, d / 2, 0, 0, Math.PI);
+        g.closePath();
+      } else {
+        A.roundRect(g, px - w / 2, py - hh, w, hh + d / 2, Math.min(w * 0.14, 5));
+      }
+      g.fill();
+
+      /* Top face. */
+      g.fillStyle = A.rgb(col);
+      if (round) {
+        g.beginPath();
+        g.ellipse(px, py - hh, w / 2, d / 2, 0, 0, A.TAU);
+      } else {
+        A.roundRect(g, px - w / 2, py - hh - d / 2, w, d, Math.min(w * 0.14, 5));
+      }
+      g.fill();
+
+      /* Windows on anything tall enough to read as a building. */
+      if (!round && p.tier >= 4 && hh > 22) {
+        g.fillStyle = "rgba(255,242,196,0.55)";
+        var cols = Math.max(2, Math.floor(w / (7 * sc + 4)));
+        var rowsN = Math.max(1, Math.floor(hh / (11 * sc + 5)));
+        var ww = w / cols * 0.44, wh = hh / rowsN * 0.42;
+        for (var cx = 0; cx < cols; cx++) {
+          for (var cy = 0; cy < rowsN; cy++) {
+            if (((cx * 7 + cy * 3 + p.tier) % 5) === 0) continue;
+            g.fillRect(
+              px - w / 2 + (cx + 0.5) * (w / cols) - ww / 2,
+              py - hh + (cy + 0.4) * (hh / rowsN) - wh / 2,
+              ww, wh);
+          }
+        }
+      }
+    }
+
+    function drawVoid(g, v, sc) {
+      if (!v.alive) return;
+      var s = toScreen(v.x, v.y);
+      var r = v.r * sc;
+      var d = r * 0.66;
+
+      /* Rim glow in the void's tint - the only way to tell four black holes
+         apart at a glance. */
+      var glow = g.createRadialGradient(s.x, s.y, r * 0.6, s.x, s.y, r * 1.8);
+      glow.addColorStop(0, A.rgba(v.tint, v.player ? 0.62 : 0.40));
+      glow.addColorStop(0.55, A.rgba(v.tint, v.player ? 0.24 : 0.14));
+      glow.addColorStop(1, A.rgba(v.tint, 0));
+      g.fillStyle = glow;
+      g.beginPath();
+      g.ellipse(s.x, s.y, r * 1.8, d * 1.8, 0, 0, A.TAU);
+      g.fill();
+
+      var core = g.createRadialGradient(s.x, s.y - d * 0.2, r * 0.1, s.x, s.y, r);
+      core.addColorStop(0, "#000000");
+      core.addColorStop(0.7, "#05040E");
+      core.addColorStop(1, "#100D24");
+      g.fillStyle = core;
+      g.beginPath();
+      g.ellipse(s.x, s.y, r, d, 0, 0, A.TAU);
+      g.fill();
+
+      g.strokeStyle = A.rgba(v.tint, v.player ? 1 : 0.8);
+      g.lineWidth = Math.max(2.4, r * (v.player ? 0.10 : 0.06));
+      g.stroke();
+      if (v.player && S.grace > 0) {
+        /* Grace ring, so "why did nothing eat me" and "why did that eat me" are
+           both answered on screen rather than in a tooltip. */
+        g.strokeStyle = "rgba(255,255,255," + (0.14 + 0.14 * Math.sin(A.Loop.time * 6)).toFixed(3) + ")";
+        g.lineWidth = Math.max(2, r * 0.08);
+        g.beginPath();
+        g.ellipse(s.x, s.y, r * 1.3, d * 1.3, 0, 0, A.TAU);
+        g.stroke();
+      }
+
+      /* Two swirl arcs sell the "things are being pulled in" read. */
+      var spin = A.Loop.time * (v.player ? 2.1 : 1.5);
+      g.strokeStyle = A.rgba(v.tint, 0.28);
+      g.lineWidth = Math.max(1, r * 0.03);
+      for (var k = 0; k < 2; k++) {
+        g.beginPath();
+        g.ellipse(s.x, s.y, r * (0.48 + k * 0.24), d * (0.48 + k * 0.24),
+          spin + k * 1.2, 0.4, 4.2);
+        g.stroke();
+      }
+
+      if (!v.player) {
+        g.fillStyle = A.rgba(v.tint, 0.92);
+        g.font = "700 " + Math.max(10, Math.round(11 * Math.min(2, sc + 0.5))) + "px Barlow Semi Condensed, sans-serif";
+        g.textAlign = "center";
+        g.fillText(v.name, s.x, s.y - d - 8);
+      }
+    }
+
+    function render(g) {
+      var vw = layout.w, vh = layout.h, sc = S.camScale;
+      var city = S.city;
+
+      g.fillStyle = "#1D2233";
+      g.fillRect(0, 0, vw, vh);
+
+      g.save();
+      A.Fx.applyShake(g);
+
+      /* Ground plate plus road grid. Drawing the blocks rather than the roads
+         means the roads are just the gaps, which is one fill instead of many. */
+      var tl = toScreen(-city.halfX, -city.halfY);
+      var br = toScreen(city.halfX, city.halfY);
+      g.fillStyle = "#2B3145";
+      g.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+
+      g.fillStyle = "#3A6E52";
+      for (var b = 0; b < city.blocks.length; b++) {
+        var blk = city.blocks[b];
+        var p0 = toScreen(blk.x - blk.w / 2, blk.y - blk.h / 2);
+        A.roundRect(g, p0.x, p0.y, blk.w * sc, blk.h * sc, 8 * sc);
+        g.fill();
+      }
+
+      /* Lane dashes down the middle of every road. */
+      g.strokeStyle = "rgba(255,255,255,0.16)";
+      g.lineWidth = Math.max(1, 2 * sc);
+      g.setLineDash([12 * sc, 14 * sc]);
+      g.beginPath();
+      var c;
+      for (c = 1; c < city.cellsX; c++) {
+        var vx = -city.halfX + city.span * c;
+        var a1 = toScreen(vx, -city.halfY), a2 = toScreen(vx, city.halfY);
+        g.moveTo(a1.x, a1.y); g.lineTo(a2.x, a2.y);
+      }
+      for (c = 1; c < city.cellsY; c++) {
+        var vy = -city.halfY + city.span * c;
+        var b1 = toScreen(-city.halfX, vy), b2 = toScreen(city.halfX, vy);
+        g.moveTo(b1.x, b1.y); g.lineTo(b2.x, b2.y);
+      }
+      g.stroke();
+      g.setLineDash([]);
+
+      /* Boundary wall. */
+      g.strokeStyle = "rgba(93,224,255,0.35)";
+      g.lineWidth = Math.max(2, 4 * sc);
+      g.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+
+      /* Painter's algorithm: sort voids and props together by world y so a hole
+         correctly sits in front of the bus it is about to take. */
+      var draw = [];
+      var props = city.props;
+      var cullX = (vw / 2) / sc + 200, cullY = (vh / 2) / sc + 260;
+      for (var i = 0; i < props.length; i++) {
+        var p = props[i];
+        if (p.taken && p.sink >= 1) continue;
+        if (Math.abs(p.x - S.camX) > cullX || Math.abs(p.y - S.camY) > cullY) continue;
+        draw.push(p);
+      }
+      var voidList = [];
+      for (var j = 0; j < S.voids.length; j++) {
+        if (S.voids[j].alive) voidList.push(S.voids[j]);
+      }
+
+      /* Voids are a floor feature: everything sits on top of them, so they go
+         down first, sorted among themselves by size (small over large reads
+         better when two overlap). */
+      voidList.sort(function (a, b) { return b.r - a.r; });
+      for (j = 0; j < voidList.length; j++) drawVoid(g, voidList[j], sc);
+
+      draw.sort(function (a, b) { return a.y - b.y; });
+      for (i = 0; i < draw.length; i++) drawProp(g, draw[i], sc);
+
+      /* Shockwave ring after a big swallow. */
+      if (S.shockwave > 0) {
+        var me = toScreen(S.me.x, S.me.y);
+        var rr = S.me.r * sc * (1 + (1 - S.shockwave) * 2.4);
+        g.strokeStyle = "rgba(93,224,255," + (S.shockwave * 0.5).toFixed(3) + ")";
+        g.lineWidth = Math.max(2, 6 * sc * S.shockwave);
+        g.beginPath();
+        g.ellipse(me.x, me.y, rr, rr * 0.66, 0, 0, A.TAU);
+        g.stroke();
+      }
+
+      A.Fx.drawParticles(g, function (x, y) {
+        var s = toScreen(x, y);
+        return { x: s.x, y: s.y, s: sc };
+      });
+      A.Fx.drawTexts(g, function (x, y) {
+        var s = toScreen(x, y);
+        return { x: s.x, y: s.y, s: sc };
+      });
+
+      g.restore();
+
+      /* Off-screen rival arrows so a hunting void is never a surprise. */
+      for (j = 0; j < voidList.length; j++) {
+        var rv = voidList[j];
+        if (rv.player) continue;
+        var sp = toScreen(rv.x, rv.y);
+        if (sp.x > -40 && sp.x < vw + 40 && sp.y > -40 && sp.y < vh + 40) continue;
+        var ang = Math.atan2(rv.y - S.camY, rv.x - S.camX);
+        var ex = vw / 2 + Math.cos(ang) * Math.min(vw, vh) * 0.40;
+        var ey = vh / 2 + Math.sin(ang) * Math.min(vw, vh) * 0.40;
+        var danger = rv.r > S.me.r * 1.1;
+        g.save();
+        g.translate(ex, ey);
+        g.rotate(ang);
+        g.fillStyle = danger ? "rgba(226,69,95,0.9)" : A.rgba(rv.tint, 0.6);
+        g.beginPath();
+        g.moveTo(13, 0); g.lineTo(-9, 8); g.lineTo(-9, -8);
+        g.closePath();
+        g.fill();
+        g.restore();
+      }
+
+      A.Fx.drawFlash(g, vw, vh);
+    }
+
+    /* ----------------------------------------------------------------- ui -- */
+    function mount(root) {
+      var hud = host.el("div", "hud");
+
+      var top = host.el("div", "row");
+      ui.timer = host.el("div", "chip", "1:30");
+      ui.size = host.el("div", "chip", "SIZE 11");
+      ui.coins = host.el("div", "chip gold", "0");
+      top.appendChild(ui.timer);
+      top.appendChild(ui.size);
+      top.appendChild(ui.coins);
+      hud.appendChild(top);
+
+      ui.board = host.el("div", "cap", "");
+      hud.appendChild(ui.board);
+
+      ui.hint = host.el("div", "hint", "Drag to steer  ·  swallow anything smaller than you");
+      hud.appendChild(ui.hint);
+
+      root.appendChild(hud);
+    }
+
+    function paintHud() {
+      if (!ui.timer || !S) return;
+      ui.timer.textContent = A.formatTime(S.time);
+      ui.timer.style.color = S.time < 15 ? "#FF6B7A" : "";
+      ui.size.textContent = "SIZE " + Math.round(S.me.r);
+      ui.coins.textContent = A.formatNumber(save.coins);
+
+      var order = standings();
+      var parts = [];
+      for (var i = 0; i < order.length; i++) {
+        var v = order[i];
+        var tag = (i + 1) + " " + v.name + " " + A.formatNumber(v.score);
+        parts.push(v.player ? "[ " + tag + " ]" : tag);
+      }
+      ui.board.textContent = parts.join("   ·   ");
+      if (S.eaten > 5) ui.hint.textContent = "";
+    }
+
+    return {
+      mount: mount,
+      start: begin,
+      stop: function () { S = null; },
+      update: function (dt) { if (S && layout) update(dt); },
+      render: function (g) { if (S && layout) render(g); },
+      onResize: computeLayout
+    };
+  }
+
+  A.games.push({
+    id: "voidmuncher",
+    name: "Void Muncher",
+    tagline: "You are a hole. Swallow the district before three rival voids eat it out from under you.",
+    accent: "#5DE0FF",
+    unlock: 1,
+    template: { coins: 0, runs: 0, wins: 0, best: 0, level: 1, upStart: 0, upGrow: 0, upSpeed: 0, upTime: 0 },
+    bestLine: function (s) {
+      return s.runs ? "District " + s.level + "  ·  best " + A.formatNumber(s.best) : "New";
+    },
+    thumb: function (g, w, h, t) {
+      g.fillStyle = "#2B3145";
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = "#3A6E52";
+      A.roundRect(g, w * 0.06, h * 0.10, w * 0.40, h * 0.34, 5); g.fill();
+      A.roundRect(g, w * 0.55, h * 0.10, w * 0.39, h * 0.34, 5); g.fill();
+      A.roundRect(g, w * 0.06, h * 0.55, w * 0.40, h * 0.35, 5); g.fill();
+      A.roundRect(g, w * 0.55, h * 0.55, w * 0.39, h * 0.35, 5); g.fill();
+
+      /* A couple of props orbiting into the mouth, so the tile animates. */
+      var cx = w * 0.5, cy = h * 0.56;
+      var grow = 0.5 + 0.5 * Math.sin(t * 1.1);
+      var r = Math.min(w, h) * (0.14 + grow * 0.10);
+
+      var boxes = [[0.22, 0.24, 0x3D8BFF], [0.80, 0.30, 0xE2455F], [0.30, 0.82, 0xE9C33F]];
+      for (var i = 0; i < boxes.length; i++) {
+        var ang = t * 1.6 + i * 2.1;
+        var pull = A.wrap(t * 0.5 + i * 0.33, 1);
+        var px = A.lerp(boxes[i][0] * w, cx, pull) + Math.cos(ang) * (1 - pull) * 6;
+        var py = A.lerp(boxes[i][1] * h, cy, pull) + Math.sin(ang) * (1 - pull) * 6;
+        var sz = Math.min(w, h) * 0.13 * (1 - pull * 0.85);
+        g.fillStyle = A.rgb(A.hex(boxes[i][2]));
+        A.roundRect(g, px - sz / 2, py - sz / 2, sz, sz, 2);
+        g.fill();
+      }
+
+      var glow = g.createRadialGradient(cx, cy, r * 0.7, cx, cy, r * 1.6);
+      glow.addColorStop(0, "rgba(93,224,255,0.45)");
+      glow.addColorStop(1, "rgba(93,224,255,0)");
+      g.fillStyle = glow;
+      g.beginPath(); g.ellipse(cx, cy, r * 1.6, r * 1.05, 0, 0, A.TAU); g.fill();
+
+      g.fillStyle = "#05040E";
+      g.beginPath(); g.ellipse(cx, cy, r, r * 0.66, 0, 0, A.TAU); g.fill();
+      g.strokeStyle = "#5DE0FF";
+      g.lineWidth = 2;
+      g.stroke();
+    },
+    create: create
+  });
+})(window.A);
+
+</script>
+<script>
+/* ---- src/games/roadhopper.js ---- */
+/* ===========================================================================
+   ROAD HOPPER
+   The endless lane-hopper. Tap to hop forward, swipe to sidestep, and thread a
+   blocky little animal through traffic, log rivers and express trains. The
+   camera creeps forward the whole time, so standing still is its own way of
+   dying - which is what turns a calm puzzle into a panic.
+
+   Every character is generated from a seed: no sprite sheets, no atlases, just
+   boxes stacked by a recipe. That keeps the gacha honest - a new bird really is
+   a new bird, not a hue shift of the last one.
+   =========================================================================== */
+(function (A) {
+  "use strict";
+  A.games = A.games || [];
+
+  var HALF = 5;                 // playfield spans -HALF..HALF columns
+  var EDGE = HALF + 0.5;        // where the slab actually ends
+  var SAFE_ROWS = 2;            // opening grass strip, no hazards
+  var HOP_TIME = 0.13;          // seconds per hop, deliberately snappy
+  var IDLE_LIMIT = 6.0;         // seconds of no progress before the eagle comes
+
+  /* Unlockable characters. `seed` drives the generated body, `theme` retints the
+     world so a new pick actually changes the run's look. Cost curve is the usual
+     gacha shape: three cheap, then a wall, then a couple of trophies. */
+  var CHARS = [
+    { id: "chick",  name: "Chick",       seed: 101, cost: 0,    theme: null },
+    { id: "duck",   name: "Duck",        seed: 214, cost: 120,  theme: null },
+    { id: "piglet", name: "Piglet",      seed: 337, cost: 260,  theme: null },
+    { id: "frog",   name: "Frog",        seed: 452, cost: 420,  theme: { grass: 0x2F6B4A, road: 0x3A3F46 } },
+    { id: "cat",    name: "Alley Cat",   seed: 578, cost: 700,  theme: null },
+    { id: "robot",  name: "Tin Bot",     seed: 691, cost: 1100, theme: { grass: 0x4A5568, road: 0x2C3140 } },
+    { id: "ghost",  name: "Night Owl",   seed: 806, cost: 1700, theme: { sky: 0x161232, grass: 0x27404F, road: 0x1E2233 } },
+    { id: "dragon", name: "Wee Dragon",  seed: 933, cost: 2600, theme: { grass: 0x6B4636, road: 0x3A2A26, water: 0xB4472F } }
+  ];
+
+  function create(host) {
+    var save = host.save;
+    var S = null;
+    var ui = {};
+    var layout = null;
+    var charCache = {};
+
+    /* ------------------------------------------------------ character bake -- */
+    /** Builds a blocky animal from a seed. Returns a stack of boxes in world
+        units (1 = one tile) plus a palette, drawn fresh each frame so the hop
+        squash and the head bob stay live. */
+    function buildChar(seed) {
+      if (charCache[seed]) return charCache[seed];
+      var rand = A.rng(seed);
+
+      var hue = rand();
+      var body = A.hsl(hue, rand.range(0.45, 0.78), rand.range(0.52, 0.68));
+      var belly = A.shade(body, rand.range(0.20, 0.38));
+      var beak = A.hsl(A.wrap(hue + rand.range(0.08, 0.18), 1), 0.85, 0.58);
+      var feet = A.shade(beak, -0.18);
+
+      var parts = [];
+      var bodyW = rand.range(0.60, 0.76);
+      var bodyH = rand.range(0.38, 0.54);
+      var headW = bodyW * rand.range(0.72, 0.94);
+      var headH = rand.range(0.34, 0.48);
+
+      /* legs, body, belly patch, head, beak, eyes, and one of three crests */
+      parts.push({ tag: "leg", x: -bodyW * 0.26, z: 0, w: 0.11, h: 0.16, d: 0.11, c: feet });
+      parts.push({ tag: "leg", x: bodyW * 0.26, z: 0, w: 0.11, h: 0.16, d: 0.11, c: feet });
+      parts.push({ tag: "body", x: 0, z: 0.14, w: bodyW, h: bodyH, d: bodyW * 0.82, c: body });
+      parts.push({ tag: "belly", x: 0, z: 0.17, w: bodyW * 0.62, h: bodyH * 0.55, d: bodyW * 0.90, c: belly });
+      parts.push({ tag: "head", x: 0, z: 0.14 + bodyH, w: headW, h: headH, d: headW * 0.86, c: body });
+      parts.push({ tag: "beak", x: 0, z: 0.14 + bodyH + headH * 0.30, w: headW * 0.30, h: headH * 0.30, d: headW * 0.95, c: beak, front: true });
+
+      var crest = rand.int(0, 3);
+      if (crest === 1) {
+        parts.push({ tag: "crest", x: 0, z: 0.14 + bodyH + headH, w: headW * 0.24, h: 0.14, d: headW * 0.24, c: beak });
+      } else if (crest === 2) {
+        parts.push({ tag: "ear", x: -headW * 0.34, z: 0.14 + bodyH + headH * 0.92, w: 0.10, h: 0.16, d: 0.08, c: body });
+        parts.push({ tag: "ear", x: headW * 0.34, z: 0.14 + bodyH + headH * 0.92, w: 0.10, h: 0.16, d: 0.08, c: body });
+      } else if (crest === 3) {
+        parts.push({ tag: "horn", x: 0, z: 0.14 + bodyH + headH, w: headW * 0.55, h: 0.08, d: headW * 0.30, c: A.shade(beak, -0.25) });
+      }
+
+      var wings = rand.chance(0.55);
+      if (wings) {
+        parts.push({ tag: "wing", x: -bodyW * 0.54, z: 0.20, w: 0.09, h: bodyH * 0.66, d: bodyW * 0.58, c: A.shade(body, -0.16) });
+        parts.push({ tag: "wing", x: bodyW * 0.54, z: 0.20, w: 0.09, h: bodyH * 0.66, d: bodyW * 0.58, c: A.shade(body, -0.16) });
+      }
+
+      var built = {
+        parts: parts,
+        body: body,
+        eyeZ: 0.14 + bodyH + headH * 0.62,
+        headW: headW,
+        tint: A.toHex(body)
+      };
+      charCache[seed] = built;
+      return built;
+    }
+
+    function activeChar() {
+      var id = save.charId;
+      for (var i = 0; i < CHARS.length; i++) if (CHARS[i].id === id) return CHARS[i];
+      return CHARS[0];
+    }
+
+    /* ---------------------------------------------------------- row build -- */
+    /** Colour set for a row, after the active character's theme override. */
+    function palette() {
+      var t = (activeChar().theme) || {};
+      return {
+        sky: A.hex(t.sky || 0x8FD4E8),
+        grassA: A.hex(t.grass || 0x4FAE63),
+        grassB: A.shade(A.hex(t.grass || 0x4FAE63), -0.10),
+        road: A.hex(t.road || 0x4A4F5A),
+        water: A.hex(t.water || 0x2E7BD6),
+        rail: A.hex(0x6B6257)
+      };
+    }
+
+    /** Rows are generated on demand as the camera advances and dropped once they
+        fall behind, so an infinite track costs a fixed amount of memory. The row
+        seed is a hash of the index, so the same run always regenerates the same
+        world even after rows have been forgotten and rebuilt. */
+    function rowSeed(index) { return (0x9E3779B1 ^ (index * 2654435761)) >>> 0; }
+
+    function buildRow(index, runSeed, prevType, streak) {
+      var rand = A.rng(rowSeed(index) ^ runSeed);
+      var row = { index: index, cars: [], trees: {}, coin: -99, type: "grass" };
+
+      if (index <= SAFE_ROWS) {
+        row.type = "grass";
+        row.tint = (Math.abs(index) % 2) ? "grassB" : "grassA";
+        /* Rows behind the start line exist only to fill the bottom of the
+           screen. Nobody hops back there, so they get dense scenery - an empty
+           green field under the player looks like the level failed to load. */
+        if (index < 0) {
+          var n = rand.int(2, 5);
+          for (var i = 0; i < n; i++) {
+            var c = rand.int(-HALF, HALF);
+            if (row.trees[c]) continue;
+            row.trees[c] = { h: rand.range(0.55, 1.45), s: rand.range(0.62, 0.90) };
+          }
+        }
+        return row;
+      }
+
+      /* Difficulty ramps by row but flattens out - past row 220 the game is
+         about nerve, not about ever-faster cars. */
+      var d = A.clamp01(index / 220);
+
+      /* Run lengths keep bands readable. A single road between two grass strips
+         is a tutorial; four in a row is the thing people screenshot. */
+      var type = prevType;
+      if (streak >= maxStreak(prevType, rand, d)) {
+        var roll = rand();
+        if (prevType === "grass") type = roll < 0.52 ? "road" : (roll < 0.80 ? "water" : "rail");
+        else if (prevType === "road") type = roll < 0.55 ? "grass" : (roll < 0.85 ? "water" : "rail");
+        else if (prevType === "water") type = roll < 0.62 ? "grass" : "road";
+        else type = rand() < 0.6 ? "grass" : "road";
+      }
+      row.type = type;
+
+      if (type === "grass") {
+        row.tint = (index % 2) ? "grassB" : "grassA";
+        /* Trees block tiles. Density climbs but never above half the width, and
+           never the whole row - a sealed row would be an unwinnable board. */
+        var count = rand.int(1, 2 + Math.round(d * 4));
+        var placed = 0;
+        for (var i = 0; i < count * 2 && placed < count; i++) {
+          var c = rand.int(-HALF, HALF);
+          if (row.trees[c]) continue;
+          row.trees[c] = { h: rand.range(0.55, 1.35), s: rand.range(0.62, 0.86) };
+          placed++;
+        }
+        if (rand.chance(0.30)) {
+          for (var t = 0; t < 8; t++) {
+            var cc = rand.int(-HALF + 1, HALF - 1);
+            if (!row.trees[cc]) { row.coin = cc; break; }
+          }
+        }
+      } else if (type === "road") {
+        row.dir = rand.chance(0.5) ? 1 : -1;
+        row.speed = A.lerp(1.9, 5.6, d) * rand.range(0.82, 1.20);
+        row.tint = "road";
+        row.markings = rand.chance(0.5);
+        var gap = A.lerp(6.2, 3.3, d) * rand.range(0.9, 1.25);
+        var len = rand.chance(0.22) ? rand.range(1.7, 2.3) : rand.range(0.95, 1.35);
+        var span = (HALF * 2 + 4);
+        var x = rand.range(-span / 2, span / 2);
+        var guard = 0;
+        while (x < span / 2 && guard++ < 40) {
+          row.cars.push({ x: x, len: len, hue: rand(), kind: len > 1.6 ? "truck" : "car" });
+          x += len + gap * rand.range(0.85, 1.15);
+        }
+        row.span = span;
+        if (rand.chance(0.18)) {
+          for (var t2 = 0; t2 < 6; t2++) {
+            var c2 = rand.int(-HALF + 1, HALF - 1);
+            row.coin = c2; break;
+          }
+        }
+      } else if (type === "water") {
+        row.dir = rand.chance(0.5) ? 1 : -1;
+        row.speed = A.lerp(1.3, 3.1, d) * rand.range(0.85, 1.15);
+        row.tint = "water";
+        var lgap = A.lerp(2.4, 3.4, d) * rand.range(0.9, 1.2);
+        var llen = rand.range(1.6, 3.4);
+        var lspan = (HALF * 2 + 6);
+        var lx = rand.range(-lspan / 2, lspan / 2);
+        var g2 = 0;
+        while (lx < lspan / 2 && g2++ < 40) {
+          row.cars.push({ x: lx, len: llen, hue: 0.09, kind: "log" });
+          lx += llen + lgap;
+        }
+        row.span = lspan;
+      } else {
+        row.tint = "rail";
+        row.dir = rand.chance(0.5) ? 1 : -1;
+        row.warn = 0;
+        row.trainX = null;
+        row.nextTrain = rand.range(1.6, 4.2);
+        row.speed = A.lerp(14, 22, d);
+        row.span = HALF * 2 + 8;
+      }
+
+      return row;
+    }
+
+    function maxStreak(type, rand, d) {
+      if (type === "grass") return rand.int(1, 3);
+      if (type === "road") return rand.int(1, 2 + Math.round(d * 2));
+      if (type === "water") return rand.int(1, 3);
+      return rand.int(1, 2);
+    }
+
+    /* --------------------------------------------------------------- run --- */
+    function begin() {
+      var runSeed = (Math.random() * 0xFFFFFF) >>> 0;
+      S = {
+        runSeed: runSeed,
+        rows: {},
+        first: 0,
+        built: -1,
+        prevType: "grass",
+        streak: 0,
+        pal: palette(),
+        chr: buildChar(activeChar().seed),
+
+        px: 0, py: 0,               // logical tile position (py is the row index)
+        drawX: 0, drawY: 0,         // interpolated draw position
+        hop: null,                  // { fx, fy, tx, ty, t }
+        onLog: null,
+        facing: 1,                  // -1 left, 1 right, 0 forward, 2 back
+
+        camY: -2.6,
+        score: 0, coins: 0,
+        idle: 0,
+        over: false, deathKind: "",
+        deathT: 0,
+        eagle: 0,
+        started: false,
+        revived: false
+      };
+
+      computeLayout();
+      /* Build a run-up of grass behind the start line. Without it the bottom of
+         the screen is empty sky on the very first frame. */
+      S.first = -(layout.behind + 4);
+      S.built = S.first - 1;
+      ensureRows(0);
+      A.Fx.reset();
+      paintHud();
+    }
+
+    /** Generates every row up to `ahead` and forgets the ones behind the camera. */
+    function ensureRows(ahead) {
+      var target = Math.ceil(ahead) + (layout ? layout.ahead + 4 : 22);
+      while (S.built < target) {
+        S.built++;
+        var r = buildRow(S.built, S.runSeed, S.prevType, S.streak);
+        S.streak = (r.type === S.prevType) ? S.streak + 1 : 1;
+        S.prevType = r.type;
+        S.rows[S.built] = r;
+      }
+      var cut = Math.floor(S.camY) - (layout ? layout.behind + 4 : 12) - 2;
+      while (S.first < cut) {
+        delete S.rows[S.first];
+        S.first++;
+      }
+    }
+
+    function computeLayout() {
+      var w = A.View.w, h = A.View.h;
+      /* Column width is set by the narrow axis. Row depth is deliberately much
+         larger than a tile is wide: the real thing is viewed down a rotated
+         diagonal, so bands read far apart on screen even though the world grid
+         is square. Matching that spacing matters more than matching the maths. */
+      var tile = w / (HALF * 2 + 3.4);
+      var depth = tile * 1.52;
+      var cy = h * 0.76;
+      var ahead = Math.ceil((cy + 90) / depth) + 2;
+      var behind = Math.ceil((h - cy + 90) / depth) + 2;
+      layout = {
+        w: w, h: h,
+        tile: tile,
+        depth: depth,
+        rise: tile * 1.02,         // screen pixels per unit of world height
+        /* The slab leans as it recedes. Anchoring the lean at the middle of the
+           visible range keeps both ends on screen instead of walking the far
+           rows off the left edge. */
+        shear: -tile * 0.15,
+        midDy: (ahead - behind) * 0.5,
+        edgeDrop: tile * 0.55,     // thickness of the slab's cut edge
+        cx: w * 0.5,
+        cy: cy,
+        /* Rows needed to cover the screen in each direction, resolved once here
+           so the render loop never guesses and leaves a bare band. */
+        ahead: ahead,
+        behind: behind
+      };
+    }
+
+    function project(col, row, z) {
+      var dy = row - S.camY;
+      return {
+        x: layout.cx + col * layout.tile + (dy - layout.midDy) * layout.shear,
+        y: layout.cy - dy * layout.depth - (z || 0) * layout.rise
+      };
+    }
+
+    /* ------------------------------------------------------------- input -- */
+    function tryHop(dx, dy) {
+      if (S.over || S.hop) return;
+
+      var fromX = S.onLog ? S.drawX : S.px;
+      var tx = Math.round(fromX) + dx;
+      var ty = S.py + dy;
+
+      if (tx < -HALF || tx > HALF) return;
+      if (ty < S.first) return;
+
+      ensureRows(Math.max(ty, S.camY));
+      var dest = S.rows[ty];
+      if (dest && dest.type === "grass" && dest.trees[tx]) {
+        A.Audio.sfx("thud");
+        return;
+      }
+
+      S.hop = { fx: fromX, fy: S.py, tx: tx, ty: ty, t: 0 };
+      S.facing = dy > 0 ? 0 : (dy < 0 ? 2 : (dx > 0 ? 1 : -1));
+      S.onLog = null;
+      S.started = true;
+      A.Audio.sfx("hop");
+    }
+
+    function readInput() {
+      var s = A.Input.consumeSwipe();
+      if (s === "up" || s === "tap") tryHop(0, 1);
+      else if (s === "down") tryHop(0, -1);
+      else if (s === "left") tryHop(-1, 0);
+      else if (s === "right") tryHop(1, 0);
+    }
+
+    /* -------------------------------------------------------------- step -- */
+    function update(dt) {
+      A.Fx.update(dt);
+
+      if (S.over) {
+        S.deathT += dt;
+        if (S.deathKind === "eagle") S.eagle = Math.min(1, S.eagle + dt * 1.8);
+        return;
+      }
+
+      readInput();
+
+      /* Hop interpolation. The arc is a plain sine so the peak lands exactly at
+         the halfway point, which is what makes landings feel on-beat. */
+      if (S.hop) {
+        S.hop.t += dt / HOP_TIME;
+        var t = A.clamp01(S.hop.t);
+        S.drawX = A.lerp(S.hop.fx, S.hop.tx, t);
+        S.drawY = A.lerp(S.hop.fy, S.hop.ty, t);
+        S.hopZ = Math.sin(t * Math.PI) * 0.42;
+        if (t >= 1) {
+          if (S.hop.ty > S.py) {
+            S.score = Math.max(S.score, S.hop.ty);
+            S.idle = 0;
+            if (S.hop.ty > 0 && S.hop.ty % 25 === 0) {
+              A.Fx.text(S.hop.tx, S.hop.ty, 0.9, S.hop.ty + "!", [255, 214, 84], { life: 0.9, rise: 40 });
+              A.Audio.sfx("levelup");
+            }
+          }
+          S.px = S.hop.tx;
+          S.py = S.hop.ty;
+          S.drawX = S.px;
+          S.drawY = S.py;
+          S.hopZ = 0;
+          S.hop = null;
+          landed();
+        }
+      } else {
+        S.hopZ = 0;
+        S.drawY = S.py;
+      }
+
+      ensureRows(Math.max(S.py, S.camY));
+
+      /* Traffic, logs and trains. */
+      for (var key in S.rows) {
+        var r = S.rows[key];
+        if (r.index < S.camY - 10 || r.index > S.camY + 20) continue;
+
+        if (r.type === "road" || r.type === "water") {
+          var lim = r.span / 2 + 4;
+          for (var i = 0; i < r.cars.length; i++) {
+            var c = r.cars[i];
+            c.x += r.dir * r.speed * dt;
+            if (r.dir > 0 && c.x - c.len / 2 > lim) c.x -= r.span + 8;
+            if (r.dir < 0 && c.x + c.len / 2 < -lim) c.x += r.span + 8;
+          }
+        } else if (r.type === "rail") {
+          if (r.trainX === null) {
+            r.nextTrain -= dt;
+            r.warn = r.nextTrain < 1.4 ? 1 : 0;
+            if (r.nextTrain <= 0) {
+              r.trainX = r.dir > 0 ? -(r.span / 2 + 9) : (r.span / 2 + 9);
+              A.Audio.sfx("horn");
+            }
+          } else {
+            r.trainX += r.dir * r.speed * dt;
+            if (Math.abs(r.trainX) > r.span / 2 + 10) {
+              r.trainX = null;
+              r.warn = 0;
+              r.nextTrain = 2.2 + Math.random() * 3.4;
+            }
+          }
+        }
+      }
+
+      /* Ride the log we are standing on. */
+      var here = S.rows[S.py];
+      if (!S.hop && here && here.type === "water") {
+        if (!S.onLog) {
+          S.onLog = findLog(here, S.drawX);
+          if (!S.onLog) { die("water"); return; }
+          S.logOffset = S.drawX - S.onLog.x;
+        }
+        S.drawX = S.onLog.x + S.logOffset;
+        S.px = Math.round(S.drawX);
+        if (S.drawX < -HALF - 0.6 || S.drawX > HALF + 0.6) { die("water"); return; }
+      } else if (!S.hop) {
+        S.onLog = null;
+        S.drawX = S.px;
+      }
+
+      /* Camera creep. It accelerates with score, and always keeps the player in
+         frame if they sprint ahead of it. */
+      var creep = A.lerp(0.55, 1.35, A.clamp01(S.score / 200));
+      if (S.started) S.camY += creep * dt;
+      var want = S.drawY - 2.4;
+      if (want > S.camY) S.camY = A.approach(S.camY, want, 9, dt);
+
+      /* Falling behind the camera is fatal, with a short grace band. */
+      if (S.drawY < S.camY - 3.2) { die("eagle"); return; }
+
+      S.idle += dt;
+      if (S.idle > IDLE_LIMIT && S.started) { die("eagle"); return; }
+
+      checkHazards();
+      if (S.over) return;
+
+      grabCoin();
+      ensureRows(S.camY);
+      paintHud();
+    }
+
+    function findLog(row, x) {
+      for (var i = 0; i < row.cars.length; i++) {
+        var c = row.cars[i];
+        if (x > c.x - c.len / 2 - 0.30 && x < c.x + c.len / 2 + 0.30) return c;
+      }
+      return null;
+    }
+
+    function landed() {
+      var r = S.rows[S.py];
+      if (!r) return;
+      if (r.type === "water") {
+        S.onLog = findLog(r, S.drawX);
+        if (!S.onLog) { die("water"); return; }
+        S.logOffset = A.clamp(S.drawX - S.onLog.x, -S.onLog.len / 2 + 0.2, S.onLog.len / 2 - 0.2);
+        S.drawX = S.onLog.x + S.logOffset;
+      }
+      A.Fx.burst(S.drawX, S.py, 0, 4, { color: [255, 255, 255], speed: 40, life: 0.22 });
+    }
+
+    function checkHazards() {
+      var r = S.rows[Math.round(S.drawY)];
+      if (!r) return;
+      /* Mid-hop the player is airborne over the *destination* row, so we test
+         against wherever they will land - being clipped by a car you already
+         cleared is the single most infuriating failure in this genre. */
+      var testRow = S.hop ? S.rows[S.hop.ty] : r;
+      if (!testRow) return;
+      var x = S.drawX;
+
+      if (testRow.type === "road") {
+        for (var i = 0; i < testRow.cars.length; i++) {
+          var c = testRow.cars[i];
+          if (Math.abs(c.x - x) < c.len / 2 + 0.34) {
+            if (!S.hop || S.hop.t > 0.55) { die("car"); return; }
+          }
+        }
+      } else if (testRow.type === "rail" && testRow.trainX !== null) {
+        if (Math.abs(testRow.trainX - x) < 5.0) {
+          if (!S.hop || S.hop.t > 0.4) { die("train"); return; }
+        }
+      }
+    }
+
+    function grabCoin() {
+      var r = S.rows[S.py];
+      if (!r || r.coin === -99 || S.hop) return;
+      if (Math.abs(r.coin - S.drawX) < 0.5) {
+        r.coin = -99;
+        S.coins += 1;
+        A.Audio.sfx("coin");
+        A.Fx.text(S.drawX, S.py, 0.8, "+1", [255, 214, 84], { life: 0.55, rise: 44 });
+      }
+    }
+
+    /* ------------------------------------------------------------- death -- */
+    function die(kind) {
+      if (S.over) return;
+      S.over = true;
+      S.deathKind = kind;
+      S.deathT = 0;
+      A.Fx.kick(kind === "train" ? 14 : 8);
+      A.Audio.sfx("lose");
+      A.vibrate(60);
+      setTimeout(finish, 900);
+    }
+
+    function finish() {
+      if (!S || !S.over) return;
+
+      var coins = Math.round((S.coins * 4 + S.score * 0.6) * host.coinMultiplier());
+      save.coins += coins;
+      save.runs++;
+      if (S.score > save.best) {
+        save.best = S.score;
+        host.toast("NEW BEST  ·  " + S.score);
+      }
+      save.totalHops += S.score;
+      host.commit();
+
+      var xp = Math.round((14 + S.score * 0.35) * host.xpMultiplier());
+      host.addXp(xp);
+      host.progress("run", 1);
+      host.progress("coins", coins);
+
+      var reason = {
+        car: "Flattened by traffic",
+        train: "The express does not brake",
+        water: "Into the drink",
+        eagle: "The eagle got bored of waiting"
+      }[S.deathKind] || "";
+
+      var actions = [
+        { label: "HOP AGAIN", className: "go", onClick: function () { host.modal.hide(); begin(); } },
+        { label: "CHARACTERS", className: "gold", onClick: function () { host.modal.hide(); openShop(); } },
+        { label: "MENU", className: "ghost", onClick: host.exit }
+      ];
+
+      host.results({
+        title: S.score >= save.best ? "NEW BEST" : "SQUASHED",
+        subtitle: reason,
+        rows: [
+          { label: "Distance", value: S.score },
+          { label: "Best", value: save.best },
+          { label: "Coins found", value: S.coins },
+          { label: "Coins", value: "+" + A.formatNumber(coins) },
+          { label: "XP", value: "+" + xp }
+        ],
+        actions: actions
+      });
+    }
+
+    /* -------------------------------------------------------------- shop -- */
+    function openShop() {
+      var card = host.el("div", "card");
+      card.appendChild(host.el("h2", null, "CHARACTERS"));
+      card.appendChild(host.el("p", "sub", A.formatNumber(save.coins) + " coins"));
+
+      CHARS.forEach(function (c) {
+        var owned = save.owned.indexOf(c.id) >= 0;
+        var row = host.el("div", "shopRow");
+        var left = host.el("div");
+        left.appendChild(host.el("h4", null, c.name));
+        left.appendChild(host.el("p", null,
+          c.theme ? "Retints the whole world" : (owned ? "Unlocked" : "Locked")));
+        row.appendChild(left);
+
+        var btn = host.el("button", "buy");
+        if (save.charId === c.id) {
+          btn.textContent = "IN USE";
+          btn.disabled = true;
+        } else if (owned) {
+          btn.textContent = "EQUIP";
+          btn.addEventListener("click", function () {
+            save.charId = c.id;
+            host.commit();
+            A.Audio.sfx("select");
+            host.modal.hide();
+            openShop();
+          });
+        } else {
+          btn.textContent = A.formatNumber(c.cost);
+          btn.disabled = save.coins < c.cost;
+          btn.addEventListener("click", function () {
+            if (save.coins < c.cost) return;
+            save.coins -= c.cost;
+            save.owned.push(c.id);
+            save.charId = c.id;
+            host.commit();
+            A.Audio.sfx("buy");
+            host.toast("UNLOCKED  ·  " + c.name);
+            host.modal.hide();
+            openShop();
+          });
+        }
+        row.appendChild(btn);
+        card.appendChild(row);
+      });
+
+      card.appendChild(host.button("BACK", "ghost", function () { host.modal.hide(); begin(); }));
+      host.modal.show(card);
+    }
+
+    /* ------------------------------------------------------------ drawing -- */
+    /** One extruded box in world space, drawn with a top face and a front face.
+        Everything in the world is made of these, which is why the whole scene
+        stays consistent without a single texture. */
+    function box(g, col, row, z, w, h, d, color, alpha) {
+      var p = project(col, row, z + h);
+      var tw = w * layout.tile;
+      var td = d * layout.depth;
+      var th = h * layout.rise;
+
+      g.globalAlpha = alpha === undefined ? 1 : alpha;
+
+      /* Front face (the side that faces the camera). */
+      g.fillStyle = A.rgb(A.shade(color, -0.26));
+      g.beginPath();
+      g.moveTo(p.x - tw / 2, p.y + td / 2);
+      g.lineTo(p.x + tw / 2, p.y + td / 2);
+      g.lineTo(p.x + tw / 2, p.y + td / 2 + th);
+      g.lineTo(p.x - tw / 2, p.y + td / 2 + th);
+      g.closePath();
+      g.fill();
+
+      /* Right side, sheared so the geometry agrees with the row tilt. */
+      var sx = layout.shear * d;
+      g.fillStyle = A.rgb(A.shade(color, -0.42));
+      g.beginPath();
+      g.moveTo(p.x + tw / 2, p.y - td / 2 + sx);
+      g.lineTo(p.x + tw / 2 + 0.001, p.y + td / 2);
+      g.lineTo(p.x + tw / 2, p.y + td / 2 + th);
+      g.lineTo(p.x + tw / 2, p.y - td / 2 + th + sx);
+      g.closePath();
+      g.fill();
+
+      /* Top face. */
+      g.fillStyle = A.rgb(color);
+      g.beginPath();
+      g.moveTo(p.x - tw / 2 + sx, p.y - td / 2 + sx);
+      g.lineTo(p.x + tw / 2 + sx, p.y - td / 2 + sx);
+      g.lineTo(p.x + tw / 2, p.y + td / 2);
+      g.lineTo(p.x - tw / 2, p.y + td / 2);
+      g.closePath();
+      g.fill();
+
+      g.globalAlpha = 1;
+    }
+
+    function drawRow(g, r) {
+      var pal = S.pal;
+      var col = pal[r.tint] || pal.grassA;
+      /* The slab is finite. Seeing where it ends is what sells the tilt - a
+         full-width band would look like a flat stripe no matter how much shear
+         we apply, because a horizontal line slides onto itself. */
+      var a = project(-EDGE, r.index - 0.5, 0);
+      var b = project(EDGE, r.index - 0.5, 0);
+      var c = project(EDGE, r.index + 0.5, 0);
+      var d = project(-EDGE, r.index + 0.5, 0);
+
+      /* Cut edge first, so the row surface lands on top of its own thickness. */
+      var drop = layout.edgeDrop;
+      g.fillStyle = A.rgb(A.shade(col, -0.44));
+      g.beginPath();
+      g.moveTo(a.x, a.y); g.lineTo(d.x, d.y);
+      g.lineTo(d.x, d.y + drop); g.lineTo(a.x, a.y + drop);
+      g.closePath();
+      g.fill();
+      g.beginPath();
+      g.moveTo(b.x, b.y); g.lineTo(c.x, c.y);
+      g.lineTo(c.x, c.y + drop); g.lineTo(b.x, b.y + drop);
+      g.closePath();
+      g.fill();
+
+      g.fillStyle = A.rgb(col);
+      g.beginPath();
+      g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(d.x, d.y);
+      g.closePath();
+      g.fill();
+
+      if (r.type === "road" && r.markings) {
+        g.strokeStyle = "rgba(255,255,255,0.45)";
+        g.lineWidth = Math.max(1.5, layout.tile * 0.05);
+        g.setLineDash([layout.tile * 0.4, layout.tile * 0.4]);
+        var m1 = project(-EDGE, r.index, 0);
+        var m2 = project(EDGE, r.index, 0);
+        g.beginPath(); g.moveTo(m1.x, m1.y); g.lineTo(m2.x, m2.y); g.stroke();
+        g.setLineDash([]);
+      }
+
+      if (r.type === "water") {
+        /* Two drifting highlight bands do the job of an animated water shader. */
+        g.strokeStyle = "rgba(255,255,255,0.14)";
+        g.lineWidth = Math.max(1.5, layout.tile * 0.06);
+        for (var k = 0; k < 2; k++) {
+          var off = A.wrap(A.Loop.time * 0.5 + k * 0.5 + r.index * 0.13, 1) * 2 - 1;
+          var w1 = project(-EDGE, r.index + off * 0.3, 0);
+          var w2 = project(EDGE, r.index + off * 0.3, 0);
+          g.beginPath(); g.moveTo(w1.x, w1.y); g.lineTo(w2.x, w2.y); g.stroke();
+        }
+      }
+
+      if (r.type === "rail") {
+        g.strokeStyle = "rgba(30,26,20,0.55)";
+        g.lineWidth = Math.max(2, layout.tile * 0.08);
+        for (var s = -1; s <= 1; s += 2) {
+          var r1 = project(-EDGE, r.index + s * 0.16, 0);
+          var r2 = project(EDGE, r.index + s * 0.16, 0);
+          g.beginPath(); g.moveTo(r1.x, r1.y); g.lineTo(r2.x, r2.y); g.stroke();
+        }
+        if (r.warn) {
+          var blink = (Math.floor(A.Loop.time * 6) % 2) === 0;
+          for (var side = -1; side <= 1; side += 2) {
+            var lp = project(side * (HALF + 1.1), r.index, 0.85);
+            g.fillStyle = blink ? "#FF4B5C" : "#5A2028";
+            g.beginPath(); g.arc(lp.x, lp.y, layout.tile * 0.17, 0, A.TAU); g.fill();
+          }
+        }
+      }
+
+      if (r.coin !== -99) {
+        var cp = project(r.coin, r.index, 0.30 + Math.sin(A.Loop.time * 4 + r.index) * 0.06);
+        var rr = layout.tile * 0.20;
+        g.fillStyle = "rgba(0,0,0,0.20)";
+        g.beginPath();
+        g.ellipse(cp.x, project(r.coin, r.index, 0).y, rr * 0.9, rr * 0.42, 0, 0, A.TAU);
+        g.fill();
+        var grad = g.createLinearGradient(cp.x - rr, cp.y - rr, cp.x + rr, cp.y + rr);
+        grad.addColorStop(0, "#FFE9A0");
+        grad.addColorStop(0.5, "#FFC93C");
+        grad.addColorStop(1, "#C98A12");
+        g.fillStyle = grad;
+        g.beginPath();
+        g.ellipse(cp.x, cp.y, rr * 0.62, rr, 0, 0, A.TAU);
+        g.fill();
+      }
+    }
+
+    function drawRowProps(g, r) {
+      var i;
+      if (r.type === "grass") {
+        for (var key in r.trees) {
+          var t = r.trees[key];
+          var c = parseFloat(key);
+          /* Narrow trunk, wide crown, and a lighter cap on top. Making the crown
+             the same width as the trunk turned every tree into a green domino. */
+          box(g, c, r.index, 0, 0.26, 0.34, 0.26, A.hex(0x6B4A2E));
+          box(g, c, r.index, 0.30, t.s, t.h * 0.62, t.s, A.hex(0x2E7A47));
+          box(g, c, r.index - 0.04, 0.30 + t.h * 0.42, t.s * 0.68, t.h * 0.34, t.s * 0.68, A.hex(0x3EA063));
+        }
+      } else if (r.type === "road") {
+        for (i = 0; i < r.cars.length; i++) {
+          var car = r.cars[i];
+          if (Math.abs(car.x) > HALF + 4) continue;
+          var body = A.hsl(car.hue, 0.72, 0.56);
+          var flip = r.dir;
+
+          box(g, car.x, r.index, 0.05, car.len, 0.30, 0.62, body);
+          if (car.kind === "truck") {
+            box(g, car.x - flip * car.len * 0.28, r.index, 0.35, car.len * 0.40, 0.26, 0.56, A.shade(body, 0.22));
+            box(g, car.x + flip * car.len * 0.24, r.index, 0.35, car.len * 0.48, 0.16, 0.54, A.shade(body, -0.30));
+          } else {
+            /* A clearly narrower cabin, plus a dark screen band. At the same
+               width as the body it just read as a second car parked on top. */
+            box(g, car.x - flip * car.len * 0.06, r.index, 0.30, car.len * 0.46, 0.18, 0.46, A.shade(body, 0.30));
+            var scr = project(car.x + flip * car.len * 0.14, r.index, 0.48);
+            g.fillStyle = "rgba(26,34,54,0.62)";
+            g.fillRect(scr.x - car.len * 0.05 * layout.tile, scr.y - layout.depth * 0.22,
+              car.len * 0.10 * layout.tile, layout.depth * 0.44);
+          }
+          /* Headlights on the leading edge, so oncoming traffic reads instantly. */
+          var lp = project(car.x + flip * (car.len / 2), r.index, 0.16);
+          g.fillStyle = "rgba(255,246,200,0.92)";
+          g.beginPath();
+          g.ellipse(lp.x, lp.y, layout.tile * 0.06, layout.tile * 0.05, 0, 0, A.TAU);
+          g.fill();
+        }
+      } else if (r.type === "water") {
+        for (i = 0; i < r.cars.length; i++) {
+          var log = r.cars[i];
+          if (Math.abs(log.x) > HALF + 5) continue;
+          box(g, log.x, r.index, 0, log.len, 0.20, 0.66, A.hex(0x7A5433));
+          box(g, log.x, r.index - 0.02, 0.20, log.len * 0.98, 0.05, 0.60, A.hex(0x8E653F));
+        }
+      } else if (r.type === "rail" && r.trainX !== null) {
+        box(g, r.trainX, r.index, 0.05, 9.0, 0.78, 0.78, A.hex(0xC2453D));
+        box(g, r.trainX, r.index - 0.04, 0.83, 8.4, 0.10, 0.70, A.hex(0xE8E2D6));
+        for (var w = -3; w <= 3; w++) {
+          var wp = project(r.trainX + w * 1.25, r.index - 0.34, 0.42);
+          g.fillStyle = "rgba(180,225,255,0.85)";
+          g.fillRect(wp.x - layout.tile * 0.16, wp.y - layout.tile * 0.13,
+            layout.tile * 0.32, layout.tile * 0.26);
+        }
+      }
+    }
+
+    function drawPlayer(g) {
+      var chr = S.chr;
+      var z = S.hopZ || 0;
+      var squash = S.hop ? 1 : (1 + Math.sin(A.Loop.time * 6) * 0.02);
+
+      /* Shadow lands on the ground, not on the character, so height reads. */
+      var sp = project(S.drawX, S.drawY, 0);
+      var shrink = 1 - z * 0.5;
+      g.fillStyle = "rgba(0,0,0,0.24)";
+      g.beginPath();
+      g.ellipse(sp.x, sp.y, layout.tile * 0.30 * shrink, layout.depth * 0.30 * shrink, 0, 0, A.TAU);
+      g.fill();
+
+      if (S.over && S.deathKind === "car") {
+        /* Pancaked: flatten the whole stack in place. */
+        var flat = A.clamp01(S.deathT * 6);
+        for (var f = 0; f < chr.parts.length; f++) {
+          var pf = chr.parts[f];
+          box(g, S.drawX + pf.x, S.drawY, pf.z * (1 - flat * 0.9),
+            pf.w * (1 + flat * 0.5), pf.h * (1 - flat * 0.85), pf.d * (1 + flat * 0.5), pf.c);
+        }
+        return;
+      }
+
+      for (var i = 0; i < chr.parts.length; i++) {
+        var p = chr.parts[i];
+        var dz = p.front && S.facing === 0 ? 0.10 : 0;
+        box(g, S.drawX + p.x, S.drawY - (p.front ? 0.16 : 0) + dz, (p.z + z) * squash,
+          p.w, p.h * squash, p.d, p.c);
+      }
+
+      /* Eyes, drawn flat on top so they always face the camera. */
+      var ep = project(S.drawX, S.drawY - 0.20, (chr.eyeZ + z) * squash);
+      var er = layout.tile * 0.055;
+      g.fillStyle = "#141024";
+      for (var e = -1; e <= 1; e += 2) {
+        g.beginPath();
+        g.arc(ep.x + e * chr.headW * layout.tile * 0.26, ep.y, er, 0, A.TAU);
+        g.fill();
+      }
+    }
+
+    function drawEagle(g) {
+      if (S.eagle <= 0) return;
+      var t = S.eagle;
+      var p = project(S.drawX, S.drawY, A.lerp(4.5, 0.35, A.smooth(t)));
+      var w = layout.tile * 1.5;
+      g.fillStyle = "#2A2438";
+      g.beginPath();
+      g.moveTo(p.x, p.y);
+      g.lineTo(p.x - w, p.y - w * 0.35 + Math.sin(A.Loop.time * 14) * w * 0.16);
+      g.lineTo(p.x - w * 0.3, p.y + w * 0.12);
+      g.lineTo(p.x + w * 0.3, p.y + w * 0.12);
+      g.lineTo(p.x + w, p.y - w * 0.35 - Math.sin(A.Loop.time * 14) * w * 0.16);
+      g.closePath();
+      g.fill();
+      g.fillStyle = "#5A4B6E";
+      g.beginPath();
+      g.ellipse(p.x, p.y + w * 0.06, w * 0.28, w * 0.20, 0, 0, A.TAU);
+      g.fill();
+    }
+
+    function render(g) {
+      var pal = S.pal;
+      var vw = layout.w, vh = layout.h;
+
+      /* Sky up top, a deeper tone underneath. The slab floats over the darker
+         half, which is what gives it its cut-out silhouette. */
+      var sky = g.createLinearGradient(0, 0, 0, vh);
+      sky.addColorStop(0, A.rgb(A.shade(pal.sky, 0.20)));
+      sky.addColorStop(0.42, A.rgb(pal.sky));
+      sky.addColorStop(0.62, A.rgb(A.shade(pal.sky, -0.34)));
+      sky.addColorStop(1, A.rgb(A.shade(pal.sky, -0.52)));
+      g.fillStyle = sky;
+      g.fillRect(0, 0, vw, vh);
+
+      g.save();
+      A.Fx.applyShake(g);
+
+      /* Painter's algorithm along the row axis: far rows first. Rows above the
+         top of the screen are skipped, which is what keeps an endless track
+         costing a fixed number of draws per frame. */
+      var far = Math.ceil(S.camY) + layout.ahead;
+      var near = Math.floor(S.camY) - layout.behind;
+      var order = [];
+      for (var i = far; i >= near; i--) {
+        if (S.rows[i]) order.push(S.rows[i]);
+      }
+
+      var k;
+      for (k = 0; k < order.length; k++) drawRow(g, order[k]);
+      for (k = 0; k < order.length; k++) {
+        drawRowProps(g, order[k]);
+        /* The player is drawn inside the row loop so trees and cars in front of
+           them actually occlude them. */
+        if (Math.round(S.drawY) === order[k].index) drawPlayer(g);
+      }
+      if (S.drawY > far || S.drawY < near) drawPlayer(g);
+
+      drawEagle(g);
+
+      A.Fx.drawParticles(g, function (x, y, z) {
+        var p = project(x, y, z);
+        return { x: p.x, y: p.y, s: layout.tile / 40 };
+      });
+      A.Fx.drawTexts(g, function (x, y, z) {
+        var p = project(x, y, z);
+        return { x: p.x, y: p.y, s: layout.tile / 40 };
+      });
+
+      g.restore();
+
+      /* Idle warning vignette - the eagle's tell. */
+      if (S.idle > IDLE_LIMIT - 2 && !S.over) {
+        var warn = A.clamp01((S.idle - (IDLE_LIMIT - 2)) / 2);
+        var vg = g.createRadialGradient(vw / 2, vh / 2, vh * 0.25, vw / 2, vh / 2, vh * 0.75);
+        vg.addColorStop(0, "rgba(0,0,0,0)");
+        vg.addColorStop(1, "rgba(120,20,30," + (warn * 0.55).toFixed(3) + ")");
+        g.fillStyle = vg;
+        g.fillRect(0, 0, vw, vh);
+      }
+
+      A.Fx.drawFlash(g, vw, vh);
+    }
+
+    /* ----------------------------------------------------------------- ui -- */
+    function mount(root) {
+      var hud = host.el("div", "hud");
+      var top = host.el("div", "row");
+      ui.score = host.el("div", "chip", "0");
+      ui.best = host.el("div", "chip", "BEST 0");
+      ui.coins = host.el("div", "chip gold", "0");
+      top.appendChild(ui.score);
+      top.appendChild(ui.best);
+      top.appendChild(ui.coins);
+      hud.appendChild(top);
+
+      ui.hint = host.el("div", "hint", "Tap to hop  ·  swipe to sidestep  ·  don't dawdle");
+      hud.appendChild(ui.hint);
+      root.appendChild(hud);
+    }
+
+    function paintHud() {
+      if (!ui.score || !S) return;
+      ui.score.textContent = S.score;
+      ui.best.textContent = "BEST " + Math.max(save.best, S.score);
+      ui.coins.textContent = A.formatNumber(save.coins + S.coins);
+      if (S.score > 3) ui.hint.textContent = "";
+    }
+
+    return {
+      mount: mount,
+      start: begin,
+      stop: function () { S = null; },
+      update: function (dt) { if (S && layout) update(dt); },
+      render: function (g) { if (S && layout) render(g); },
+      onResize: computeLayout
+    };
+  }
+
+  A.games.push({
+    id: "roadhopper",
+    name: "Road Hopper",
+    tagline: "Hop across traffic, log rivers and express rails. The camera never stops creeping.",
+    accent: "#7BD84F",
+    unlock: 1,
+    template: { coins: 0, runs: 0, best: 0, totalHops: 0, charId: "chick", owned: ["chick"] },
+    bestLine: function (s) { return s.runs ? "Best " + s.best + "  ·  " + s.owned.length + " characters" : "New"; },
+    thumb: function (g, w, h, t) {
+      var bands = [
+        ["#8FD4E8", 0.00, 0.16],
+        ["#4FAE63", 0.16, 0.34],
+        ["#4A4F5A", 0.34, 0.54],
+        ["#2E7BD6", 0.54, 0.74],
+        ["#47A25C", 0.74, 1.00]
+      ];
+      for (var i = 0; i < bands.length; i++) {
+        g.fillStyle = bands[i][0];
+        g.fillRect(0, h * bands[i][1], w, h * (bands[i][2] - bands[i][1]) + 1);
+      }
+      /* A car sliding across the road band and a log on the river. */
+      var cx = A.wrap(t * 0.32, 1) * (w + 40) - 20;
+      g.fillStyle = "#E2455F";
+      A.roundRect(g, cx, h * 0.39, w * 0.22, h * 0.10, 3); g.fill();
+      g.fillStyle = "#FF8A9B";
+      A.roundRect(g, cx + w * 0.05, h * 0.365, w * 0.12, h * 0.05, 2); g.fill();
+
+      var lx = w - A.wrap(t * 0.22 + 0.4, 1) * (w + 50);
+      g.fillStyle = "#7A5433";
+      A.roundRect(g, lx, h * 0.60, w * 0.34, h * 0.09, 4); g.fill();
+
+      /* The hopper, bobbing. */
+      var bob = Math.abs(Math.sin(t * 3)) * h * 0.05;
+      var px = w * 0.5, py = h * 0.80 - bob;
+      g.fillStyle = "rgba(0,0,0,0.20)";
+      g.beginPath(); g.ellipse(px, h * 0.845, w * 0.09, h * 0.022, 0, 0, A.TAU); g.fill();
+      g.fillStyle = "#F5D53F";
+      A.roundRect(g, px - w * 0.08, py - h * 0.07, w * 0.16, h * 0.09, 3); g.fill();
+      g.fillStyle = "#FFE87A";
+      A.roundRect(g, px - w * 0.065, py - h * 0.125, w * 0.13, h * 0.065, 3); g.fill();
+      g.fillStyle = "#E8892F";
+      A.roundRect(g, px - w * 0.018, py - h * 0.105, w * 0.036, h * 0.024, 1); g.fill();
+      g.fillStyle = "#141024";
+      g.beginPath(); g.arc(px - w * 0.032, py - h * 0.108, w * 0.014, 0, A.TAU); g.fill();
+      g.beginPath(); g.arc(px + w * 0.032, py - h * 0.108, w * 0.014, 0, A.TAU); g.fill();
+    },
+    create: create
+  });
+})(window.A);
+
+</script>
+<script>
+/* ---- src/games/chromerush.js ---- */
+/* ===========================================================================
+   CHROME RUSH
+   The endless-highway weaver. You hold a lane, traffic thickens, the speedo
+   climbs and never comes back down. Scoring rewards the thing that scares you:
+   shaving past a truck at speed banks a near-miss multiplier, so the safe line
+   down an empty shoulder is also the poorest line.
+
+   Every vehicle is a stack of extruded boxes generated from its stat block, and
+   each one carries a horn ability on a cooldown - that is the meta hook. You are
+   not buying a faster car, you are buying a different way to survive.
+   =========================================================================== */
+(function (A) {
+  "use strict";
+  A.games = A.games || [];
+
+  var LANES = 5;
+  var LANE_W = 2.4;                     // world units
+  var ROAD_W = LANES * LANE_W;
+  var VIEW_AHEAD = 42;                  // world units of road drawn ahead
+  var VIEW_BEHIND = 10;
+
+  /* Vehicles. `top` is the cruising speed the throttle climbs toward, `grip` how
+     fast you can change lanes, `bulk` how much traffic you shrug off. Abilities
+     are all on the same button so the control scheme never changes. */
+  var CARS = [
+    {
+      id: "hatch", name: "City Hatch", cost: 0,
+      top: 30, accel: 7.0, grip: 9.0, bulk: 0, len: 1.9, wide: 1.05,
+      body: 0x3D8BFF, roof: 0x9FCBFF,
+      ability: "boost", abilityName: "Nitro", cool: 9,
+      blurb: "A short nitro burst. Nothing fancy, always useful."
+    },
+    {
+      id: "sport", name: "Wedge GT", cost: 900,
+      top: 38, accel: 8.6, grip: 11.0, bulk: 0, len: 2.0, wide: 1.02,
+      body: 0xE2455F, roof: 0xFF9AA8,
+      ability: "boost", abilityName: "Overdrive", cool: 7,
+      blurb: "Faster everything. Punishing if your lane reads are late."
+    },
+    {
+      id: "police", name: "Interceptor", cost: 2200,
+      top: 35, accel: 8.0, grip: 12.0, bulk: 1, len: 2.1, wide: 1.10,
+      body: 0x1E2740, roof: 0xEDEDF2,
+      ability: "siren", abilityName: "Siren", cool: 11,
+      blurb: "Traffic pulls aside for four seconds. The panic button."
+    },
+    {
+      id: "truck", name: "Haul Rig", cost: 4200,
+      top: 31, accel: 5.4, grip: 6.6, bulk: 2, len: 3.4, wide: 1.24,
+      body: 0xE9A03F, roof: 0xFFD79A,
+      ability: "ram", abilityName: "Bull Bar", cool: 10,
+      blurb: "Shove three cars out of the way instead of dying."
+    },
+    {
+      id: "hover", name: "Skiff", cost: 7500,
+      top: 41, accel: 9.4, grip: 14.0, bulk: 0, len: 2.0, wide: 0.98,
+      body: 0x2FD6A4, roof: 0xC4FFEA,
+      ability: "phase", abilityName: "Phase", cool: 12,
+      blurb: "Three seconds of passing straight through traffic."
+    }
+  ];
+
+  /* Biomes rotate every stretch so a long run keeps changing colour. */
+  var BIOMES = [
+    /* Each biome has to separate three planes at a glance: verge, tarmac and the
+       stuff standing beside it. The first pass had all three within a few points
+       of the same navy and the road simply vanished. */
+    { name: "DOWNTOWN",     sky: 0x1B2545, ground: 0x223054, road: 0x474E60, line: 0xF7ECC6, prop: 0x33406B, propTall: true,  lit: true },
+    { name: "SUNSET FLATS", sky: 0xE8823F, ground: 0xC4763F, road: 0x6A5B4E, line: 0xFFF0C8, prop: 0x8F5A36, propTall: false, lit: false },
+    { name: "PINE PASS",    sky: 0x3D7E8C, ground: 0x2C6A4C, road: 0x4A525C, line: 0xEEF6E0, prop: 0x1D4630, propTall: true,  lit: false },
+    { name: "SALT NIGHT",   sky: 0x120F26, ground: 0x1E1C3E, road: 0x353552, line: 0x8FF0FF, prop: 0x34305F, propTall: false, lit: true }
+  ];
+
+  var TRAFFIC_TINTS = [0xD9483C, 0xE9C33F, 0x5F6B8A, 0xEDEDF2, 0x7A6DC4, 0x3E8F5A, 0xE2803C];
+
+  function create(host) {
+    var save = host.save;
+    var S = null;
+    var ui = {};
+    var layout = null;
+
+    function activeCar() {
+      for (var i = 0; i < CARS.length; i++) if (CARS[i].id === save.carId) return CARS[i];
+      return CARS[0];
+    }
+
+    /* --------------------------------------------------------------- run -- */
+    function begin() {
+      var car = activeCar();
+      S = {
+        car: car,
+        rand: A.rng((Math.random() * 0xFFFFFF) >>> 0),
+        x: 0,                       // lateral position, world units from centre
+        vx: 0,
+        z: 0,                       // distance travelled
+        speed: 12,
+        throttle: 1,
+        traffic: [],
+        coins: [],
+        props: [],
+        nextSpawn: 0,
+        nextProp: 0,
+        score: 0,
+        picked: 0,
+        nearMiss: 0, nearTimer: 0,
+        best: save.best,
+        cooldown: 0,
+        abilityT: 0,
+        crashed: false, crashT: 0,
+        shakeLean: 0,
+        biome: 0, biomeMix: 0,
+        revived: false
+      };
+      A.Fx.reset();
+      computeLayout();
+      paintHud();
+      host.toast(car.name + "  ·  " + car.abilityName + " on the button");
+    }
+
+    function computeLayout() {
+      var w = A.View.w, h = A.View.h;
+      /* One world unit in pixels. The road has to fit across the narrow axis
+         with shoulders, and the whole visible stretch has to fit vertically. */
+      var byWidth = w / (ROAD_W + 5.0);
+      var byHeight = h / (VIEW_AHEAD + VIEW_BEHIND) * 2.35;
+      var scale = Math.min(byWidth, byHeight);
+      layout = {
+        w: w, h: h,
+        scale: scale,
+        cx: w * 0.5,
+        /* Player sits low so most of the screen is the road you are about to
+           reach. Reaction time is the whole game. */
+        baseY: h * 0.80,
+        depth: scale * 0.86,
+        rise: scale * 0.52
+      };
+      if (S) S.shakeLean = 0;
+    }
+
+    /** World (lateral x, distance z, height y) to screen. Straight orthographic
+        with a vertical squash - readable at a glance, and cheap enough to draw
+        two hundred boxes a frame on a phone. */
+    function project(x, z, y) {
+      var dz = z - S.z;
+      return {
+        x: layout.cx + x * layout.scale - S.shakeLean * layout.scale * 0.2,
+        y: layout.baseY - dz * layout.depth - (y || 0) * layout.rise
+      };
+    }
+
+    /* ---------------------------------------------------------- spawning -- */
+    function laneCentre(i) { return (i - (LANES - 1) / 2) * LANE_W; }
+
+    function difficulty() { return A.clamp01(S.score / 4200); }
+
+    function spawnTraffic() {
+      var d = difficulty();
+      var rand = S.rand;
+
+      /* Pick a lane, but never seal the road: we track which lanes already have
+         something close to the spawn line and always leave at least one gap. */
+      var free = [];
+      for (var i = 0; i < LANES; i++) {
+        var blocked = false;
+        for (var t = 0; t < S.traffic.length; t++) {
+          var c = S.traffic[t];
+          if (c.lane === i && Math.abs(c.z - (S.z + VIEW_AHEAD)) < 9) { blocked = true; break; }
+        }
+        if (!blocked) free.push(i);
+      }
+      if (free.length <= 1) return;
+
+      var lane = free[rand.int(0, free.length - 1)];
+      var oncoming = lane >= LANES - 2 && rand.chance(0.50 + d * 0.18);
+      var big = rand.chance(0.16 + d * 0.12);
+
+      S.traffic.push({
+        lane: lane,
+        x: laneCentre(lane) + rand.range(-0.16, 0.16),
+        z: S.z + VIEW_AHEAD + rand.range(0, 8),
+        /* Same-direction traffic is slower than you; oncoming closes fast. */
+        speed: oncoming ? -(rand.range(16, 24) + d * 8) : rand.range(7, 15) + d * 6,
+        len: big ? rand.range(3.1, 3.9) : rand.range(1.8, 2.2),
+        wide: big ? 1.22 : rand.range(0.98, 1.10),
+        tint: A.hex(TRAFFIC_TINTS[rand.int(0, TRAFFIC_TINTS.length - 1)]),
+        big: big,
+        oncoming: oncoming,
+        drift: rand.range(-0.20, 0.20),
+        yielded: 0,
+        shoved: 0,
+        counted: false
+      });
+
+      /* Coins ride in the gaps, which nudges the player toward the risky line. */
+      if (rand.chance(0.55)) {
+        var cl = free[rand.int(0, free.length - 1)];
+        var n = rand.int(3, 6);
+        for (var k = 0; k < n; k++) {
+          S.coins.push({ x: laneCentre(cl), z: S.z + VIEW_AHEAD + 4 + k * 1.6, got: false, spin: k });
+        }
+      }
+    }
+
+    function spawnProp() {
+      var b = BIOMES[S.biome];
+      var side = S.rand.chance(0.5) ? -1 : 1;
+      S.props.push({
+        x: side * (ROAD_W / 2 + S.rand.range(1.0, 2.6)),
+        z: S.z + VIEW_AHEAD + S.rand.range(0, 10),
+        w: S.rand.range(0.8, 1.9),
+        h: b.propTall ? S.rand.range(2.6, 7.5) : S.rand.range(0.6, 1.6),
+        tint: A.shade(A.hex(b.prop), S.rand.range(-0.14, 0.14)),
+        lit: b.lit && S.rand.chance(0.75),
+        mask: S.rand.int(0, 0xFFFF)
+      });
+    }
+
+    /* -------------------------------------------------------------- step -- */
+    function update(dt) {
+      A.Fx.update(dt);
+
+      if (S.crashed) {
+        S.crashT += dt;
+        S.speed = A.approach(S.speed, 0, 3.4, dt);
+        S.z += S.speed * dt;
+        return;
+      }
+
+      var car = S.car;
+
+      /* Throttle. Speed climbs toward the car's top and keeps a slow global
+         creep past it, so a perfect run still eventually ends. */
+      var creep = 1 + A.clamp01(S.score / 6000) * 0.30;
+      var target = car.top * creep * (S.abilityT > 0 && car.ability === "boost" ? 1.45 : 1);
+      S.speed = A.approach(S.speed, target, car.accel * 0.18, dt);
+      S.z += S.speed * dt;
+      S.score = Math.floor(S.z);
+
+      /* Steering: drag left/right, or arrow keys. The car has weight - `grip`
+         sets how fast lateral velocity converges on the input. */
+      var want = 0;
+      if (A.Input.down && layout) {
+        var dxPix = A.Input.x - layout.cx;
+        want = A.clamp(dxPix / (layout.scale * (ROAD_W / 2)), -1, 1);
+        want = want * (ROAD_W / 2 + 0.6);
+      } else {
+        var k = 0;
+        if (A.Input.keyPressed("arrowleft") || A.Input.keyPressed("a")) k -= 1;
+        if (A.Input.keyPressed("arrowright") || A.Input.keyPressed("d")) k += 1;
+        want = S.x + k * 4.5;
+      }
+      want = A.clamp(want, -(ROAD_W / 2 + 0.45), ROAD_W / 2 + 0.45);
+
+      var prevX = S.x;
+      S.x = A.approach(S.x, want, car.grip, dt);
+      S.vx = (S.x - prevX) / Math.max(dt, 0.0001);
+      S.shakeLean = A.approach(S.shakeLean, A.clamp(S.vx * 0.05, -1, 1), 8, dt);
+
+      /* Off the tarmac is survivable but slow - a soft wall, not a hard one. */
+      var edge = ROAD_W / 2 - car.wide * 0.5;
+      if (Math.abs(S.x) > edge) {
+        S.speed *= Math.exp(-2.2 * dt);
+        if (S.rand.chance(dt * 30)) {
+          A.Fx.burst(S.x, S.z + 1, 0, 2, { color: [190, 170, 140], speed: 60, life: 0.3 });
+        }
+      }
+
+      /* Ability. */
+      if (S.cooldown > 0) S.cooldown = Math.max(0, S.cooldown - dt);
+      if (S.abilityT > 0) S.abilityT = Math.max(0, S.abilityT - dt);
+      if (A.Input.keyPressed(" ") && S.cooldown <= 0) fireAbility();
+
+      /* Traffic. */
+      var i;
+      for (i = S.traffic.length - 1; i >= 0; i--) {
+        var c = S.traffic[i];
+        c.z += c.speed * dt;
+        c.x += c.drift * dt * 0.4;
+
+        if (c.shoved !== 0) {
+          c.x += c.shoved * 9 * dt;
+          c.shoved *= Math.exp(-1.6 * dt);
+        }
+
+        /* Siren: nearby traffic slides toward the nearest shoulder. */
+        if (S.abilityT > 0 && car.ability === "siren" && Math.abs(c.z - S.z) < 26) {
+          var side = c.x >= 0 ? 1 : -1;
+          c.x = A.approach(c.x, side * (ROAD_W / 2 + 0.4), 3.2, dt);
+          c.yielded = 1;
+        }
+
+        if (c.z < S.z - VIEW_BEHIND - 6 || c.z > S.z + VIEW_AHEAD + 30) {
+          S.traffic.splice(i, 1);
+          continue;
+        }
+
+        /* Collision + near miss, tested on the same pass. */
+        var dz = Math.abs(c.z - S.z);
+        var dx = Math.abs(c.x - S.x);
+        var hitZ = (c.len + car.len) * 0.5;
+        var hitX = (c.wide + car.wide) * 0.5;
+
+        if (dz < hitZ && dx < hitX) {
+          var phased = S.abilityT > 0 && car.ability === "phase";
+          var rammed = S.abilityT > 0 && car.ability === "ram";
+          if (phased) {
+            /* pass straight through, no penalty */
+          } else if (rammed && !c.big) {
+            c.shoved = c.x >= S.x ? 1 : -1;
+            S.speed *= 0.94;
+            A.Fx.burst(c.x, c.z, 0.4, 8, { color: c.tint, speed: 150, life: 0.4 });
+            A.Audio.sfx("thud");
+          } else if (car.bulk > 0 && !c.big && car.bulk >= 2) {
+            c.shoved = c.x >= S.x ? 1 : -1;
+            S.speed *= 0.88;
+            A.Audio.sfx("thud");
+          } else {
+            crash(c);
+            return;
+          }
+        } else if (!c.counted && dz < hitZ + 0.6 && dx < hitX + 0.75) {
+          /* Near miss: close enough to scare, far enough to live. */
+          c.counted = true;
+          S.nearMiss++;
+          S.nearTimer = 1.8;
+          S.picked += 2;
+          A.Fx.text(c.x, c.z, 0.9, "NEAR MISS", [255, 214, 84], { life: 0.6, rise: 50 });
+          A.Audio.sfx("pop");
+        }
+      }
+
+      /* Coins. */
+      for (i = S.coins.length - 1; i >= 0; i--) {
+        var co = S.coins[i];
+        if (co.z < S.z - 6) { S.coins.splice(i, 1); continue; }
+        if (Math.abs(co.z - S.z) < 1.1 && Math.abs(co.x - S.x) < 0.9) {
+          S.coins.splice(i, 1);
+          S.picked += 1;
+          A.Audio.sfx("coin");
+          A.Fx.burst(co.x, co.z, 0.5, 5, { color: [255, 214, 84], speed: 110, life: 0.32 });
+        }
+      }
+
+      /* Roadside props. */
+      for (i = S.props.length - 1; i >= 0; i--) {
+        if (S.props[i].z < S.z - VIEW_BEHIND - 4) S.props.splice(i, 1);
+      }
+
+      if (S.nearTimer > 0) {
+        S.nearTimer -= dt;
+        if (S.nearTimer <= 0) S.nearMiss = 0;
+      }
+
+      /* Spawn pacing tightens with difficulty but has a hard floor, otherwise
+         late runs become a solid wall rather than a hard one. */
+      S.nextSpawn -= dt;
+      if (S.nextSpawn <= 0) {
+        spawnTraffic();
+        S.nextSpawn = A.lerp(0.30, 0.11, difficulty()) * S.rand.range(0.75, 1.3);
+      }
+      S.nextProp -= dt;
+      if (S.nextProp <= 0) {
+        spawnProp();
+        S.nextProp = S.rand.range(0.10, 0.34);
+      }
+
+      /* Biome every 900 units, cross-faded so the change is felt not jarring. */
+      var stage = Math.floor(S.z / 900);
+      var wantBiome = stage % BIOMES.length;
+      if (wantBiome !== S.biome) {
+        S.biomeMix += dt * 0.6;
+        if (S.biomeMix >= 1) {
+          S.biome = wantBiome;
+          S.biomeMix = 0;
+          host.toast(BIOMES[S.biome].name);
+        }
+      } else {
+        S.biomeMix = Math.max(0, S.biomeMix - dt * 0.6);
+      }
+
+      paintHud();
+    }
+
+    function fireAbility() {
+      var car = S.car;
+      S.cooldown = car.cool;
+      A.Audio.sfx(car.ability === "siren" ? "horn" : "boom");
+      A.Fx.kick(5);
+
+      if (car.ability === "boost") S.abilityT = 2.4;
+      else if (car.ability === "siren") S.abilityT = 4.0;
+      else if (car.ability === "ram") S.abilityT = 3.0;
+      else if (car.ability === "phase") S.abilityT = 3.0;
+
+      A.Fx.text(S.x, S.z + 3, 1.2, car.abilityName.toUpperCase(), [93, 224, 255], { life: 0.7, rise: 60 });
+    }
+
+    /* ------------------------------------------------------------- crash -- */
+    function crash(c) {
+      S.crashed = true;
+      S.crashT = 0;
+      A.Fx.kick(18);
+      A.Fx.flashScreen(0.42, [255, 210, 170]);
+      A.Fx.burst(S.x, S.z, 0.6, 26, { color: [255, 168, 70], speed: 260, life: 0.7 });
+      if (c) A.Fx.burst(c.x, c.z, 0.6, 16, { color: c.tint, speed: 220, life: 0.6 });
+      A.Audio.sfx("boom");
+      A.vibrate([40, 40, 90]);
+      setTimeout(finish, 1100);
+    }
+
+    function finish() {
+      if (!S || !S.crashed) return;
+
+      var coins = Math.round((S.picked * 3 + S.score * 0.10) * host.coinMultiplier());
+      save.coins += coins;
+      save.runs++;
+      save.totalDistance += S.score;
+      var isBest = S.score > save.best;
+      if (isBest) save.best = S.score;
+      host.commit();
+
+      var xp = Math.round((16 + S.score * 0.02) * host.xpMultiplier());
+      host.addXp(xp);
+      host.progress("run", 1);
+      host.progress("coins", coins);
+
+      host.results({
+        title: isBest ? "NEW RECORD" : "WRECKED",
+        subtitle: BIOMES[S.biome].name + "  ·  " + S.car.name,
+        rows: [
+          { label: "Distance", value: A.formatNumber(S.score) + " m" },
+          { label: "Best", value: A.formatNumber(save.best) + " m" },
+          { label: "Top speed", value: Math.round(S.speed * 3.6) + " km/h" },
+          { label: "Pickups", value: S.picked },
+          { label: "Coins", value: "+" + A.formatNumber(coins) },
+          { label: "XP", value: "+" + xp }
+        ],
+        actions: [
+          { label: "DRIVE AGAIN", className: "go", onClick: function () { host.modal.hide(); begin(); } },
+          { label: "GARAGE", className: "gold", onClick: function () { host.modal.hide(); openShop(); } },
+          { label: "MENU", className: "ghost", onClick: host.exit }
+        ]
+      });
+    }
+
+    /* ------------------------------------------------------------ garage -- */
+    function openShop() {
+      var card = host.el("div", "card");
+      card.appendChild(host.el("h2", null, "GARAGE"));
+      card.appendChild(host.el("p", "sub", A.formatNumber(save.coins) + " coins"));
+
+      CARS.forEach(function (c) {
+        var owned = save.owned.indexOf(c.id) >= 0;
+        var row = host.el("div", "shopRow");
+        var left = host.el("div");
+        left.appendChild(host.el("h4", null, c.name + "  ·  " + c.abilityName));
+        left.appendChild(host.el("p", null, c.blurb));
+        row.appendChild(left);
+
+        var btn = host.el("button", "buy");
+        if (save.carId === c.id) {
+          btn.textContent = "DRIVING";
+          btn.disabled = true;
+        } else if (owned) {
+          btn.textContent = "SELECT";
+          btn.addEventListener("click", function () {
+            save.carId = c.id;
+            host.commit();
+            A.Audio.sfx("select");
+            host.modal.hide();
+            openShop();
+          });
+        } else {
+          btn.textContent = A.formatNumber(c.cost);
+          btn.disabled = save.coins < c.cost;
+          btn.addEventListener("click", function () {
+            if (save.coins < c.cost) return;
+            save.coins -= c.cost;
+            save.owned.push(c.id);
+            save.carId = c.id;
+            host.commit();
+            A.Audio.sfx("buy");
+            host.toast("UNLOCKED  ·  " + c.name);
+            host.modal.hide();
+            openShop();
+          });
+        }
+        row.appendChild(btn);
+        card.appendChild(row);
+      });
+
+      card.appendChild(host.button("BACK", "ghost", function () { host.modal.hide(); begin(); }));
+      host.modal.show(card);
+    }
+
+    /* ------------------------------------------------------------ drawing -- */
+    /** Extruded box in road space. Same construction as the rest of the arcade:
+        a top face, a front face and one side, so height reads without lighting. */
+    function box(g, x, z, y, w, len, h, color, alpha) {
+      var top = project(x, z, y + h);
+      var tw = w * layout.scale;
+      var tl = len * layout.depth;
+      var th = h * layout.rise;
+
+      if (top.y + tl > layout.h + 80 || top.y - th < -120) return;
+      g.globalAlpha = alpha === undefined ? 1 : alpha;
+
+      g.fillStyle = A.rgb(A.shade(color, -0.30));
+      g.fillRect(top.x - tw / 2, top.y + tl / 2, tw, th);
+
+      g.fillStyle = A.rgb(A.shade(color, -0.46));
+      g.fillRect(top.x + tw / 2 - 1, top.y - tl / 2, Math.max(1.5, tw * 0.10), th + tl);
+
+      g.fillStyle = A.rgb(color);
+      g.fillRect(top.x - tw / 2, top.y - tl / 2, tw, tl);
+
+      g.globalAlpha = 1;
+    }
+
+    function drawVehicle(g, x, z, len, wide, body, roof, opts) {
+      opts = opts || {};
+      var s = project(x, z, 0);
+
+      g.fillStyle = "rgba(0,0,0,0.26)";
+      g.fillRect(s.x - wide * layout.scale * 0.52, s.y - len * layout.depth * 0.48,
+        wide * layout.scale * 1.04, len * layout.depth * 0.96);
+
+      box(g, x, z, 0.04, wide, len, 0.30, body, opts.alpha);
+      box(g, x, z + len * 0.04, 0.34, wide * 0.80, len * 0.52, 0.20, roof, opts.alpha);
+
+      /* Windscreen slab, then lights at both ends. */
+      var wp = project(x, z + len * 0.20, 0.55);
+      g.globalAlpha = opts.alpha === undefined ? 1 : opts.alpha;
+      g.fillStyle = "rgba(24,32,52,0.75)";
+      g.fillRect(wp.x - wide * layout.scale * 0.34, wp.y - len * layout.depth * 0.10,
+        wide * layout.scale * 0.68, len * layout.depth * 0.20);
+
+      var front = project(x, z + len * 0.5, 0.18);
+      var back = project(x, z - len * 0.5, 0.18);
+      var lw = wide * layout.scale * 0.16, lh = Math.max(2, layout.depth * 0.10);
+      g.fillStyle = opts.oncoming ? "rgba(255,248,214,0.95)" : "rgba(255,244,200,0.85)";
+      g.fillRect(front.x - wide * layout.scale * 0.36, front.y - lh / 2, lw, lh);
+      g.fillRect(front.x + wide * layout.scale * 0.36 - lw, front.y - lh / 2, lw, lh);
+      g.fillStyle = "rgba(255,80,80,0.85)";
+      g.fillRect(back.x - wide * layout.scale * 0.36, back.y - lh / 2, lw, lh);
+      g.fillRect(back.x + wide * layout.scale * 0.36 - lw, back.y - lh / 2, lw, lh);
+      g.globalAlpha = 1;
+    }
+
+    function render(g) {
+      var vw = layout.w, vh = layout.h;
+      var a = BIOMES[S.biome];
+      var b = BIOMES[(S.biome + 1) % BIOMES.length];
+      var mix = S.biomeMix;
+      var skyC = A.mix(A.hex(a.sky), A.hex(b.sky), mix);
+      var groundC = A.mix(A.hex(a.ground), A.hex(b.ground), mix);
+      var roadC = A.mix(A.hex(a.road), A.hex(b.road), mix);
+      var lineC = A.mix(A.hex(a.line), A.hex(b.line), mix);
+
+      var sky = g.createLinearGradient(0, 0, 0, vh * 0.5);
+      sky.addColorStop(0, A.rgb(A.shade(skyC, 0.22)));
+      sky.addColorStop(1, A.rgb(skyC));
+      g.fillStyle = sky;
+      g.fillRect(0, 0, vw, vh);
+
+      g.save();
+      A.Fx.applyShake(g);
+
+      /* Ground plate. */
+      var horizon = project(0, S.z + VIEW_AHEAD + 12, 0).y;
+      g.fillStyle = A.rgb(groundC);
+      g.fillRect(0, horizon, vw, vh - horizon);
+
+      /* Road slab plus shoulder stripes. */
+      var lx = project(-ROAD_W / 2, 0, 0).x;
+      var rx = project(ROAD_W / 2, 0, 0).x;
+      g.fillStyle = A.rgb(roadC);
+      g.fillRect(lx, horizon, rx - lx, vh - horizon);
+      g.fillStyle = A.rgb(A.shade(roadC, 0.18));
+      g.fillRect(lx - layout.scale * 0.30, horizon, layout.scale * 0.30, vh - horizon);
+      g.fillRect(rx, horizon, layout.scale * 0.30, vh - horizon);
+
+      /* Lane dashes, drawn as world-space rungs so they scroll with distance. */
+      g.fillStyle = A.rgba(lineC, 0.72);
+      var first = Math.floor(S.z / 4) * 4;
+      for (var d = first - VIEW_BEHIND; d < S.z + VIEW_AHEAD + 8; d += 4) {
+        for (var l = 1; l < LANES; l++) {
+          var px = project(laneCentre(l) - LANE_W / 2, d, 0);
+          if (px.y < horizon - 20 || px.y > vh + 20) continue;
+          g.fillRect(px.x - layout.scale * 0.05, px.y - layout.depth * 0.9,
+            layout.scale * 0.10, layout.depth * 1.8);
+        }
+      }
+
+      /* Roadside props behind everything else on the tarmac. */
+      var i;
+      for (i = 0; i < S.props.length; i++) {
+        var p = S.props[i];
+        box(g, p.x, p.z, 0, p.w, p.w, p.h, p.tint);
+        if (!p.lit || p.h < 1.6) continue;
+        /* Window grid on the face toward the camera. The bit mask keeps the same
+           windows dark every frame instead of flickering. */
+        var top = project(p.x, p.z, p.h);
+        var pw = p.w * layout.scale, ph = p.h * layout.rise;
+        if (top.y > layout.h + 40 || top.y + ph < -40) continue;
+        var cols = Math.max(2, Math.round(p.w * 2.2));
+        var rows = Math.max(2, Math.round(p.h * 1.1));
+        var cw = pw / cols * 0.42, ch = ph / rows * 0.40;
+        g.fillStyle = "rgba(255,238,178,0.72)";
+        for (var wx = 0; wx < cols; wx++) {
+          for (var wy = 0; wy < rows; wy++) {
+            if ((p.mask >> ((wx * 3 + wy) % 16)) & 1) continue;
+            g.fillRect(
+              top.x - pw / 2 + (wx + 0.5) * (pw / cols) - cw / 2,
+              top.y + p.w * layout.depth * 0.5 + (wy + 0.35) * (ph / rows) - ch / 2,
+              cw, ch);
+          }
+        }
+      }
+
+      /* Coins. */
+      for (i = 0; i < S.coins.length; i++) {
+        var co = S.coins[i];
+        var cp = project(co.x, co.z, 0.42);
+        if (cp.y < horizon - 20 || cp.y > vh + 30) continue;
+        var rr = layout.scale * 0.24;
+        var squash = Math.abs(Math.cos(A.Loop.time * 3 + co.spin));
+        g.fillStyle = "rgba(0,0,0,0.20)";
+        g.beginPath();
+        g.ellipse(cp.x, project(co.x, co.z, 0).y, rr * 0.8, rr * 0.30, 0, 0, A.TAU);
+        g.fill();
+        var grad = g.createLinearGradient(cp.x, cp.y - rr, cp.x, cp.y + rr);
+        grad.addColorStop(0, "#FFE9A0");
+        grad.addColorStop(0.55, "#FFC93C");
+        grad.addColorStop(1, "#C98A12");
+        g.fillStyle = grad;
+        g.beginPath();
+        g.ellipse(cp.x, cp.y, Math.max(1.5, rr * squash), rr, 0, 0, A.TAU);
+        g.fill();
+      }
+
+      /* Traffic, far to near so nearer cars overlap correctly. */
+      var order = S.traffic.slice().sort(function (m, n) { return n.z - m.z; });
+      for (i = 0; i < order.length; i++) {
+        var c = order[i];
+        drawVehicle(g, c.x, c.z, c.len, c.wide, c.tint,
+          A.shade(c.tint, 0.30), { oncoming: c.oncoming });
+        if (c.yielded && S.abilityT > 0) {
+          var yp = project(c.x, c.z, 1.1);
+          g.fillStyle = "rgba(93,224,255,0.5)";
+          g.beginPath();
+          g.arc(yp.x, yp.y, layout.scale * 0.16, 0, A.TAU);
+          g.fill();
+        }
+      }
+
+      /* Player. Phase draws translucent so the state is unmistakable. */
+      var car = S.car;
+      var phasing = S.abilityT > 0 && car.ability === "phase";
+      if (!S.crashed || S.crashT < 0.35) {
+        drawVehicle(g, S.x, S.z, car.len, car.wide, A.hex(car.body), A.hex(car.roof),
+          { alpha: phasing ? 0.55 : 1 });
+      }
+
+      /* Nitro flame out the back. */
+      if (S.abilityT > 0 && car.ability === "boost") {
+        var fp = project(S.x, S.z - car.len * 0.55, 0.20);
+        var flame = g.createLinearGradient(fp.x, fp.y, fp.x, fp.y + layout.depth * 2.4);
+        flame.addColorStop(0, "rgba(255,236,150,0.9)");
+        flame.addColorStop(1, "rgba(255,90,40,0)");
+        g.fillStyle = flame;
+        g.beginPath();
+        g.moveTo(fp.x - car.wide * layout.scale * 0.30, fp.y);
+        g.lineTo(fp.x + car.wide * layout.scale * 0.30, fp.y);
+        g.lineTo(fp.x, fp.y + layout.depth * (2.0 + Math.random() * 0.8));
+        g.closePath();
+        g.fill();
+      }
+
+      /* Siren bar. */
+      if (S.abilityT > 0 && car.ability === "siren") {
+        var sp = project(S.x, S.z, 0.60);
+        var on = (Math.floor(A.Loop.time * 9) % 2) === 0;
+        g.fillStyle = on ? "#4B8BFF" : "#FF4B5C";
+        g.fillRect(sp.x - car.wide * layout.scale * 0.34, sp.y - 3, car.wide * layout.scale * 0.68, 6);
+      }
+
+      A.Fx.drawParticles(g, function (x, z, y) {
+        var p = project(x, z, y);
+        return { x: p.x, y: p.y, s: layout.scale / 30 };
+      });
+      A.Fx.drawTexts(g, function (x, z, y) {
+        var p = project(x, z, y);
+        return { x: p.x, y: p.y, s: layout.scale / 30 };
+      });
+
+      g.restore();
+
+      /* Speed streaks at the screen edges - the cheapest possible sense of pace. */
+      var pace = A.clamp01((S.speed - 18) / 26);
+      if (pace > 0.02) {
+        g.strokeStyle = "rgba(255,255,255," + (pace * 0.20).toFixed(3) + ")";
+        g.lineWidth = 2;
+        for (var k = 0; k < 8; k++) {
+          var t = A.wrap(A.Loop.time * (2.2 + pace * 3) + k * 0.37, 1);
+          var side = k % 2 ? 1 : -1;
+          var sx2 = vw / 2 + side * vw * (0.36 + (k % 4) * 0.04);
+          var sy = t * vh;
+          g.beginPath();
+          g.moveTo(sx2, sy);
+          g.lineTo(sx2, sy + vh * 0.10 * (0.4 + pace));
+          g.stroke();
+        }
+      }
+
+      A.Fx.drawFlash(g, vw, vh);
+    }
+
+    /* ----------------------------------------------------------------- ui -- */
+    function mount(root) {
+      var hud = host.el("div", "hud");
+      var top = host.el("div", "row");
+      ui.dist = host.el("div", "chip", "0 m");
+      ui.speed = host.el("div", "chip", "0 km/h");
+      ui.coins = host.el("div", "chip gold", "0");
+      top.appendChild(ui.dist);
+      top.appendChild(ui.speed);
+      top.appendChild(ui.coins);
+      hud.appendChild(top);
+
+      ui.cap = host.el("div", "cap", "");
+      hud.appendChild(ui.cap);
+
+      ui.hint = host.el("div", "hint", "Drag to steer  ·  hit the button for your ability");
+      hud.appendChild(ui.hint);
+      root.appendChild(hud);
+
+      /* The ability lives on its own button. Firing it from a screen tap would
+         also yank the steering target to wherever the thumb landed. */
+      ui.fire = host.el("button", "fireBtn", "GO");
+      ui.fire.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (S && !S.crashed && S.cooldown <= 0) fireAbility();
+      });
+      ui.fire.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+      root.appendChild(ui.fire);
+    }
+
+    function paintHud() {
+      if (!ui.dist || !S) return;
+      ui.dist.textContent = A.formatNumber(S.score) + " m";
+      ui.speed.textContent = Math.round(S.speed * 3.6) + " km/h";
+      ui.coins.textContent = A.formatNumber(save.coins + S.picked);
+
+      var ready = S.cooldown <= 0;
+      var label = ready ? S.car.abilityName.toUpperCase() + " READY"
+        : S.car.abilityName.toUpperCase() + "  " + S.cooldown.toFixed(1) + "s";
+      if (S.nearMiss > 1) label += "     ·     NEAR MISS x" + S.nearMiss;
+      ui.cap.textContent = label;
+      ui.cap.style.color = ready ? "#5DE0FF" : "";
+      if (ui.fire) {
+        ui.fire.textContent = ready ? S.car.abilityName.toUpperCase() : Math.ceil(S.cooldown) + "";
+        ui.fire.classList.toggle("ready", ready);
+      }
+      if (S.score > 60) ui.hint.textContent = "";
+    }
+
+    return {
+      mount: mount,
+      start: begin,
+      stop: function () { S = null; },
+      update: function (dt) { if (S && layout) update(dt); },
+      render: function (g) { if (S && layout) render(g); },
+      onResize: computeLayout
+    };
+  }
+
+  A.games.push({
+    id: "chromerush",
+    name: "Chrome Rush",
+    tagline: "Endless highway. Thread the traffic, bank near misses, and unlock five very different rides.",
+    accent: "#FF7A4B",
+    unlock: 2,
+    template: { coins: 0, runs: 0, best: 0, totalDistance: 0, carId: "hatch", owned: ["hatch"] },
+    bestLine: function (s) {
+      return s.runs ? "Best " + A.formatNumber(s.best) + " m  ·  " + s.owned.length + " cars" : "New";
+    },
+    thumb: function (g, w, h, t) {
+      g.fillStyle = "#2A3352";
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = "#3C424E";
+      g.fillRect(w * 0.16, 0, w * 0.68, h);
+      g.fillStyle = "#2F3A4C";
+      g.fillRect(0, 0, w * 0.16, h);
+      g.fillRect(w * 0.84, 0, w * 0.16, h);
+
+      g.fillStyle = "rgba(242,230,192,0.7)";
+      for (var l = 1; l < 3; l++) {
+        var lx = w * (0.16 + 0.68 * l / 3);
+        for (var d = 0; d < 6; d++) {
+          var y = A.wrap(t * 0.9 + d / 6, 1) * h;
+          g.fillRect(lx - 1.5, y, 3, h * 0.09);
+        }
+      }
+
+      function car(cx, cy, ww, hh, body, roof) {
+        g.fillStyle = "rgba(0,0,0,0.25)";
+        g.fillRect(cx - ww / 2, cy - hh / 2 + 2, ww, hh);
+        g.fillStyle = body;
+        A.roundRect(g, cx - ww / 2, cy - hh / 2, ww, hh, 2); g.fill();
+        g.fillStyle = roof;
+        A.roundRect(g, cx - ww * 0.34, cy - hh * 0.26, ww * 0.68, hh * 0.44, 2); g.fill();
+      }
+
+      car(w * 0.34, A.wrap(t * 0.55 + 0.1, 1) * (h + 40) - 20, w * 0.15, h * 0.20, "#D9483C", "#FF8E84");
+      car(w * 0.66, A.wrap(t * 0.42 + 0.6, 1) * (h + 40) - 20, w * 0.15, h * 0.20, "#E9C33F", "#FFEBA0");
+      car(w * 0.50, h * 0.76, w * 0.16, h * 0.22, "#3D8BFF", "#9FCBFF");
+
+      var flame = g.createLinearGradient(0, h * 0.87, 0, h);
+      flame.addColorStop(0, "rgba(255,236,150,0.85)");
+      flame.addColorStop(1, "rgba(255,90,40,0)");
+      g.fillStyle = flame;
+      g.beginPath();
+      g.moveTo(w * 0.47, h * 0.87); g.lineTo(w * 0.53, h * 0.87); g.lineTo(w * 0.50, h);
+      g.closePath(); g.fill();
     },
     create: create
   });

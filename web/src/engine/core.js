@@ -243,6 +243,14 @@ window.A = window.A || {};
                         }); break;
         case "jump":    A.Audio.tone(320, 620, 0.10, "triangle", 0.10); break;
         case "slide":   A.Audio.noise(0.20, 0.10); break;
+        case "hop":     A.Audio.tone(560, 900, 0.06, "square", 0.06); break;
+        case "thud":    A.Audio.tone(180, 90, 0.09, "sine", 0.09); break;
+        case "pop":     A.Audio.tone(700, 1300, 0.07, "sine", 0.09); break;
+        case "boom":    A.Audio.noise(0.30, 0.24); A.Audio.tone(160, 48, 0.30, "sawtooth", 0.14); break;
+        case "horn":    A.Audio.tone(240, 210, 0.34, "sawtooth", 0.10); break;
+        case "splash":  A.Audio.noise(0.22, 0.16); break;
+        case "buy":     A.Audio.tone(620, 990, 0.13, "triangle", 0.12); break;
+        case "engine":  A.Audio.tone(90, 130, 0.18, "sawtooth", 0.05); break;
       }
     }
   };

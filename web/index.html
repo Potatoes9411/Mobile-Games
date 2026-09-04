@@ -170,9 +170,11 @@ h2.section::after{content:"";flex:1;height:1px;background:var(--line)}
   text-shadow:0 5px 0 rgba(20,15,35,.6);transition:transform .09s;
 }
 .bigNum.pop{transform:scale(1.13)}
-.cap{text-align:center;font-size:12px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.6);
+.cap{text-align:center;font-size:12px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.72);
+     text-shadow:0 1px 3px rgba(6,4,16,.9),0 0 10px rgba(6,4,16,.7);
      text-transform:uppercase;margin-top:-1px;text-shadow:0 2px 3px rgba(0,0,0,.6)}
 .hint{margin-top:auto;text-align:center;font-size:14px;font-weight:700;letter-spacing:.18em;
+      text-shadow:0 1px 3px rgba(6,4,16,.9),0 0 10px rgba(6,4,16,.7);
       text-transform:uppercase;color:rgba(255,255,255,.75);text-shadow:0 2px 4px rgba(0,0,0,.7)}
 .backBtn{
   position:absolute;top:max(12px,env(safe-area-inset-top));right:14px;pointer-events:auto;
@@ -180,6 +182,24 @@ h2.section::after{content:"";flex:1;height:1px;background:var(--line)}
   color:var(--ink);font-family:var(--display);font-size:13px;border-radius:11px;
   padding:8px 11px 6px;cursor:pointer;
 }
+
+/* An in-game action button. Sits above the thumb rest on the right so it never
+   overlaps the steering half of the screen. */
+.fireBtn{
+  position:absolute;right:16px;bottom:max(24px,calc(env(safe-area-inset-bottom) + 18px));
+  pointer-events:auto;appearance:none;cursor:pointer;
+  width:76px;height:76px;border-radius:50%;
+  border:3px solid rgba(255,255,255,.16);background:rgba(14,11,30,.66);
+  color:rgba(255,255,255,.45);font-family:var(--display);font-size:12px;
+  letter-spacing:.04em;line-height:1.05;padding:0 6px;
+  transition:background .15s,color .15s,border-color .15s,transform .1s;
+}
+.fireBtn.ready{
+  border-color:rgba(93,224,255,.85);color:#EAFBFF;
+  background:radial-gradient(70% 70% at 50% 35%,rgba(93,224,255,.42),rgba(14,11,30,.82));
+  box-shadow:0 0 22px rgba(93,224,255,.35);
+}
+.fireBtn:active{transform:scale(.94)}
 
 /* ---------------------------------------------------------- overlays ---- */
 #modal{position:absolute;inset:0;pointer-events:auto;display:flex;flex-direction:column;
@@ -318,6 +338,9 @@ h2.section::after{content:"";flex:1;height:1px;background:var(--line)}
 <script src="src/games/paperio.js"></script>
 <script src="src/games/horde.js"></script>
 <script src="src/games/runner.js"></script>
+<script src="src/games/voidmuncher.js"></script>
+<script src="src/games/roadhopper.js"></script>
+<script src="src/games/chromerush.js"></script>
 <script src="src/hub.js"></script>
 </body>
 </html>
