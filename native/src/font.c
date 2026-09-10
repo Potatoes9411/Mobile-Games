@@ -43,8 +43,9 @@ static const float G_X[] = { 0.08f,0.0f, 0.92f,1.0f, E, 0.92f,0.0f, 0.08f,1.0f, 
 static const float G_Y[] = { 0.08f,0.0f, 0.50f,0.50f, 0.92f,0.0f, E, 0.50f,0.50f, 0.50f,1.0f, E, E };
 static const float G_Z[] = { 0.08f,0.0f, 0.92f,0.0f, 0.10f,1.0f, 0.92f,1.0f, E, E };
 
-static const float G_0[] = { 0.34f,0.0f, 0.66f,0.0f, 0.90f,0.22f, 0.90f,0.78f, 0.66f,1.0f, 0.34f,1.0f, 0.10f,0.78f, 0.10f,0.22f, 0.34f,0.0f, E,
-                             0.78f,0.22f, 0.24f,0.80f, E, E };
+/* No slash through the zero. It is a terminal convention for telling O from 0
+   and in a score readout it just looks like a typo. */
+static const float G_0[] = { 0.34f,0.0f, 0.66f,0.0f, 0.90f,0.22f, 0.90f,0.78f, 0.66f,1.0f, 0.34f,1.0f, 0.10f,0.78f, 0.10f,0.22f, 0.34f,0.0f, E, E };
 static const float G_1[] = { 0.26f,0.20f, 0.54f,0.0f, 0.54f,1.0f, E, 0.24f,1.0f, 0.84f,1.0f, E, E };
 static const float G_2[] = { 0.10f,0.22f, 0.34f,0.0f, 0.66f,0.0f, 0.90f,0.20f, 0.90f,0.38f, 0.10f,1.0f, 0.92f,1.0f, E, E };
 static const float G_3[] = { 0.10f,0.14f, 0.36f,0.0f, 0.70f,0.0f, 0.90f,0.18f, 0.86f,0.40f, 0.50f,0.50f, E,

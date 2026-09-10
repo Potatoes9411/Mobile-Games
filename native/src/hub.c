@@ -13,11 +13,13 @@ extern const PA_Game PA_GAME_SPLAT;
 extern const PA_Game PA_GAME_ROADHOPPER;
 extern const PA_Game PA_GAME_VOIDMUNCHER;
 extern const PA_Game PA_GAME_CHROMERUSH;
+extern const PA_Game PA_GAME_BLOCKSTORM;
 
 static const PA_Game *const GAMES[] = {
     &PA_GAME_ROADHOPPER,
     &PA_GAME_VOIDMUNCHER,
     &PA_GAME_CHROMERUSH,
+    &PA_GAME_BLOCKSTORM,
     &PA_GAME_SPLAT
 };
 #define GAME_COUNT ((int)(sizeof(GAMES) / sizeof(GAMES[0])))
@@ -36,7 +38,11 @@ static int            g_hover = -1;
    can never disagree about where a card is. */
 typedef struct { float x, y, w, h; } Rect;
 static Rect  g_cards[GAME_COUNT];
-static float g_scroll;
+static float g_scroll;          /* pixels the grid is shifted up by */
+static float g_scroll_max;
+static float g_scroll_vel;
+static int   g_scroll_active;   /* a drag is under way, so no tap fires */
+static float g_scroll_from, g_drag_from_y, g_drag_travel;
 
 static void layout_cards(void) {
     float pad = 18.0f;
@@ -45,6 +51,15 @@ static void layout_cards(void) {
     float cw = ((float)g_view_w - pad * 2.0f - gap * (float)(cols - 1)) / (float)cols;
     float chh = cw * 1.12f;
     float top = 196.0f;
+    int rows = (GAME_COUNT + cols - 1) / cols;
+
+    /* How far the grid can travel before its last row sits on the bottom edge.
+       Computed from the layout rather than guessed, so adding a game needs no
+       further thought. */
+    float content = top + (float)rows * (chh + gap) + 24.0f;
+    g_scroll_max = content - (float)g_view_h;
+    if (g_scroll_max < 0.0f) g_scroll_max = 0.0f;
+    g_scroll = pa_clampf(g_scroll, 0.0f, g_scroll_max);
 
     for (int i = 0; i < GAME_COUNT; i++) {
         int col = i % cols;
@@ -139,10 +154,17 @@ static void draw_home(PA_Canvas *c) {
             PA_RGBA(255, 255, 255, 190), PA_ALIGN_LEFT, 5.0f);
 
     layout_cards();
+
+    /* Clip the grid below the header, or a scrolled card slides up over the
+       wordmark. */
+    int keep[4] = { c->clip_x0, c->clip_y0, c->clip_x1, c->clip_y1 };
+    pa_clip_rect(c, 0, 186, c->w, c->h - 186);
+
     for (int i = 0; i < GAME_COUNT; i++) {
         Rect r = g_cards[i];
         const PA_Game *g = GAMES[i];
         int hot = (g_hover == i);
+        if (r.y > (float)c->h + 40.0f || r.y + r.h < 150.0f) continue;
 
         pa_round_rect(c, r.x, r.y + 3.0f, r.w, r.h, 14.0f, PA_RGBA(0, 0, 0, 90));
         pa_round_rect(c, r.x, r.y, r.w, r.h, 14.0f, pa_hex(0x1C1740));
@@ -172,6 +194,22 @@ static void draw_home(PA_Canvas *c) {
         }, 4, 1, hot ? 2.6f : 1.4f, hot ? g->accent : PA_RGBA(255, 255, 255, 34));
     }
 
+    c->clip_x0 = keep[0]; c->clip_y0 = keep[1];
+    c->clip_x1 = keep[2]; c->clip_y1 = keep[3];
+
+    /* Scrollbar, only when there is somewhere to go. */
+    if (g_scroll_max > 0.0f) {
+        float track_top = 200.0f;
+        float track_h = (float)c->h - track_top - 26.0f;
+        float thumb_h = track_h * pa_clamp01((float)c->h / ((float)c->h + g_scroll_max));
+        if (thumb_h < 32.0f) thumb_h = 32.0f;
+        float t = g_scroll / g_scroll_max;
+        pa_round_rect(c, (float)c->w - 8.0f, track_top, 3.0f, track_h, 1.5f,
+                      PA_RGBA(255, 255, 255, 18));
+        pa_round_rect(c, (float)c->w - 9.0f, track_top + t * (track_h - thumb_h), 5.0f,
+                      thumb_h, 2.5f, PA_RGBA(255, 255, 255, 70));
+    }
+
 }
 
 /* ----------------------------------------------------------------- frame -- */
@@ -184,6 +222,35 @@ void pa_app_update(float dt, const PA_Input *in) {
     if (g_fade > 0.0f) g_fade = pa_clampf(g_fade - dt * 3.4f, 0.0f, 1.0f);
 
     if (g_screen == SCREEN_HOME) {
+        /* Drag to scroll the grid. The drag is tracked from where it started
+           rather than integrated frame to frame, so a fast flick cannot drift
+           away from the finger. */
+        if (in->pressed) {
+            g_drag_from_y = in->y;
+            g_scroll_from = g_scroll;
+            g_drag_travel = 0.0f;
+            g_scroll_active = 0;
+            g_scroll_vel = 0.0f;
+        }
+        if (in->down && g_scroll_max > 0.0f) {
+            float moved = g_drag_from_y - in->y;
+            if (fabsf(moved) > g_drag_travel) g_drag_travel = fabsf(moved);
+            /* Only once the finger has clearly travelled does this become a
+               scroll; below that it is still a tap on a card. */
+            if (g_drag_travel > 8.0f) {
+                g_scroll_active = 1;
+                float next = pa_clampf(g_scroll_from + moved, 0.0f, g_scroll_max);
+                g_scroll_vel = (next - g_scroll) / (dt > 0.0001f ? dt : 0.0001f);
+                g_scroll = next;
+            }
+        }
+        if (!in->down) {
+            /* Momentum, then a stop. Without it the grid feels nailed down. */
+            g_scroll = pa_clampf(g_scroll + g_scroll_vel * dt, 0.0f, g_scroll_max);
+            g_scroll_vel *= expf(-6.0f * dt);
+            if (fabsf(g_scroll_vel) < 4.0f) g_scroll_vel = 0.0f;
+        }
+
         g_hover = -1;
         layout_cards();
         for (int i = 0; i < GAME_COUNT; i++) {
@@ -193,9 +260,10 @@ void pa_app_update(float dt, const PA_Input *in) {
                 /* A tap, not a bare release: a drag that happens to end over a
                    card should not launch it, and a release carrying a stale
                    pointer position should not launch anything at all. */
-                if (in->tapped) launch(i);
+                if (in->tapped && !g_scroll_active) launch(i);
             }
         }
+        if (in->released) g_scroll_active = 0;
         if (in->key_pressed[PA_KEY_ESC]) g_quit = 1;
         return;
     }
