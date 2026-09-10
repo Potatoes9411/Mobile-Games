@@ -14,12 +14,14 @@ extern const PA_Game PA_GAME_ROADHOPPER;
 extern const PA_Game PA_GAME_VOIDMUNCHER;
 extern const PA_Game PA_GAME_CHROMERUSH;
 extern const PA_Game PA_GAME_BLOCKSTORM;
+extern const PA_Game PA_GAME_HELIX;
 
 static const PA_Game *const GAMES[] = {
     &PA_GAME_ROADHOPPER,
     &PA_GAME_VOIDMUNCHER,
     &PA_GAME_CHROMERUSH,
     &PA_GAME_BLOCKSTORM,
+    &PA_GAME_HELIX,
     &PA_GAME_SPLAT
 };
 #define GAME_COUNT ((int)(sizeof(GAMES) / sizeof(GAMES[0])))

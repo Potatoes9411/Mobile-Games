@@ -24,6 +24,9 @@ runs on a clean Windows box with no mingw runtime present.
 | `src/save.c` | the key/value save file |
 | `src/games/*.c` | one file per game |
 
+Six games ported so far: Road Hopper, Void Muncher, Chrome Rush, Block Storm,
+Helix Drop and Roller Splat.
+
 ## The rasterizer
 
 One scanline polygon filler with the non-zero winding rule and analytic coverage
@@ -92,6 +95,14 @@ Step count is a function of simulated time alone. 144Hz lands on 479 or 481
 depending on where the residue falls, never on 960 or 1920.
 
 `--hz N --seconds S` on the headless capture is what runs that comparison.
+
+## The projection's one trap
+
+A box's front face hangs *down* from its top face. Anything meant to be visible
+below another box therefore has to be **wider** than it, not merely lower - the
+box in front will otherwise cover it completely. This has now caused a prop to
+silently disappear three times: tree trunks, car cabins and car wheels. If
+something is drawn and cannot be seen, check this first.
 
 ## Two bugs worth remembering
 
