@@ -497,11 +497,13 @@ static void storm_render(PA_Canvas *c) {
 }
 
 static void storm_thumb(PA_Canvas *c, float x, float y, float w, float h, float t) {
-    pa_fill_rect(c, x, y, w, h, pa_hex(0x18133A));
+    pa_fill_rect(c, x, y, w, h, pa_hex(BG_BLUE));
     int n = 6;
-    float cell = (w < h ? w : h) / (float)n;
+    float cell = (w < h ? w : h) * 0.86f / (float)n;
     float ox = x + (w - cell * (float)n) * 0.5f;
     float oy = y + (h - cell * (float)n) * 0.5f;
+    pa_fill_rect(c, ox - 3.0f, oy - 3.0f, cell * n + 6.0f, cell * n + 6.0f, pa_hex(0x3A4FA0));
+    pa_fill_rect(c, ox, oy, cell * n, cell * n, pa_hex(BOARD_NAVY));
 
     /* A row filling and flashing out, so the tile shows the payoff. */
     float phase = pa_wrapf(t * 0.42f, 1.0f);
@@ -517,17 +519,15 @@ static void storm_thumb(PA_Canvas *c, float x, float y, float w, float h, float 
                     continue;
                 }
                 if (phase >= 0.82f) {
-                    pa_round_rect(c, px + 1.0f, py + 1.0f, cell - 2.0f, cell - 2.0f,
-                                  cell * 0.2f,
-                                  PA_RGBA(255, 255, 255, (int)((1.0f - phase) / 0.18f * 190.0f)));
+                    pa_fill_rect(c, px + 1.0f, py + 1.0f, cell - 2.0f, cell - 2.0f,
+                                 PA_RGBA(255, 255, 255, (int)((1.0f - phase) / 0.18f * 190.0f)));
                     continue;
                 }
             } else if (pattern) {
                 block(c, px, py, cell, pa_hex(TINTS[(gx + gy) % TINT_COUNT]), 1.0f);
                 continue;
             }
-            pa_round_rect(c, px + 1.0f, py + 1.0f, cell - 2.0f, cell - 2.0f, cell * 0.2f,
-                          PA_RGBA(255, 255, 255, 16));
+            pa_stroke_rect(c, px, py, cell, cell, 1.0f, pa_hex(GRID_LINE));
         }
     }
 }
@@ -535,6 +535,6 @@ static void storm_thumb(PA_Canvas *c, float x, float y, float w, float h, float 
 const PA_Game PA_GAME_BLOCKSTORM = {
     "blockstorm", "Block Storm", "Puzzle",
     "Eight by eight. Drop pieces, clear rows and columns, and never run out of room.",
-    PA_RGB(93, 224, 255),
+    PA_RGB(248, 196, 28),
     storm_start, storm_stop, storm_update, storm_render, storm_thumb
 };

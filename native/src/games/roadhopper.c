@@ -1142,34 +1142,39 @@ static void hopper_render(PA_Canvas *c) {
 }
 
 static void hopper_thumb(PA_Canvas *c, float x, float y, float w, float h, float t) {
-    struct { PA_Color col; float a, b; } bands[5] = {
-        { pa_hex(0x8FD4E8), 0.00f, 0.16f },
-        { pa_hex(0x4FAE63), 0.16f, 0.34f },
-        { pa_hex(0x4A4F5A), 0.34f, 0.54f },
-        { pa_hex(0x2E7BD6), 0.54f, 0.74f },
-        { pa_hex(0x47A25C), 0.74f, 1.00f }
+    /* The rebuilt game's palette: checker grass, slate road, bright water. */
+    struct { uint32_t col; float a, b; } bands[5] = {
+        { 0x8AC63C, 0.00f, 0.22f },
+        { 0x4E4E66, 0.22f, 0.44f },
+        { 0x7EB430, 0.44f, 0.56f },
+        { 0x309CF6, 0.56f, 0.76f },
+        { 0x8AC63C, 0.76f, 1.00f }
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++)
         pa_fill_rect(c, x, y + h * bands[i].a, w, h * (bands[i].b - bands[i].a) + 1.0f,
-                     bands[i].col);
-    }
+                     pa_hex(bands[i].col));
+    for (float dx = 0.08f; dx < 1.0f; dx += 0.24f)
+        pa_fill_rect(c, x + w * dx, y + h * 0.325f, w * 0.10f, h * 0.012f, PA_RGBA(255, 255, 255, 170));
 
+    /* A car on the road with its three-tone sides, a log on the water. */
     float cx = pa_wrapf(t * 0.32f, 1.0f) * (w + 40.0f) - 20.0f;
-    pa_round_rect(c, x + cx, y + h * 0.39f, w * 0.22f, h * 0.10f, 3.0f, pa_hex(0xE2455F));
-    pa_round_rect(c, x + cx + w * 0.05f, y + h * 0.365f, w * 0.12f, h * 0.05f, 2.0f,
-                  pa_hex(0xFF8A9B));
-
+    pa_fill_rect(c, x + cx, y + h * 0.36f, w * 0.24f, h * 0.05f, pa_hex(0xA8243A));
+    pa_fill_rect(c, x + cx, y + h * 0.28f, w * 0.24f, h * 0.08f, pa_hex(0xE8455F));
+    pa_fill_rect(c, x + cx + w * 0.05f, y + h * 0.25f, w * 0.13f, h * 0.04f, pa_hex(0x9FD2FF));
     float lx = w - pa_wrapf(t * 0.22f + 0.4f, 1.0f) * (w + 50.0f);
-    pa_round_rect(c, x + lx, y + h * 0.60f, w * 0.34f, h * 0.09f, 4.0f, pa_hex(0x7A5433));
+    pa_fill_rect(c, x + lx, y + h * 0.66f, w * 0.34f, h * 0.04f, pa_hex(0x5A3A22));
+    pa_fill_rect(c, x + lx, y + h * 0.61f, w * 0.34f, h * 0.05f, pa_hex(0x8A5A34));
 
+    /* The chicken: white body, red comb, orange beak, hard shadow. */
     float bob = fabsf(sinf(t * 3.0f)) * h * 0.05f;
-    float px = x + w * 0.5f, py = y + h * 0.80f - bob;
-    pa_fill_ellipse(c, px, y + h * 0.845f, w * 0.09f, h * 0.022f, PA_RGBA(0, 0, 0, 50));
-    pa_round_rect(c, px - w * 0.08f, py - h * 0.07f, w * 0.16f, h * 0.09f, 3.0f, pa_hex(0xF5D53F));
-    pa_round_rect(c, px - w * 0.065f, py - h * 0.125f, w * 0.13f, h * 0.065f, 3.0f, pa_hex(0xFFE87A));
-    pa_round_rect(c, px - w * 0.018f, py - h * 0.105f, w * 0.036f, h * 0.024f, 1.0f, pa_hex(0xE8892F));
-    pa_fill_circle(c, px - w * 0.032f, py - h * 0.108f, w * 0.014f, pa_hex(0x141024));
-    pa_fill_circle(c, px + w * 0.032f, py - h * 0.108f, w * 0.014f, pa_hex(0x141024));
+    float px = x + w * 0.5f, py = y + h * 0.86f - bob;
+    pa_fill_rect(c, px - w * 0.05f, y + h * 0.86f, w * 0.14f, h * 0.03f, PA_RGBA(20, 18, 48, 70));
+    pa_fill_rect(c, px - w * 0.07f, py - h * 0.10f, w * 0.14f, h * 0.10f, pa_hex(0xDCDCE6));
+    pa_fill_rect(c, px - w * 0.07f, py - h * 0.15f, w * 0.14f, h * 0.05f, PA_RGB(255, 255, 255));
+    pa_fill_rect(c, px - w * 0.02f, py - h * 0.18f, w * 0.04f, h * 0.03f, pa_hex(0xE8283C));
+    pa_fill_rect(c, px - w * 0.015f, py - h * 0.09f, w * 0.03f, h * 0.02f, pa_hex(0xF79A2E));
+    pa_fill_rect(c, px - w * 0.045f, py - h * 0.12f, w * 0.015f, h * 0.02f, pa_hex(0x141024));
+    pa_fill_rect(c, px + w * 0.03f, py - h * 0.12f, w * 0.015f, h * 0.02f, pa_hex(0x141024));
 }
 
 const PA_Game PA_GAME_ROADHOPPER = {
