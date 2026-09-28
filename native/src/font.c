@@ -68,6 +68,10 @@ static const float G_QUERY[] = { 0.14f,0.22f, 0.36f,0.0f, 0.66f,0.0f, 0.88f,0.20
 static const float G_MID[]   = { 0.44f,0.48f, 0.56f,0.48f, E, E };
 static const float G_LT[]    = { 0.74f,0.14f, 0.26f,0.50f, 0.74f,0.86f, E, E };
 static const float G_GT[]    = { 0.26f,0.14f, 0.74f,0.50f, 0.26f,0.86f, E, E };
+static const float G_PCT[]   = { 0.86f,0.0f, 0.14f,1.0f, E,
+                               0.14f,0.06f, 0.34f,0.06f, 0.34f,0.28f, 0.14f,0.28f, 0.14f,0.06f, E,
+                               0.66f,0.72f, 0.86f,0.72f, 0.86f,0.94f, 0.66f,0.94f, 0.66f,0.72f, E, E };
+static const float G_APOS[]  = { 0.50f,0.0f, 0.46f,0.24f, E, E };
 static const float G_EMPTY[] = { E };
 
 static const float *glyph_for(unsigned char ch) {
@@ -87,6 +91,7 @@ static const float *glyph_for(unsigned char ch) {
         case '-': return G_DASH;  case '+': return G_PLUS;  case '/': return G_SLASH;
         case '!': return G_EXCL;  case '?': return G_QUERY;
         case '<': return G_LT;    case '>': return G_GT;
+        case '%': return G_PCT;   case '\'': return G_APOS;
         /* The interpunct the UI uses as a separator, in whichever encoding
            arrives - the sources are UTF-8 but a byte-oriented walk sees the
            lead byte alone. */
