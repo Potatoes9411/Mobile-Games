@@ -174,7 +174,21 @@ static void draw_home(PA_Canvas *c) {
         /* Thumbnail occupies the top of the card, clipped to its rounded top. */
         float th = r.h * 0.60f;
         int saved[4] = { c->clip_x0, c->clip_y0, c->clip_x1, c->clip_y1 };
-        pa_clip_rect(c, (int)r.x + 1, (int)r.y + 1, (int)r.w - 2, (int)th);
+        /*
+         * Intersect with the clip already in force, never replace it.
+         * pa_clip_rect sets a fresh rectangle, so clipping the thumbnail on its
+         * own let a scrolled card's art escape the header clip and paint over
+         * the wordmark - found the first time the wheel was exercised.
+         */
+        {
+            int x0 = (int)r.x + 1, y0 = (int)r.y + 1;
+            int x1 = x0 + (int)r.w - 2, y1 = y0 + (int)th;
+            if (x0 < saved[0]) x0 = saved[0];
+            if (y0 < saved[1]) y0 = saved[1];
+            if (x1 > saved[2]) x1 = saved[2];
+            if (y1 > saved[3]) y1 = saved[3];
+            pa_clip_rect(c, x0, y0, x1 > x0 ? x1 - x0 : 0, y1 > y0 ? y1 - y0 : 0);
+        }
         if (g->thumb) g->thumb(c, r.x, r.y, r.w, th, g_time + (float)i * 1.7f);
         c->clip_x0 = saved[0]; c->clip_y0 = saved[1];
         c->clip_x1 = saved[2]; c->clip_y1 = saved[3];

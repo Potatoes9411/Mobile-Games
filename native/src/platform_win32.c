@@ -228,6 +228,8 @@ static int write_bmp(const char *path, const PA_Canvas *c) {
 
 void pa_app_debug_launch(int index);
 
+static float g_test_wheel;
+
 static int run_headless(const char *path, double seconds, int play, int autoplay, double hz) {
     if (!pa_canvas_init(&g_canvas, g_client_w, g_client_h)) return 1;
     pa_app_init(g_canvas.w, g_canvas.h);
@@ -253,6 +255,7 @@ static int run_headless(const char *path, double seconds, int play, int autoplay
     double start = now_seconds();
 
     for (int i = 0; i < frames; i++) {
+        if (i == 2 && g_test_wheel != 0.0f) g_pending_wheel = g_test_wheel;
         begin_frame();
 
         accumulator += frame_dt;
@@ -307,11 +310,13 @@ static int run_headless(const char *path, double seconds, int play, int autoplay
 int main(int argc, char **argv) {
     int play = -1, autoplay = 0;
     double hz = 60.0, seconds = 0.0;
+    float wheel_notches = 0.0f;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--play") && i + 1 < argc) play = atoi(argv[i + 1]);
         if (!strcmp(argv[i], "--auto") && i + 1 < argc) autoplay = atoi(argv[i + 1]);
         if (!strcmp(argv[i], "--hz") && i + 1 < argc) hz = atof(argv[i + 1]);
         if (!strcmp(argv[i], "--seconds") && i + 1 < argc) seconds = atof(argv[i + 1]);
+        if (!strcmp(argv[i], "--wheel") && i + 1 < argc) wheel_notches = (float)atof(argv[i + 1]);
     }
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--shot") && i + 1 < argc) {
@@ -321,6 +326,7 @@ int main(int argc, char **argv) {
                 int frames = (i + 2 < argc && argv[i + 2][0] != '-') ? atoi(argv[i + 2]) : 60;
                 seconds = (double)frames / 60.0;
             }
+            g_test_wheel = wheel_notches;
             return run_headless(path, seconds, play, autoplay, hz);
         }
         if (!strcmp(argv[i], "--size") && i + 2 < argc) {
