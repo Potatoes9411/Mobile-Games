@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 
 #define N          8
 #define TRAY       3
@@ -51,10 +52,11 @@ static const Shape SHAPES[] = {
 };
 #define SHAPE_COUNT ((int)(sizeof(SHAPES) / sizeof(SHAPES[0])))
 
-/* Block colours. Vivid and clearly distinct at a glance; the board is read as
-   pattern, so two blocks a few points apart in hue would be one colour. */
+/* Block colours, matched to the reference's seven hue families: fully saturated
+   primaries, because the board is read as pattern and two blocks a few points
+   apart in hue would read as one colour. */
 static const uint32_t TINTS[] = {
-    0x5DE0FF, 0xFF6B7A, 0xFFC93C, 0x7EF0A0, 0xB985FF, 0xFF9A4B, 0x4BA8FF
+    0xE8323C, 0xF46A20, 0xF8C41C, 0x3CC44A, 0x28C8E8, 0x3E6CF0, 0xA050E0
 };
 #define TINT_COUNT ((int)(sizeof(TINTS) / sizeof(TINTS[0])))
 
@@ -86,14 +88,23 @@ static int idx(int x, int y) { return y * N + x; }
 
 static void compute_layout(int w, int h) {
     L.w = w; L.h = h;
-    float side = (float)w - 36.0f;
-    float avail_h = (float)h - 300.0f;
+    /* Proportions measured off the plates: the board spans ~72% of the width,
+       its top sits ~17% down, and the tray pieces are ~0.6 of a board cell. */
+    float side = (float)w * 0.80f;
+    float oy = (float)h * 0.17f;
+    if (oy < 132.0f) oy = 132.0f;
+    /* Height must also hold the tray: its pieces are up to 4 tray cells tall. */
+    float avail_h = ((float)h - oy - 24.0f) / (1.0f + 0.62f * 4.6f / (float)N);
     if (side > avail_h) side = avail_h;
     L.cell = side / (float)N;
     L.ox = ((float)w - L.cell * N) * 0.5f;
-    L.oy = 132.0f;
-    L.tray_y = L.oy + L.cell * N + 42.0f;
+    L.oy = oy;
+    /* Tray centred in the space under the board, as on the plates, instead of
+       hugging the board and leaving a dead strip at the bottom of tall phones. */
+    float below = L.oy + L.cell * N;
     L.tray_cell = L.cell * 0.62f;
+    L.tray_y = below + ((float)h * 0.94f - below) * 0.5f - L.tray_cell * 2.5f;
+    if (L.tray_y < below + L.cell * 0.4f) L.tray_y = below + L.cell * 0.4f;
 }
 
 /* ------------------------------------------------------------- generation */
@@ -228,14 +239,33 @@ static void storm_start(void) {
     B.dragging = -1;
     pa_rng_seed(&B.rand, 0xB10Cu ^ ((uint32_t)(g_best * 2654435761u) + 0x9E3779B9u));
     refill_tray();
+
+    /* Capture aid: PA_DEMO_BOARD prefills a mid-game board so a headless
+       screenshot can be compared against a reference plate, which never shows
+       an empty board. Inert in normal play - nothing sets the variable. */
+    if (getenv("PA_DEMO_BOARD")) {
+        PA_Rng r;
+        pa_rng_seed(&r, 7);
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) {
+                if (pa_rng_chance(&r, 0.42f) && !(y == 4 && x < 5)) {
+                    B.cell[idx(x, y)] = (x / 2 + y / 3) % TINT_COUNT;
+                }
+            }
+        }
+        B.score = 480;
+    }
 }
 
 static void storm_stop(void) { }
 
 /** Tray slot rectangle, resolved once so hit testing and drawing agree. */
 static void tray_rect(int i, float *x, float *y, float *w) {
-    float slot_w = ((float)L.w - 36.0f) / (float)TRAY;
-    *x = 18.0f + (float)i * slot_w;
+    /* Slots gather under the board rather than spreading across a wide window. */
+    float span = (float)L.w - 36.0f;
+    if (span > L.cell * N * 1.15f) span = L.cell * N * 1.15f;
+    float slot_w = span / (float)TRAY;
+    *x = ((float)L.w - span) * 0.5f + (float)i * slot_w;
     *y = L.tray_y;
     *w = slot_w;
 }
@@ -292,31 +322,38 @@ static void storm_update(float dt, const PA_Input *in) {
 }
 
 /* ---------------------------------------------------------------- drawing */
-/** One board block: a bevelled face with a lighter top edge and a dark base.
-    Flat colour alone reads as a painted square, not as an object. */
+/**
+ * One block, built the way the reference builds it: a flat face inside four
+ * bevel trapezoids - lightest along the top, light on the left, darker on the
+ * right, darkest along the bottom - with a thin dark outline and sharp corners.
+ * The first version was rounded with a cap highlight, which reads as a
+ * different game entirely; the four-way bevel is the format's signature.
+ */
 static void block(PA_Canvas *c, float x, float y, float size, PA_Color tint, float scale) {
     if (scale <= 0.02f) return;
     float inset = size * (1.0f - scale) * 0.5f;
     x += inset; y += inset; size *= scale;
 
-    float r = size * 0.22f;
-    /* Drop, base, face, then a bright cap. The cap has to be strong: a subtle
-       one leaves the block reading as a painted square rather than an object,
-       which is the whole difference between this format looking finished and
-       looking placeholder. */
-    pa_round_rect(c, x + 1.0f, y + size * 0.12f, size - 2.0f, size - 2.0f, r,
-                  PA_RGBA(8, 10, 22, 105));
-    pa_round_rect(c, x + 1.0f, y + 1.0f, size - 2.0f, size - 2.0f, r, pa_shade(tint, -0.42f));
-    pa_round_rect(c, x + 1.0f, y + 1.0f, size - 2.0f, size * 0.80f, r, tint);
-    pa_round_rect(c, x + size * 0.13f, y + size * 0.10f, size * 0.74f, size * 0.30f,
-                  r * 0.65f, pa_shade(tint, 0.46f));
-    /* A hairline rim keeps adjacent blocks of the same colour from fusing into
-       one shape, which is what makes a filled row unreadable. */
-    PA_Vec2 rim[4] = {
-        { x + 1.5f, y + 1.5f }, { x + size - 1.5f, y + 1.5f },
-        { x + size - 1.5f, y + size - 1.5f }, { x + 1.5f, y + size - 1.5f }
-    };
-    pa_stroke_poly(c, rim, 4, 1, 1.2f, PA_RGBA(10, 8, 24, 80));
+    float x1 = x + 1.0f, y1 = y + 1.0f;
+    float x2 = x + size - 1.0f, y2 = y + size - 1.0f;
+    float b = size * 0.13f;
+
+    pa_fill_rect(c, x, y, size, size, pa_shade(tint, -0.55f));
+
+    PA_Vec2 top[4]    = { { x1, y1 }, { x2, y1 }, { x2 - b, y1 + b }, { x1 + b, y1 + b } };
+    PA_Vec2 left[4]   = { { x1, y1 }, { x1 + b, y1 + b }, { x1 + b, y2 - b }, { x1, y2 } };
+    PA_Vec2 right[4]  = { { x2, y1 }, { x2, y2 }, { x2 - b, y2 - b }, { x2 - b, y1 + b } };
+    PA_Vec2 bottom[4] = { { x1, y2 }, { x1 + b, y2 - b }, { x2 - b, y2 - b }, { x2, y2 } };
+    pa_fill_poly(c, top, 4, pa_shade(tint, 0.44f));
+    pa_fill_poly(c, left, 4, pa_shade(tint, 0.16f));
+    pa_fill_poly(c, right, 4, pa_shade(tint, -0.22f));
+    pa_fill_poly(c, bottom, 4, pa_shade(tint, -0.38f));
+
+    /* The face carries a faint top-to-bottom lift, as the reference's does. */
+    PA_Paint face = pa_linear(0, y1 + b, 0, y2 - b);
+    pa_stop(&face, 0.0f, pa_shade(tint, 0.10f));
+    pa_stop(&face, 1.0f, tint);
+    pa_fill_rect_paint(c, x1 + b, y1 + b, (x2 - x1) - b * 2.0f, (y2 - y1) - b * 2.0f, &face);
 }
 
 static void draw_shape(PA_Canvas *c, int shape, int tint, float x, float y,
@@ -328,21 +365,40 @@ static void draw_shape(PA_Canvas *c, int shape, int tint, float x, float y,
     }
 }
 
+/* Measured from the reference plates: a flat medium blue that fills 62% of
+   every screenshot, and a dark navy board inset into it. */
+#define BG_BLUE    0x4860BC
+#define BOARD_NAVY 0x252B53
+#define GRID_LINE  0x323A68
+
+static void draw_crown(PA_Canvas *c, float x, float y, float s) {
+    PA_Vec2 crown[7] = {
+        { x, y + s * 0.80f }, { x, y + s * 0.20f }, { x + s * 0.28f, y + s * 0.50f },
+        { x + s * 0.50f, y }, { x + s * 0.72f, y + s * 0.50f }, { x + s, y + s * 0.20f },
+        { x + s, y + s * 0.80f }
+    };
+    pa_fill_poly(c, crown, 7, pa_hex(0xF8C41C));
+    pa_fill_rect(c, x, y + s * 0.80f, s, s * 0.16f, pa_hex(0xE0A410));
+}
+
 static void storm_render(PA_Canvas *c) {
     if (L.w != c->w || L.h != c->h) compute_layout(c->w, c->h);
 
+    /* The reference field lifts slightly toward the bottom of the screen. */
     PA_Paint bg = pa_linear(0, 0, 0, (float)c->h);
-    pa_stop(&bg, 0.0f, pa_hex(0x241D4E));
-    pa_stop(&bg, 0.55f, pa_hex(0x18133A));
-    pa_stop(&bg, 1.0f, pa_hex(0x0E0B24));
+    pa_stop(&bg, 0.0f, pa_shade(pa_hex(BG_BLUE), -0.04f));
+    pa_stop(&bg, 1.0f, pa_shade(pa_hex(BG_BLUE), 0.10f));
     pa_fill_rect_paint(c, 0, 0, (float)c->w, (float)c->h, &bg);
 
-    /* Board plate, so the grid reads as an object sitting on the background
-       rather than as holes cut in it. */
-    pa_round_rect(c, L.ox - 10.0f, L.oy - 10.0f, L.cell * N + 20.0f, L.cell * N + 20.0f,
-                  16.0f, PA_RGBA(0, 0, 0, 70));
-    pa_round_rect(c, L.ox - 8.0f, L.oy - 8.0f, L.cell * N + 16.0f, L.cell * N + 16.0f,
-                  14.0f, pa_hex(0x2A2358));
+    /* Board: a thin darker frame, then navy, then faint grid lines. No per-cell
+       rounded boxes - the reference's empty cells are just the navy. */
+    float bw = L.cell * N;
+    pa_fill_rect(c, L.ox - 6.0f, L.oy - 6.0f, bw + 12.0f, bw + 12.0f, pa_hex(0x3A4FA0));
+    pa_fill_rect(c, L.ox, L.oy, bw, bw, pa_hex(BOARD_NAVY));
+    for (int k = 1; k < N; k++) {
+        pa_fill_rect(c, L.ox + (float)k * L.cell - 0.75f, L.oy, 1.5f, bw, pa_hex(GRID_LINE));
+        pa_fill_rect(c, L.ox, L.oy + (float)k * L.cell - 0.75f, bw, 1.5f, pa_hex(GRID_LINE));
+    }
 
     int ghost_x = -99, ghost_y = -99, ghost_ok = 0;
     if (B.dragging >= 0) {
@@ -355,91 +411,88 @@ static void storm_render(PA_Canvas *c) {
             float px = L.ox + (float)x * L.cell;
             float py = L.oy + (float)y * L.cell;
             int v = B.cell[idx(x, y)];
-
-            if (v < 0) {
-                pa_round_rect(c, px + 2.0f, py + 2.0f, L.cell - 4.0f, L.cell - 4.0f,
-                              L.cell * 0.20f, PA_RGBA(12, 8, 30, 105));
-            } else {
-                block(c, px, py, L.cell, pa_hex(TINTS[v]), 1.0f);
-            }
+            if (v >= 0) block(c, px, py, L.cell, pa_hex(TINTS[v]), 1.0f);
 
             if (B.pop[idx(x, y)] > 0.0f) {
-                /* Clearing blocks flash out rather than vanishing, so a line
-                   clear is something that happened rather than something that
-                   simply is. */
+                /* Clearing blocks flash white and shrink out. */
                 float t = B.pop[idx(x, y)];
-                pa_round_rect(c, px + 2.0f, py + 2.0f, L.cell - 4.0f, L.cell - 4.0f,
-                              L.cell * 0.20f, PA_RGBA(255, 255, 255, (int)(t * 200.0f)));
+                block(c, px, py, L.cell, PA_RGB(255, 255, 255), t);
             }
         }
     }
 
-    /* Placement ghost. Green where it fits, red where it does not - guessing
-       is the worst part of this format and it costs nothing to answer. */
-    if (B.dragging >= 0) {
-        const Shape *s = &SHAPES[B.tray[B.dragging].shape];
-        for (int i = 0; i < s->count; i++) {
-            int cx = ghost_x + s->cx[i], cy = ghost_y + s->cy[i];
-            if (cx < 0 || cy < 0 || cx >= N || cy >= N) continue;
-            pa_round_rect(c, L.ox + (float)cx * L.cell + 2.0f,
-                          L.oy + (float)cy * L.cell + 2.0f,
-                          L.cell - 4.0f, L.cell - 4.0f, L.cell * 0.20f,
-                          ghost_ok ? PA_RGBA(126, 240, 160, 90) : PA_RGBA(255, 107, 122, 80));
+    /* Placement ghost, as the reference shows it: translucent pale cells with a
+       light outline where the piece would land, only when it fits. */
+    if (B.dragging >= 0 && ghost_ok) {
+        const Shape *sh = &SHAPES[B.tray[B.dragging].shape];
+        for (int i = 0; i < sh->count; i++) {
+            int gx = ghost_x + sh->cx[i], gy = ghost_y + sh->cy[i];
+            float px = L.ox + (float)gx * L.cell, py = L.oy + (float)gy * L.cell;
+            pa_fill_rect(c, px + 1.0f, py + 1.0f, L.cell - 2.0f, L.cell - 2.0f,
+                         PA_RGBA(255, 255, 255, 60));
+            pa_stroke_rect(c, px + 1.5f, py + 1.5f, L.cell - 3.0f, L.cell - 3.0f, 2.0f,
+                           PA_RGBA(255, 255, 255, 150));
         }
     }
 
-    /* Tray. */
+    /* Tray: three pieces at reduced scale, no slot boxes. */
     for (int i = 0; i < TRAY; i++) {
+        if (B.tray[i].shape < 0 || B.dragging == i) continue;
         float x, y, w;
         tray_rect(i, &x, &y, &w);
-        pa_round_rect(c, x + 4.0f, y - 6.0f, w - 8.0f, L.tray_cell * 5.0f + 12.0f, 12.0f,
-                      PA_RGBA(255, 255, 255, 14));
-        if (B.tray[i].shape < 0 || B.dragging == i) continue;
-        const Shape *s = &SHAPES[B.tray[i].shape];
-        float sx = x + (w - (float)s->w * L.tray_cell) * 0.5f;
-        float sy = y + (L.tray_cell * 5.0f - (float)s->h * L.tray_cell) * 0.5f;
-        draw_shape(c, B.tray[i].shape, B.tray[i].tint, sx, sy, L.tray_cell, 1.0f);
+        const Shape *sh = &SHAPES[B.tray[i].shape];
+        float sx = x + (w - (float)sh->w * L.tray_cell) * 0.5f;
+        float sy = y + (L.tray_cell * 5.0f - (float)sh->h * L.tray_cell) * 0.5f;
+        /* A spent-out tray piece that no longer fits anywhere is dimmed, so the
+           player can see the end coming instead of discovering it. */
+        int playable = any_fits(B.tray[i].shape);
+        const Shape *s2 = sh;
+        for (int k = 0; k < s2->count; k++) {
+            PA_Color tint = pa_hex(TINTS[B.tray[i].tint]);
+            if (!playable) tint = pa_mix(tint, pa_hex(0x5A6488), 0.7f);
+            block(c, sx + (float)s2->cx[k] * L.tray_cell, sy + (float)s2->cy[k] * L.tray_cell,
+                  L.tray_cell, tint, 1.0f);
+        }
     }
 
-    /* The dragged piece rides above the finger at full board scale, so what is
-       being placed matches what is previewed. */
     if (B.dragging >= 0) {
-        const Shape *s = &SHAPES[B.tray[B.dragging].shape];
+        const Shape *sh = &SHAPES[B.tray[B.dragging].shape];
         draw_shape(c, B.tray[B.dragging].shape, B.tray[B.dragging].tint,
-                   B.drag_x - (float)s->w * L.cell * 0.5f,
-                   B.drag_y - (float)s->h * L.cell * 0.5f - L.cell * 0.9f,
-                   L.cell, 0.92f);
+                   B.drag_x - (float)sh->w * L.cell * 0.5f,
+                   B.drag_y - (float)sh->h * L.cell * 0.5f - L.cell * 0.9f,
+                   L.cell, 1.0f);
     }
 
-    pa_vignette(c, 0.45f);
-    pa_hud_scrim(c, 108.0f);
-
+    /* HUD in the reference's layout: crown and best in gold top-left, the live
+       score large and centred, nothing else. Left of x=100 is the hub's MENU. */
     char buf[64];
+    int best = g_best > B.score ? g_best : B.score;
+    float hud_y = L.oy * 0.30f > 24.0f ? L.oy * 0.30f : 24.0f;
+    draw_crown(c, 106.0f, hud_y, 22.0f);
+    snprintf(buf, sizeof(buf), "%d", best);
+    pa_text_bold(c, buf, 136.0f, hud_y + 2.0f, 18.0f, pa_hex(0xF8C41C), PA_RGB(22, 26, 60),
+                 PA_ALIGN_LEFT, 2.0f, 1.6f);
     snprintf(buf, sizeof(buf), "%d", B.score);
-    pa_text(c, buf, 104.0f, 34.0f, 22.0f, PA_RGB(255, 255, 255), PA_ALIGN_LEFT, 2.0f);
-    snprintf(buf, sizeof(buf), "BEST %d", g_best > B.score ? g_best : B.score);
-    pa_text(c, buf, (float)c->w - 20.0f, 34.0f, 14.0f,
-            PA_RGBA(255, 255, 255, 180), PA_ALIGN_RIGHT, 2.0f);
-
-    if (B.placed < 3) {
-        pa_text(c, "DRAG A PIECE ONTO THE BOARD", (float)c->w * 0.5f, 80.0f, 11.0f,
-                PA_RGBA(255, 255, 255, 150), PA_ALIGN_CENTER, 3.0f);
-    }
+    float score_y = L.oy - 76.0f < 44.0f ? 44.0f : L.oy - 76.0f;
+    pa_text_bold(c, buf, (float)c->w * 0.5f, score_y, 44.0f, PA_RGB(255, 255, 255),
+                 PA_RGB(38, 52, 130), PA_ALIGN_CENTER, 3.0f, 2.2f);
 
     if (B.banner_t > 0.0f) {
-        pa_text(c, B.banner, (float)c->w * 0.5f, (float)c->h * 0.30f, 26.0f,
-                PA_RGBA(255, 201, 60, (int)(pa_clamp01(B.banner_t) * 235.0f)),
-                PA_ALIGN_CENTER, 5.0f);
+        float a = pa_clamp01(B.banner_t);
+        float pop = 1.0f + (1.0f - pa_clamp01((1.4f - B.banner_t) * 6.0f)) * 0.25f;
+        pa_text_bold(c, B.banner, (float)c->w * 0.5f, L.oy + L.cell * 3.4f, 30.0f * pop,
+                     PA_RGBA(255, 214, 60, (int)(a * 255.0f)), PA_RGBA(80, 40, 0, (int)(a * 255.0f)),
+                     PA_ALIGN_CENTER, 3.0f, 2.2f);
     }
 
     if (B.over) {
         float a = pa_clamp01(B.over_t * 2.2f);
-        pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(10, 8, 24, (int)(a * 180.0f)));
-        pa_text(c, "NO ROOM LEFT", (float)c->w * 0.5f, (float)c->h * 0.42f, 30.0f,
-                PA_RGB(255, 107, 122), PA_ALIGN_CENTER, 5.0f);
-        snprintf(buf, sizeof(buf), "%d - BEST %d", B.score, g_best);
-        pa_text(c, buf, (float)c->w * 0.5f, (float)c->h * 0.50f, 14.0f,
-                PA_RGBA(255, 255, 255, 185), PA_ALIGN_CENTER, 3.0f);
+        pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(20, 24, 60, (int)(a * 170.0f)));
+        pa_text_bold(c, "NO MORE MOVES", (float)c->w * 0.5f, (float)c->h * 0.40f, 30.0f,
+                     PA_RGB(255, 255, 255), PA_RGB(22, 26, 60), PA_ALIGN_CENTER, 3.0f, 2.2f);
+        snprintf(buf, sizeof(buf), "%d", B.score);
+        pa_text_bold(c, buf, (float)c->w * 0.5f, (float)c->h * 0.48f, 34.0f,
+                     pa_hex(0xF8C41C), PA_RGB(22, 26, 60), PA_ALIGN_CENTER, 3.0f, 2.2f);
     }
 }
 
