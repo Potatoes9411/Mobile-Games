@@ -54,3 +54,4 @@ desktop.ini
 # Reference screenshots are copyrighted: fetched locally to look at and
 # measure, never committed. Regenerate with tools/refs/fetch_refs.py.
 tools/refs/plates/
+dist/*.save
