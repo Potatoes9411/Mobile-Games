@@ -109,14 +109,34 @@ float pa_text_width(const char *text, float size, float tracking) {
     return (float)n * (size * GLYPH_ADVANCE + tracking) - tracking;
 }
 
+static void text_stroke(PA_Canvas *c, const char *text, float x, float y, float size,
+                        PA_Color col, PA_Align align, float tracking, float weight_mul);
+
 void pa_text(PA_Canvas *c, const char *text, float x, float y, float size,
              PA_Color col, PA_Align align, float tracking) {
+    text_stroke(c, text, x, y, size, col, align, tracking, 1.0f);
+}
+
+void pa_text_bold(PA_Canvas *c, const char *text, float x, float y, float size,
+                  PA_Color fill, PA_Color outline, PA_Align align, float tracking,
+                  float weight) {
+    /* Outline is the same glyphs stroked much fatter underneath, plus a drop so
+       the numerals sit off the playfield rather than on it. A stroke font makes
+       this nearly free; a bitmap font would need a second baked atlas. */
+    float drop = size * 0.06f;
+    text_stroke(c, text, x, y + drop, size, outline, align, tracking, weight + 1.6f);
+    text_stroke(c, text, x, y, size, outline, align, tracking, weight + 1.6f);
+    text_stroke(c, text, x, y, size, fill, align, tracking, weight);
+}
+
+static void text_stroke(PA_Canvas *c, const char *text, float x, float y, float size,
+                        PA_Color col, PA_Align align, float tracking, float weight_mul) {
     float total = pa_text_width(text, size, tracking);
     float pen = x;
     if (align == PA_ALIGN_CENTER) pen = x - total * 0.5f;
     else if (align == PA_ALIGN_RIGHT) pen = x - total;
 
-    float weight = size * 0.13f;
+    float weight = size * 0.13f * weight_mul;
     if (weight < 1.2f) weight = 1.2f;
 
     for (const char *p = text; *p; p++) {

@@ -139,6 +139,13 @@ void pa_line(PA_Canvas *c, float x0, float y0, float x1, float y1, float width, 
 typedef enum { PA_ALIGN_LEFT, PA_ALIGN_CENTER, PA_ALIGN_RIGHT } PA_Align;
 
 float pa_text_width(const char *text, float size, float tracking);
+
+/** Chunky HUD numerals: a fat black outline under a fat fill, the treatment every
+    reference title uses for its score. `weight` scales the stroke; 1 is body
+    text, 2 to 2.5 is a score readout. */
+void  pa_text_bold(PA_Canvas *c, const char *text, float x, float y, float size,
+                   PA_Color fill, PA_Color outline, PA_Align align, float tracking,
+                   float weight);
 void  pa_text(PA_Canvas *c, const char *text, float x, float y, float size,
               PA_Color col, PA_Align align, float tracking);
 

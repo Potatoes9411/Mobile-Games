@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 
 #define HALF        5                 /* playfield spans -HALF..HALF columns */
 #define COLS        (HALF * 2 + 1)
@@ -55,15 +56,15 @@ typedef struct {
 
 /* --------------------------------------------------------------- character */
 typedef struct {
-    float x, z, w, h, d;
+    float x, dy, z;            /* lateral, forward (negative = toward camera), up */
+    float w, h, d;
     PA_Color col;
-    int  front;
 } Part;
 
 typedef struct {
-    Part  parts[12];
+    Part  parts[16];
     int   count;
-    float eye_z, head_w;
+    float eye_z, head_w, head_front;
 } Critter;
 
 typedef struct {
@@ -82,57 +83,86 @@ static const CritterDef CRITTERS[] = {
 };
 #define CRITTER_COUNT ((int)(sizeof(CRITTERS) / sizeof(CRITTERS[0])))
 
+#define PART(px, pdy, pz, pw, pd, ph, pc) \
+    do { if (c->count < 16) { Part *p_ = &c->parts[c->count++]; \
+         p_->x = (px); p_->dy = (pdy); p_->z = (pz); \
+         p_->w = (pw); p_->d = (pd); p_->h = (ph); p_->col = (pc); } } while (0)
+
+/*
+ * The default character is authored, not rolled: a white voxel chicken with an
+ * orange beak and a red comb. A randomly tinted blob is what makes a mascot
+ * read as placeholder. Proportions come from the plates - tall and narrow,
+ * about half a tile wide, standing a little under a tile high.
+ *
+ * Every part carries its own forward offset. The first version gave the beak a
+ * depth of nearly the whole head and marked it "front" with a fixed nudge; the
+ * old camera hid that, and the rotated one showed it as a stripe running the
+ * full length of the head.
+ */
+static void build_chicken(Critter *c) {
+    PA_Color white = pa_hex(0xF6F6F0), shade = pa_hex(0xE2E2DA);
+    PA_Color orange = pa_hex(0xF0962A), red = pa_hex(0xE23B3B);
+
+    PART(-0.10f,  0.02f, 0.00f, 0.07f, 0.07f, 0.16f, orange);   /* legs   */
+    PART( 0.10f,  0.02f, 0.00f, 0.07f, 0.07f, 0.16f, orange);
+    PART( 0.00f,  0.04f, 0.14f, 0.50f, 0.48f, 0.40f, white);    /* body   */
+    PART( 0.00f,  0.30f, 0.42f, 0.30f, 0.12f, 0.18f, shade);    /* tail   */
+    PART(-0.27f,  0.06f, 0.24f, 0.05f, 0.30f, 0.20f, shade);    /* wings  */
+    PART( 0.27f,  0.06f, 0.24f, 0.05f, 0.30f, 0.20f, shade);
+    PART( 0.00f, -0.08f, 0.54f, 0.38f, 0.32f, 0.30f, white);    /* head   */
+    PART( 0.00f, -0.29f, 0.62f, 0.14f, 0.10f, 0.09f, orange);   /* beak   */
+    PART( 0.00f, -0.27f, 0.52f, 0.08f, 0.06f, 0.12f, red);      /* wattle */
+    PART( 0.00f, -0.08f, 0.84f, 0.09f, 0.20f, 0.12f, red);      /* comb   */
+
+    c->eye_z = 0.74f;
+    c->head_w = 0.38f;
+    c->head_front = -0.08f - 0.16f;
+}
+
 static void build_critter(Critter *c, uint32_t seed) {
+    memset(c, 0, sizeof(*c));
+    if (seed == CRITTERS[0].seed) { build_chicken(c); return; }
+
     PA_Rng r;
     pa_rng_seed(&r, seed);
-    memset(c, 0, sizeof(*c));
 
     float hue = pa_rng_next(&r);
-    PA_Color body  = pa_hsl(hue, pa_rng_range(&r, 0.45f, 0.78f), pa_rng_range(&r, 0.52f, 0.68f));
-    PA_Color belly = pa_shade(body, pa_rng_range(&r, 0.20f, 0.38f));
+    PA_Color body  = pa_hsl(hue, pa_rng_range(&r, 0.45f, 0.78f), pa_rng_range(&r, 0.55f, 0.70f));
+    PA_Color belly = pa_shade(body, pa_rng_range(&r, 0.22f, 0.40f));
     PA_Color beak  = pa_hsl(pa_wrapf(hue + pa_rng_range(&r, 0.08f, 0.18f), 1.0f), 0.85f, 0.58f);
     PA_Color feet  = pa_shade(beak, -0.18f);
 
-    float body_w = pa_rng_range(&r, 0.60f, 0.76f);
-    float body_h = pa_rng_range(&r, 0.38f, 0.54f);
-    float head_w = body_w * pa_rng_range(&r, 0.72f, 0.94f);
-    float head_h = pa_rng_range(&r, 0.34f, 0.48f);
+    float bw = pa_rng_range(&r, 0.46f, 0.58f);
+    float bd = bw * 0.90f;
+    float bh = pa_rng_range(&r, 0.34f, 0.46f);
+    float hw = bw * pa_rng_range(&r, 0.74f, 0.92f);
+    float hd = hw * 0.86f;
+    float hh = pa_rng_range(&r, 0.28f, 0.38f);
+    float head_z = 0.14f + bh;
 
-    #define PART(px, pz, pw, ph, pd, pc, pf) \
-        do { Part *p = &c->parts[c->count++]; \
-             p->x = (px); p->z = (pz); p->w = (pw); p->h = (ph); p->d = (pd); \
-             p->col = (pc); p->front = (pf); } while (0)
-
-    PART(-body_w * 0.26f, 0.0f, 0.11f, 0.16f, 0.11f, feet, 0);
-    PART( body_w * 0.26f, 0.0f, 0.11f, 0.16f, 0.11f, feet, 0);
-    PART(0.0f, 0.14f, body_w, body_h, body_w * 0.82f, body, 0);
-    PART(0.0f, 0.17f, body_w * 0.62f, body_h * 0.55f, body_w * 0.90f, belly, 0);
-    PART(0.0f, 0.14f + body_h, head_w, head_h, head_w * 0.86f, body, 0);
-    PART(0.0f, 0.14f + body_h + head_h * 0.30f, head_w * 0.30f, head_h * 0.30f,
-         head_w * 0.95f, beak, 1);
+    PART(-bw * 0.24f, 0.02f, 0.0f, 0.08f, 0.08f, 0.16f, feet);
+    PART( bw * 0.24f, 0.02f, 0.0f, 0.08f, 0.08f, 0.16f, feet);
+    PART(0.0f, 0.03f, 0.14f, bw, bd, bh, body);
+    /* Belly is a thin patch on the front face, not a slab through the body. */
+    PART(0.0f, 0.03f - bd * 0.5f - 0.02f, 0.18f, bw * 0.60f, 0.04f, bh * 0.55f, belly);
+    PART(0.0f, -0.06f, head_z, hw, hd, hh, body);
+    PART(0.0f, -0.06f - hd * 0.5f - 0.05f, head_z + hh * 0.28f, hw * 0.32f, 0.10f, hh * 0.28f, beak);
 
     int crest = pa_rng_int(&r, 0, 3);
     if (crest == 1) {
-        PART(0.0f, 0.14f + body_h + head_h, head_w * 0.24f, 0.14f, head_w * 0.24f, beak, 0);
+        PART(0.0f, -0.06f, head_z + hh, hw * 0.22f, hd * 0.50f, 0.13f, beak);
     } else if (crest == 2) {
-        PART(-head_w * 0.34f, 0.14f + body_h + head_h * 0.92f, 0.10f, 0.16f, 0.08f, body, 0);
-        PART( head_w * 0.34f, 0.14f + body_h + head_h * 0.92f, 0.10f, 0.16f, 0.08f, body, 0);
+        PART(-hw * 0.34f, -0.06f, head_z + hh * 0.90f, 0.10f, 0.08f, 0.17f, body);
+        PART( hw * 0.34f, -0.06f, head_z + hh * 0.90f, 0.10f, 0.08f, 0.17f, body);
     } else if (crest == 3) {
-        PART(0.0f, 0.14f + body_h + head_h, head_w * 0.55f, 0.08f, head_w * 0.30f,
-             pa_shade(beak, -0.25f), 0);
+        PART(0.0f, -0.06f, head_z + hh, hw * 0.56f, hd * 0.30f, 0.08f, pa_shade(beak, -0.25f));
     }
 
-    if (pa_rng_chance(&r, 0.55f)) {
-        PART(-body_w * 0.54f, 0.20f, 0.09f, body_h * 0.66f, body_w * 0.58f,
-             pa_shade(body, -0.16f), 0);
-        PART( body_w * 0.54f, 0.20f, 0.09f, body_h * 0.66f, body_w * 0.58f,
-             pa_shade(body, -0.16f), 0);
-    }
-    #undef PART
-
-    c->eye_z = 0.14f + body_h + head_h * 0.62f;
-    c->head_w = head_w;
+    c->eye_z = head_z + hh * 0.62f;
+    c->head_w = hw;
+    c->head_front = -0.06f - hd * 0.5f;
 }
+#undef PART
 
 /* ------------------------------------------------------------------ state -- */
 typedef struct {
@@ -152,6 +182,7 @@ typedef struct {
     float    log_offset;
 
     float    cam_y;
+    float    cam_col;          /* lateral camera follow, in columns */
     int      score, coins;
     float    idle;
     int      started;
@@ -171,55 +202,71 @@ static int    g_best_loaded;
 /* Layout, recomputed whenever the canvas changes size. */
 static struct {
     int   w, h;
-    float tile, depth, rise, shear, mid_dy, edge_drop, cx, cy;
-    int   ahead, behind;
+    float tile, rowlen, rise;
+    float ax, ay;              /* screen step for +1 column (along the lane)   */
+    float fx, fy;              /* screen step for +1 row (forward)             */
+    float cx, cy;
+    int   ahead, behind, wide;
 } L;
 
+/*
+ * Measured from the reference plates, not chosen: lanes run downhill to the
+ * right at 15 degrees (a line fitted through a water edge across 26 samples),
+ * and about seven tiles span the width of a portrait phone. The whole world is
+ * rotated, which is the single thing that most separates this look from a
+ * top-down grid - a horizontal lane under a shear reads as a flat stripe.
+ */
+#define LANE_ANGLE_DEG 15.0f
+
 static void compute_layout(int w, int h) {
-    /*
-     * Column width comes from the narrow axis. Row depth is deliberately much
-     * larger than a tile is wide: the real thing is viewed down a rotated
-     * diagonal, so bands read far apart on screen even though the world grid is
-     * square. Matching that spacing matters more than matching the geometry.
-     */
     L.w = w; L.h = h;
-    L.tile = (float)w / (float)(HALF * 2 + 3.4f);
-    L.depth = L.tile * 1.52f;
-    L.rise = L.tile * 1.02f;
-    L.shear = -L.tile * 0.15f;
-    L.cx = (float)w * 0.5f;
-    L.cy = (float)h * 0.76f;
-    L.edge_drop = L.tile * 0.55f;
-    L.ahead = (int)ceilf((L.cy + 90.0f) / L.depth) + 2;
-    L.behind = (int)ceilf(((float)h - L.cy + 90.0f) / L.depth) + 2;
-    if (L.ahead > ROW_CAP - 8) L.ahead = ROW_CAP - 8;
-    if (L.behind > 16) L.behind = 16;
-    L.mid_dy = (float)(L.ahead - L.behind) * 0.5f;
+    float th = LANE_ANGLE_DEG * PA_PI / 180.0f;
+    L.tile = (float)w / 7.0f;
+    L.rowlen = L.tile * 1.08f;
+    /* Verticals are tall relative to the ground: the plates show a great deal of
+       every car's and building's side face, and a shorter rise reads as a
+       top-down map with extruded icons on it. */
+    L.rise = L.tile * 1.14f;
+    L.ax = cosf(th) * L.tile;
+    L.ay = sinf(th) * L.tile;
+    L.fx = sinf(th) * L.rowlen;
+    L.fy = -cosf(th) * L.rowlen;
+    L.cx = (float)w * 0.50f;
+    L.cy = (float)h * 0.64f;
+
+    /* A row's band tilts, so its left end sits higher on screen than its
+       centre. Coverage has to allow for that or the top-left corner of the
+       screen shows sky where there should be road. */
+    L.wide = (int)(((float)w * 0.5f) / L.ax) + 5;
+    float lift = (float)L.wide * L.ay;
+    L.ahead  = (int)ceilf((L.cy + lift + 120.0f) / -L.fy) + 2;
+    L.behind = (int)ceilf(((float)h - L.cy + lift + 120.0f) / -L.fy) + 2;
+    if (L.ahead > ROW_CAP - 10) L.ahead = ROW_CAP - 10;
+    if (L.behind > 18) L.behind = 18;
 }
 
 static PA_Vec2 project(float col, float row, float z) {
-    float dy = row - H.cam_y;
+    float dc = col - H.cam_col;
+    float dr = row - H.cam_y;
     PA_Vec2 p;
-    p.x = L.cx + col * L.tile + (dy - L.mid_dy) * L.shear;
-    p.y = L.cy - dy * L.depth - z * L.rise;
+    p.x = L.cx + dc * L.ax + dr * L.fx;
+    p.y = L.cy + dc * L.ay + dr * L.fy - z * L.rise;
     return p;
 }
 
 /* ---------------------------------------------------------------- palette -- */
 /*
- * Flat-shaded voxel art carries no lighting information, so the colour has to
- * do the work: the reference style is vivid and high-value, with the road kept
- * dark specifically so the bright bands either side of it read as safe ground.
- * The first pass measured at value 0.68 / saturation 0.55 on grass and 0.35 /
- * 0.18 on road - the three largest surfaces were all muddy, which is why the
- * whole screen looked washed out however good the geometry was.
+ * Sampled from the reference plates, classifying pixels by hue band across all
+ * twenty screenshots. Classic grass is a yellow-green at hue 86 - the first
+ * pass used a bluer green around 118, which is most of why it read as generic.
+ * The road is a violet grey, not a neutral one.
  */
-static PA_Color pal_sky(void)    { return pa_hex(0x8ED8F0); }
-static PA_Color pal_grass_a(void){ return pa_hex(0x63C95F); }
-static PA_Color pal_grass_b(void){ return pa_hex(0x57B855); }
-static PA_Color pal_road(void)   { return pa_hex(0x4B5162); }
-static PA_Color pal_water(void)  { return pa_hex(0x3AA5EE); }
-static PA_Color pal_rail(void)   { return pa_hex(0x7B6C57); }
+static PA_Color pal_sky(void)     { return pa_hex(0x8ED8F0); }
+static PA_Color pal_grass_a(void) { return pa_hex(0x8AC63C); }
+static PA_Color pal_grass_b(void) { return pa_hex(0x7EB430); }
+static PA_Color pal_road(void)    { return pa_hex(0x4E4E66); }
+static PA_Color pal_water(void)   { return pa_hex(0x309CF6); }
+static PA_Color pal_rail(void)    { return pa_hex(0x6A5E7A); }
 
 /* ------------------------------------------------------------- generation -- */
 static uint32_t row_seed(int index) {
@@ -574,6 +621,9 @@ static void hopper_update(float dt, const PA_Input *in) {
     if (H.started) H.cam_y += creep * dt;
     float want = H.draw_y - 2.4f;
     if (want > H.cam_y) H.cam_y = pa_approach(H.cam_y, want, 9.0f, dt);
+    /* Partial follow: the camera leans toward the player without centring on
+       them, so the darkened verge comes into view near the edge of play. */
+    H.cam_col = pa_approach(H.cam_col, H.draw_x * 0.55f, 5.0f, dt);
 
     if (H.draw_y < H.cam_y - 3.2f) { die(3); return; }
 
@@ -595,262 +645,339 @@ static void hopper_update(float dt, const PA_Input *in) {
 }
 
 /* ---------------------------------------------------------------- drawing -- */
-/**
- * One extruded box in world space: a top face, a front face and one sheared
- * side. Everything in the world is made of these, which is why the scene stays
- * consistent without a single texture.
+/*
+ * Everything in the world is a box, drawn the way the reference draws it: three
+ * flat tones - a light top, a mid-tone front, a dark end - and a hard shadow.
+ * No gradients, no soft blobs. The reference is flat shaded; the depth comes
+ * from the tones being consistent and the shadows being crisp.
  */
-/** Ground contact shadow for a prop of world width `w` sitting on `row`. */
-static void prop_shadow(PA_Canvas *c, float col, float row, float w, float strength) {
-    PA_Vec2 g = project(col, row, 0.0f);
-    pa_shadow(c, g.x, g.y + L.depth * 0.10f,
-              w * L.tile * 0.62f, w * L.depth * 0.40f, strength);
+
+static float signed_area(const PA_Vec2 *q, int n) {
+    float a = 0.0f;
+    for (int i = 0; i < n; i++) {
+        const PA_Vec2 *p0 = &q[i], *p1 = &q[(i + 1) % n];
+        a += p0->x * p1->y - p1->x * p0->y;
+    }
+    return a;
 }
 
-static void box(PA_Canvas *c, float col, float row, float z,
-                float w, float h, float d, PA_Color colour) {
-    PA_Vec2 p = project(col, row, z + h);
-    float tw = w * L.tile;
-    float td = d * L.depth;
-    float th = h * L.rise;
-    float sx = L.shear * d;
-
-    if (p.y - th > (float)L.h + 80.0f || p.y + td < -120.0f) return;
-
-    PA_Vec2 front[4] = {
-        { p.x - tw * 0.5f, p.y + td * 0.5f },
-        { p.x + tw * 0.5f, p.y + td * 0.5f },
-        { p.x + tw * 0.5f, p.y + td * 0.5f + th },
-        { p.x - tw * 0.5f, p.y + td * 0.5f + th }
+/**
+ * Box of footprint w (along the lane) by d (forward) and height h, standing at
+ * (col, row) with its base at z. Side faces are culled by screen winding: a face
+ * is visible exactly when it winds the same way as the top, since all four are
+ * listed outward-counter-clockwise. That is robust to the camera angle, where a
+ * hard-coded "draw the south and east faces" would silently break the moment
+ * the angle changed.
+ */
+static void box3(PA_Canvas *c, float col, float row, float z,
+                 float w, float d, float h, PA_Color colour) {
+    float hw = w * 0.5f, hd = d * 0.5f;
+    PA_Vec2 bot[4] = {
+        project(col - hw, row - hd, z), project(col + hw, row - hd, z),
+        project(col + hw, row + hd, z), project(col - hw, row + hd, z)
     };
-    pa_fill_poly(c, front, 4, pa_shade(colour, -0.26f));
-
-    PA_Vec2 side[4] = {
-        { p.x + tw * 0.5f + sx, p.y - td * 0.5f + sx },
-        { p.x + tw * 0.5f,      p.y + td * 0.5f },
-        { p.x + tw * 0.5f,      p.y + td * 0.5f + th },
-        { p.x + tw * 0.5f + sx, p.y - td * 0.5f + th + sx }
-    };
-    pa_fill_poly(c, side, 4, pa_shade(colour, -0.42f));
-
     PA_Vec2 top[4] = {
-        { p.x - tw * 0.5f + sx, p.y - td * 0.5f + sx },
-        { p.x + tw * 0.5f + sx, p.y - td * 0.5f + sx },
-        { p.x + tw * 0.5f,      p.y + td * 0.5f },
-        { p.x - tw * 0.5f,      p.y + td * 0.5f }
+        project(col - hw, row - hd, z + h), project(col + hw, row - hd, z + h),
+        project(col + hw, row + hd, z + h), project(col - hw, row + hd, z + h)
     };
+
+    float minx = top[0].x, maxx = top[0].x, miny = top[0].y, maxy = bot[0].y;
+    for (int i = 0; i < 4; i++) {
+        if (top[i].x < minx) minx = top[i].x;
+        if (top[i].x > maxx) maxx = top[i].x;
+        if (bot[i].x < minx) minx = bot[i].x;
+        if (bot[i].x > maxx) maxx = bot[i].x;
+        if (top[i].y < miny) miny = top[i].y;
+        if (bot[i].y > maxy) maxy = bot[i].y;
+    }
+    if (maxx < -20.0f || minx > (float)L.w + 20.0f || maxy < -20.0f || miny > (float)L.h + 20.0f)
+        return;
+
+    float top_sign = signed_area(top, 4);
+    /* South and north faces (the long sides along the lane) take the mid tone;
+       the two ends take the dark tone. */
+    static const float tone[4] = { -0.24f, -0.44f, -0.24f, -0.44f };
+
+    for (int f = 0; f < 4; f++) {
+        int i = f, j = (f + 1) % 4;
+        PA_Vec2 face[4] = { bot[i], bot[j], top[j], top[i] };
+        float s = signed_area(face, 4);
+        if ((s > 0.0f) != (top_sign > 0.0f) || fabsf(s) < 0.5f) continue;
+        pa_fill_poly(c, face, 4, pa_shade(colour, tone[f]));
+    }
     pa_fill_poly(c, top, 4, colour);
 }
 
-static void draw_row(PA_Canvas *c, Row *r) {
-    PA_Color col;
+/* Andrew's monotone chain, for the swept shadow footprint. */
+static int cross_z(PA_Vec2 o, PA_Vec2 a, PA_Vec2 b) {
+    float v = (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    return v > 0.0f ? 1 : (v < 0.0f ? -1 : 0);
+}
+
+static int vec_cmp(const void *pa, const void *pb) {
+    const PA_Vec2 *a = (const PA_Vec2 *)pa, *b = (const PA_Vec2 *)pb;
+    if (a->x != b->x) return a->x < b->x ? -1 : 1;
+    if (a->y != b->y) return a->y < b->y ? -1 : 1;
+    return 0;
+}
+
+static int hull(PA_Vec2 *pts, int n, PA_Vec2 *out) {
+    qsort(pts, (size_t)n, sizeof(PA_Vec2), vec_cmp);
+    int k = 0;
+    for (int i = 0; i < n; i++) {
+        while (k >= 2 && cross_z(out[k - 2], out[k - 1], pts[i]) <= 0) k--;
+        out[k++] = pts[i];
+    }
+    for (int i = n - 2, t = k + 1; i >= 0; i--) {
+        while (k >= t && cross_z(out[k - 2], out[k - 1], pts[i]) <= 0) k--;
+        out[k++] = pts[i];
+    }
+    return k - 1;
+}
+
+/**
+ * Hard shadow: the footprint swept toward the light's far side by an amount
+ * proportional to height. The reference casts every shadow down and to the
+ * right as a crisp flat shape about a third darker than the ground under it;
+ * the first native pass used soft radial blobs, which is a different idiom.
+ */
+static void hard_shadow(PA_Canvas *c, float col, float row, float w, float d, float h) {
+    float hw = w * 0.5f, hd = d * 0.5f;
+    float ox = h * 0.62f, oy = -h * 0.30f;
+    PA_Vec2 pts[8] = {
+        project(col - hw, row - hd, 0), project(col + hw, row - hd, 0),
+        project(col + hw, row + hd, 0), project(col - hw, row + hd, 0),
+        project(col - hw + ox, row - hd + oy, 0), project(col + hw + ox, row - hd + oy, 0),
+        project(col + hw + ox, row + hd + oy, 0), project(col - hw + ox, row + hd + oy, 0)
+    };
+    PA_Vec2 out[18];
+    int n = hull(pts, 8, out);
+    if (n >= 3) pa_fill_poly(c, out, n, PA_RGBA(20, 18, 48, 92));
+}
+
+/* ------------------------------------------------------------ ground rows -- */
+static PA_Color row_colour(const Row *r) {
     switch (r->type) {
-        case ROW_ROAD:  col = pal_road();  break;
-        case ROW_WATER: col = pal_water(); break;
-        case ROW_RAIL:  col = pal_rail();  break;
-        default:        col = r->band ? pal_grass_b() : pal_grass_a(); break;
-    }
-
-    PA_Vec2 a = project(-EDGE, (float)r->index - 0.5f, 0.0f);
-    PA_Vec2 b = project( EDGE, (float)r->index - 0.5f, 0.0f);
-    PA_Vec2 cc = project( EDGE, (float)r->index + 0.5f, 0.0f);
-    PA_Vec2 d = project(-EDGE, (float)r->index + 0.5f, 0.0f);
-
-    if (a.y < -160.0f && d.y < -160.0f) return;
-    if (a.y > (float)L.h + 160.0f && d.y > (float)L.h + 160.0f) return;
-
-    /* Cut edges first, so the row surface lands on top of its own thickness.
-       The slab being visibly finite is what makes the lean readable. */
-    float drop = L.edge_drop;
-    PA_Color cut = pa_shade(col, -0.44f);
-    PA_Vec2 left[4]  = { a, d, { d.x, d.y + drop }, { a.x, a.y + drop } };
-    PA_Vec2 right[4] = { b, cc, { cc.x, cc.y + drop }, { b.x, b.y + drop } };
-    pa_fill_poly(c, left, 4, cut);
-    pa_fill_poly(c, right, 4, cut);
-
-    PA_Vec2 surface[4] = { a, b, cc, d };
-    pa_fill_poly(c, surface, 4, col);
-
-    if (r->type == ROW_GRASS) {
-        /* Tufts. A flat field of one green is the single clearest tell of an
-           unfinished scene; the reference art breaks it up constantly. The
-           pattern is derived from the row index so it never shimmers. */
-        uint32_t bits = (uint32_t)row_seed(r->index);
-        for (int t = -HALF; t <= HALF; t++) {
-            if (!((bits >> ((t + HALF) & 15)) & 1)) continue;
-            float jitter = (float)((bits >> ((t + 3) & 13)) & 3) * 0.12f - 0.18f;
-            PA_Vec2 tp = project((float)t + jitter, (float)r->index + jitter * 0.6f, 0.0f);
-            pa_fill_ellipse(c, tp.x, tp.y, L.tile * 0.13f, L.depth * 0.10f,
-                            pa_shade(col, -0.14f));
-        }
-    }
-
-    if (r->type == ROW_ROAD && r->markings) {
-        PA_Vec2 m1 = project(-EDGE, (float)r->index, 0.0f);
-        PA_Vec2 m2 = project( EDGE, (float)r->index, 0.0f);
-        int dashes = 9;
-        for (int i = 0; i < dashes; i++) {
-            float t0 = (float)i / (float)dashes;
-            float t1 = t0 + 0.5f / (float)dashes;
-            pa_line(c, pa_lerpf(m1.x, m2.x, t0), pa_lerpf(m1.y, m2.y, t0),
-                       pa_lerpf(m1.x, m2.x, t1), pa_lerpf(m1.y, m2.y, t1),
-                    L.tile * 0.06f, PA_RGBA(255, 255, 255, 115));
-        }
-    }
-
-    if (r->type == ROW_WATER) {
-        /* Two drifting highlight bands do the job of an animated water shader. */
-        for (int k = 0; k < 2; k++) {
-            float off = pa_wrapf(H.time * 0.5f + (float)k * 0.5f + (float)r->index * 0.13f, 1.0f)
-                        * 2.0f - 1.0f;
-            PA_Vec2 w1 = project(-EDGE, (float)r->index + off * 0.3f, 0.0f);
-            PA_Vec2 w2 = project( EDGE, (float)r->index + off * 0.3f, 0.0f);
-            pa_line(c, w1.x, w1.y, w2.x, w2.y, L.tile * 0.06f, PA_RGBA(255, 255, 255, 36));
-        }
-    }
-
-    if (r->type == ROW_RAIL) {
-        /* Sleepers under the rails: without them the row is two lines on a
-           brown band and reads as a fence, not a track. */
-        for (int sl = -HALF; sl <= HALF; sl++) {
-            PA_Vec2 sp = project((float)sl, (float)r->index, 0.0f);
-            pa_fill_rect(c, sp.x - L.tile * 0.30f, sp.y - L.depth * 0.20f,
-                         L.tile * 0.60f, L.depth * 0.40f, pa_hex(0x5E4E3A));
-        }
-        for (int s2 = -1; s2 <= 1; s2 += 2) {
-            PA_Vec2 r1 = project(-EDGE, (float)r->index + (float)s2 * 0.16f, 0.0f);
-            PA_Vec2 r2 = project( EDGE, (float)r->index + (float)s2 * 0.16f, 0.0f);
-            pa_line(c, r1.x, r1.y, r2.x, r2.y, L.tile * 0.09f, pa_hex(0x9AA0A8));
-        }
-        if (r->warn) {
-            int blink = ((int)(H.time * 6.0f) % 2) == 0;
-            for (int side = -1; side <= 1; side += 2) {
-                PA_Vec2 lp = project((float)side * (EDGE + 0.6f), (float)r->index, 0.85f);
-                pa_fill_circle(c, lp.x, lp.y, L.tile * 0.17f,
-                               blink ? pa_hex(0xFF4B5C) : pa_hex(0x5A2028));
-            }
-        }
-    }
-
-    if (r->coin != -99) {
-        float cx = (float)(r->coin - HALF);
-        float bob = 0.30f + sinf(H.time * 4.0f + (float)r->index) * 0.06f;
-        PA_Vec2 cp = project(cx, (float)r->index, bob);
-        PA_Vec2 gp = project(cx, (float)r->index, 0.0f);
-        float rr = L.tile * 0.20f;
-        pa_fill_ellipse(c, cp.x, gp.y, rr * 0.9f, rr * 0.42f, PA_RGBA(0, 0, 0, 50));
-        PA_Paint coin = pa_linear(cp.x - rr, cp.y - rr, cp.x + rr, cp.y + rr);
-        pa_stop(&coin, 0.0f, pa_hex(0xFFE9A0));
-        pa_stop(&coin, 0.5f, pa_hex(0xFFC93C));
-        pa_stop(&coin, 1.0f, pa_hex(0xC98A12));
-        pa_fill_ellipse_paint(c, cp.x, cp.y, rr * 0.62f, rr, &coin);
+        case ROW_ROAD:  return pal_road();
+        case ROW_WATER: return pal_water();
+        case ROW_RAIL:  return pal_rail();
+        default:        return r->band ? pal_grass_b() : pal_grass_a();
     }
 }
 
-static void draw_row_props(PA_Canvas *c, Row *r) {
+static void band(PA_Canvas *c, float c0, float c1, float row0, float row1, PA_Color col) {
+    PA_Vec2 q[4] = {
+        project(c0, row0, 0), project(c1, row0, 0),
+        project(c1, row1, 0), project(c0, row1, 0)
+    };
+    pa_fill_poly(c, q, 4, col);
+}
+
+static void draw_ground(PA_Canvas *c, Row *r) {
+    float idx = (float)r->index;
+    float lo = H.cam_col - (float)L.wide, hi = H.cam_col + (float)L.wide;
+    PA_Color col = row_colour(r);
+
+    /* Full-width lanes, as in the reference - the finite slab was an invention.
+       Outside the playable columns the ground darkens, which is how the
+       reference marks the edge without drawing a wall. */
+    PA_Color outside = pa_shade(col, -0.16f);
+    band(c, lo, -EDGE, idx - 0.5f, idx + 0.5f, outside);
+    band(c, EDGE, hi, idx - 0.5f, idx + 0.5f, outside);
+
     if (r->type == ROW_GRASS) {
-        for (int i = 0; i < COLS; i++) {
-            if (!r->has_tree[i]) continue;
-            float cx = (float)(i - HALF);
-            float s = r->tree_s[i], h = r->tree_h[i];
-            /*
-             * Three stacked blocks, not one. A single box with a lighter top is
-             * a green domino; a visible trunk under a crown that steps inward
-             * as it rises is a tree, and stepping the silhouette is the whole
-             * reason the reference style reads at a glance without lighting.
-             */
-            /*
-             * The trunk has to clear the crown's front face or it is invisible:
-             * a box's front face hangs down from its top, so a crown based at
-             * 0.42 covered a trunk that only reached 0.46 and every tree came
-             * out a green block with a brown sliver. Crown starts at 0.72 now,
-             * and the whole thing is roughly two tiles tall like the reference.
-             */
-            prop_shadow(c, cx, (float)r->index, s * 1.05f, 0.34f);
-            box(c, cx, (float)r->index, 0.0f, 0.26f, 0.74f, 0.26f, pa_hex(0x7A5333));
-            box(c, cx, (float)r->index, 0.72f, s, h * 0.62f, s, pa_hex(0x2F8C47));
-            box(c, cx, (float)r->index - 0.03f, 0.72f + h * 0.56f,
-                s * 0.76f, h * 0.44f, s * 0.76f, pa_hex(0x3FA855));
-            box(c, cx, (float)r->index - 0.05f, 0.72f + h * 0.94f,
-                s * 0.46f, h * 0.26f, s * 0.46f, pa_hex(0x57C466));
+        /* Checker within the row, not just alternating rows: a flat field of
+           one green is the clearest tell of an unfinished scene. */
+        for (int t = -HALF; t <= HALF; t++) {
+            int odd = ((t + r->index) & 1) != 0;
+            band(c, (float)t - 0.5f, (float)t + 0.5f, idx - 0.5f, idx + 0.5f,
+                 odd ? pal_grass_b() : pal_grass_a());
         }
-    } else if (r->type == ROW_ROAD) {
-        for (int i = 0; i < r->mover_count; i++) {
-            Mover *m = &r->movers[i];
-            if (fabsf(m->x) > EDGE + 4.0f) continue;
-            /* Saturation and lightness pinned, not random: letting the hue
-               wander is fine, letting the value wander gives a lane of traffic
-               that half disappears against the tarmac. */
-            PA_Color body = pa_hsl(m->hue, 0.78f, 0.58f);
-            float flip = (float)r->dir;
-            float idx = (float)r->index;
+    } else {
+        band(c, -EDGE, EDGE, idx - 0.5f, idx + 0.5f, col);
+    }
 
-            prop_shadow(c, m->x, idx, m->len * 0.92f, 0.34f);
-
-            /* Wheels first, so the body sits over them. Two dark blocks under
-               the chassis are what stop a car reading as a floating brick. */
-            for (int wq = -1; wq <= 1; wq += 2) {
-                box(c, m->x + (float)wq * m->len * 0.30f, idx, 0.0f,
-                    m->len * 0.20f, 0.13f, 0.70f, pa_hex(0x27272F));
-            }
-
-            box(c, m->x, idx, 0.10f, m->len, 0.26f, 0.62f, body);
-            /* A darker skirt below the waistline gives the body two tones
-               without needing a light source. */
-            box(c, m->x, idx, 0.10f, m->len * 1.005f, 0.09f, 0.635f, pa_shade(body, -0.22f));
-
-            if (m->big) {
-                box(c, m->x - flip * m->len * 0.26f, idx, 0.36f,
-                    m->len * 0.44f, 0.30f, 0.58f, pa_shade(body, 0.20f));
-                box(c, m->x + flip * m->len * 0.22f, idx, 0.36f,
-                    m->len * 0.50f, 0.14f, 0.55f, pa_shade(body, -0.28f));
-            } else {
-                box(c, m->x - flip * m->len * 0.05f, idx, 0.36f,
-                    m->len * 0.52f, 0.19f, 0.50f, pa_shade(body, 0.26f));
-                /* Glass wraps the cabin rather than sitting as one dark patch. */
-                box(c, m->x - flip * m->len * 0.05f, idx - 0.16f, 0.40f,
-                    m->len * 0.44f, 0.13f, 0.16f, pa_hex(0x2B3A5C));
-            }
-
-            /* Headlights on the leading edge, tail lights behind, so which way
-               a lane is travelling is readable without watching it move. */
-            PA_Vec2 lp = project(m->x + flip * (m->len * 0.48f), idx, 0.22f);
-            PA_Vec2 tp = project(m->x - flip * (m->len * 0.48f), idx, 0.22f);
-            for (int side = -1; side <= 1; side += 2) {
-                float off = (float)side * L.depth * 0.20f;
-                pa_fill_ellipse(c, lp.x, lp.y + off, L.tile * 0.055f, L.tile * 0.045f,
-                                PA_RGBA(255, 248, 214, 245));
-                pa_fill_ellipse(c, tp.x, tp.y + off, L.tile * 0.045f, L.tile * 0.038f,
-                                PA_RGBA(226, 62, 62, 220));
-            }
+    if (r->type == ROW_ROAD) {
+        /* Lane dashes on the far edge of the lane, pale and short. */
+        for (float t = lo; t < hi; t += 1.0f) {
+            float x0 = floorf(t) + 0.15f;
+            PA_Vec2 q[4] = {
+                project(x0, idx + 0.46f, 0.0f), project(x0 + 0.55f, idx + 0.46f, 0.0f),
+                project(x0 + 0.55f, idx + 0.52f, 0.0f), project(x0, idx + 0.52f, 0.0f)
+            };
+            pa_fill_poly(c, q, 4, PA_RGBA(196, 196, 214, 150));
         }
     } else if (r->type == ROW_WATER) {
-        for (int i = 0; i < r->mover_count; i++) {
-            Mover *m = &r->movers[i];
-            if (fabsf(m->x) > EDGE + 5.0f) continue;
-            PA_Vec2 lsp = project(m->x, (float)r->index + 0.10f, 0.0f);
-            pa_fill_ellipse(c, lsp.x, lsp.y, m->len * L.tile * 0.48f, L.depth * 0.30f,
-                            PA_RGBA(14, 60, 110, 90));
-            /* Three bands along the log so it reads as timber rather than as a
-               brown bar, plus cut ends a shade lighter. */
-            box(c, m->x, (float)r->index, 0.0f, m->len, 0.22f, 0.66f, pa_hex(0x7A5433));
-            box(c, m->x, (float)r->index - 0.02f, 0.22f, m->len * 0.98f, 0.06f, 0.58f,
-                pa_hex(0x96683F));
-            for (int seg = 0; seg < 3; seg++) {
-                float t = -0.28f + (float)seg * 0.28f;
-                box(c, m->x + m->len * t, (float)r->index - 0.02f, 0.28f,
-                    m->len * 0.05f, 0.02f, 0.54f, pa_hex(0x6A4527));
-            }
+        /* Foam specks drifting with the current. Seeded per row and scrolled by
+           time, so they move without shimmering. */
+        uint32_t bits = row_seed(r->index);
+        for (int k = 0; k < 7; k++) {
+            float t = pa_wrapf((float)((bits >> (k * 4)) & 15) * 1.7f
+                               + H.time * 0.6f * (float)(r->dir ? r->dir : 1), (float)(L.wide * 2));
+            float fx = lo + t;
+            float fr = idx - 0.3f + (float)((bits >> (k * 3 + 1)) & 3) * 0.2f;
+            PA_Vec2 q[4] = {
+                project(fx, fr, 0), project(fx + 0.30f, fr, 0),
+                project(fx + 0.30f, fr + 0.06f, 0), project(fx, fr + 0.06f, 0)
+            };
+            pa_fill_poly(c, q, 4, PA_RGBA(255, 255, 255, 120));
         }
-    } else if (r->type == ROW_RAIL && r->train_on) {
-        box(c, r->train_x, (float)r->index, 0.05f, 9.0f, 0.78f, 0.78f, pa_hex(0xC2453D));
-        box(c, r->train_x, (float)r->index - 0.04f, 0.83f, 8.4f, 0.10f, 0.70f, pa_hex(0xE8E2D6));
-        for (int w = -3; w <= 3; w++) {
-            PA_Vec2 wp = project(r->train_x + (float)w * 1.25f, (float)r->index - 0.34f, 0.42f);
-            pa_fill_rect(c, wp.x - L.tile * 0.16f, wp.y - L.tile * 0.13f,
-                         L.tile * 0.32f, L.tile * 0.26f, PA_RGBA(180, 225, 255, 215));
+    } else if (r->type == ROW_RAIL) {
+        /* Sleepers, then two rails over them. */
+        for (float t = floorf(lo); t < hi; t += 0.5f) {
+            PA_Vec2 q[4] = {
+                project(t, idx - 0.34f, 0), project(t + 0.20f, idx - 0.34f, 0),
+                project(t + 0.20f, idx + 0.34f, 0), project(t, idx + 0.34f, 0)
+            };
+            pa_fill_poly(c, q, 4, pa_hex(0x5B4636));
+        }
+        for (int s2 = -1; s2 <= 1; s2 += 2) {
+            float rr = idx + (float)s2 * 0.20f;
+            band(c, lo, hi, rr - 0.035f, rr + 0.035f, pa_hex(0x9C98B0));
         }
     }
+}
+
+/* ------------------------------------------------------------- drawables -- */
+enum { DR_TREE, DR_DECO, DR_CAR, DR_LOG, DR_TRAIN, DR_COIN, DR_SIGNAL, DR_PLAYER };
+
+typedef struct { float key; int kind; int row; int idx; float x; } Drawable;
+
+#define MAX_DRAW 900
+static Drawable g_draw[MAX_DRAW];
+static int      g_draw_n;
+
+static void push(int kind, int row, int idx, float x, float z_bias) {
+    if (g_draw_n >= MAX_DRAW) return;
+    PA_Vec2 g = project(x, (float)row, 0.0f);
+    Drawable *d = &g_draw[g_draw_n++];
+    d->key = g.y + z_bias;
+    d->kind = kind; d->row = row; d->idx = idx; d->x = x;
+}
+
+static int draw_cmp(const void *a, const void *b) {
+    float d = ((const Drawable *)a)->key - ((const Drawable *)b)->key;
+    return d < 0.0f ? -1 : (d > 0.0f ? 1 : 0);
+}
+
+/** Decorative scenery outside the playable columns, derived from the row hash
+    so it costs no simulation state. The reference packs its edges with trees;
+    empty verges were half of why ours read as a test level. */
+static int deco_at(const Row *r, int col, float *h_out, float *s_out) {
+    if (r->type != ROW_GRASS) return 0;
+    uint32_t h = row_seed(r->index * 131 + col * 7919);
+    if ((h & 7) > 3) return 0;
+    *h_out = 0.8f + (float)((h >> 4) & 15) / 15.0f * 1.2f;
+    *s_out = 0.66f + (float)((h >> 8) & 7) / 7.0f * 0.22f;
+    return 1;
+}
+
+static void draw_tree(PA_Canvas *c, float col, float row, float h, float s) {
+    if (h < 1.0f) {
+        /* Low bush: two stacked blocks, the second set back and lighter. */
+        hard_shadow(c, col, row, s, s, h * 0.7f);
+        box3(c, col, row, 0.0f, s, s, h * 0.45f, pa_hex(0x4E9A3A));
+        box3(c, col - 0.04f, row + 0.04f, h * 0.45f, s * 0.70f, s * 0.70f, h * 0.30f, pa_hex(0x62B048));
+        return;
+    }
+    /* Tree: trunk clear of the crown, crown stepping inward as it rises. */
+    hard_shadow(c, col, row, s, s, h + 0.8f);
+    box3(c, col, row, 0.0f, 0.26f, 0.26f, 0.70f, pa_hex(0x7A5333));
+    box3(c, col, row, 0.66f, s, s, h * 0.55f, pa_hex(0x3F8F3C));
+    box3(c, col - 0.02f, row + 0.02f, 0.66f + h * 0.55f, s * 0.76f, s * 0.76f, h * 0.36f,
+         pa_hex(0x55A844));
+    box3(c, col - 0.04f, row + 0.04f, 0.66f + h * 0.91f, s * 0.46f, s * 0.46f, h * 0.22f,
+         pa_hex(0x6DBE52));
+}
+
+static void draw_car(PA_Canvas *c, const Row *r, const Mover *m) {
+    PA_Color body = pa_hsl(m->hue, 0.72f, 0.56f);
+    float flip = (float)r->dir;
+    float row = (float)r->index;
+    float len = m->len;
+
+    hard_shadow(c, m->x, row, len, 0.66f, 0.70f);
+
+    /* Wheels wider than the body in depth, so they show below it - the
+       projection's recurring trap. */
+    for (int q = -1; q <= 1; q += 2) {
+        box3(c, m->x + (float)q * len * 0.30f, row, 0.0f, len * 0.20f, 0.74f, 0.16f,
+             pa_hex(0x24222E));
+    }
+
+    if (m->big) {
+        /* Truck: tall pale box behind a coloured cab. */
+        box3(c, m->x - flip * len * 0.14f, row, 0.12f, len * 0.70f, 0.64f, 0.66f, pa_hex(0xE4E4EE));
+        box3(c, m->x + flip * len * 0.34f, row, 0.12f, len * 0.30f, 0.62f, 0.42f, body);
+        box3(c, m->x + flip * len * 0.34f, row, 0.54f, len * 0.22f, 0.56f, 0.10f, pa_hex(0xDDE8F4));
+    } else {
+        box3(c, m->x, row, 0.12f, len, 0.62f, 0.26f, body);
+        /* Cabin: white roof block, set back, with a dark glass band all round -
+           the reference's cars are all built this way. */
+        box3(c, m->x - flip * len * 0.06f, row, 0.38f, len * 0.54f, 0.56f, 0.20f, pa_hex(0x2A2D44));
+        box3(c, m->x - flip * len * 0.06f, row, 0.54f, len * 0.50f, 0.52f, 0.08f, pa_hex(0xF2F4F8));
+    }
+
+    PA_Vec2 lp = project(m->x + flip * len * 0.50f, row - 0.20f, 0.24f);
+    pa_fill_rect(c, lp.x - 3.0f, lp.y - 2.0f, 6.0f, 4.0f, PA_RGBA(255, 246, 200, 255));
+}
+
+static void draw_log(PA_Canvas *c, const Row *r, const Mover *m) {
+    float row = (float)r->index;
+    /* Logs sit in the water, so the shadow is the water darkening, not a cast
+       shape on the ground. */
+    band(c, m->x - m->len * 0.5f + 0.1f, m->x + m->len * 0.5f + 0.25f, row - 0.42f, row + 0.30f,
+         PA_RGBA(20, 60, 120, 70));
+    box3(c, m->x, row, -0.04f, m->len, 0.62f, 0.26f, pa_hex(0x8A5A3A));
+    for (int seg = 0; seg < 4; seg++) {
+        float t = -0.36f + (float)seg * 0.24f;
+        box3(c, m->x + m->len * t, row, 0.22f, m->len * 0.03f, 0.60f, 0.012f, pa_hex(0x6A4228));
+    }
+}
+
+static void draw_train(PA_Canvas *c, const Row *r) {
+    float row = (float)r->index;
+    hard_shadow(c, r->train_x, row, 9.0f, 0.78f, 0.9f);
+    for (int car = -1; car <= 1; car++) {
+        float x = r->train_x + (float)car * 3.05f;
+        box3(c, x, row, 0.02f, 2.90f, 0.78f, 0.86f, pa_hex(0xD84A3E));
+        box3(c, x, row, 0.36f, 2.70f, 0.80f, 0.22f, pa_hex(0x2A2D44));
+        box3(c, x, row, 0.88f, 2.80f, 0.70f, 0.08f, pa_hex(0xE8E6F0));
+    }
+}
+
+/* Close enough in to be on screen at the default camera; one per rail row,
+   alternating sides so a run of tracks does not line them up like fence posts. */
+#define SIGNAL_COL 3.4f
+
+static void draw_signal(PA_Canvas *c, const Row *r, float side) {
+    float row = (float)r->index + 0.45f;
+    float col = side * SIGNAL_COL;
+    hard_shadow(c, col, row, 0.14f, 0.14f, 1.4f);
+    /* Red and white striped post, black crossbar, a lamp that glows before a
+       train - lifted straight from the plates because it is how the player
+       learns to read a rail row. */
+    for (int k = 0; k < 5; k++) {
+        box3(c, col, row, (float)k * 0.26f, 0.12f, 0.12f, 0.26f,
+             (k & 1) ? pa_hex(0xF2F2F2) : pa_hex(0xD8363A));
+    }
+    box3(c, col, row, 1.26f, 0.62f, 0.10f, 0.14f, pa_hex(0x1C1A24));
+    int blink = r->warn && ((int)(H.time * 6.0f) % 2) == 0;
+    PA_Vec2 lp = project(col, row - 0.07f, 1.10f);
+    if (blink) {
+        PA_Paint glow = pa_radial(lp.x, lp.y, 0.0f, L.tile * 0.9f);
+        pa_stop(&glow, 0.0f, PA_RGBA(255, 60, 60, 150));
+        pa_stop(&glow, 1.0f, PA_RGBA(255, 60, 60, 0));
+        pa_fill_ellipse_paint(c, lp.x, lp.y, L.tile * 0.9f, L.tile * 0.9f, &glow);
+    }
+    pa_fill_circle(c, lp.x, lp.y, L.tile * 0.07f, blink ? pa_hex(0xFF4040) : pa_hex(0x5A1C20));
+}
+
+static void draw_coin(PA_Canvas *c, const Row *r) {
+    float cx = (float)(r->coin - HALF);
+    float bob = 0.30f + sinf(H.time * 4.0f + (float)r->index) * 0.06f;
+    hard_shadow(c, cx, (float)r->index, 0.26f, 0.26f, 0.3f);
+    box3(c, cx, (float)r->index, bob, 0.30f, 0.08f, 0.30f, pa_hex(0xFFC93C));
 }
 
 static void draw_player(PA_Canvas *c) {
@@ -858,66 +985,103 @@ static void draw_player(PA_Canvas *c) {
     float z = H.hop_z;
     float squash = H.hopping ? 1.0f : (1.0f + sinf(H.time * 6.0f) * 0.02f);
 
-    PA_Vec2 sp = project(H.draw_x, H.draw_y, 0.0f);
-    float shrink = 1.0f - z * 0.5f;
-    pa_shadow(c, sp.x, sp.y, L.tile * 0.30f * shrink, L.depth * 0.28f * shrink, 0.34f);
+    /* The shadow stays on the ground while the body rises, so a hop reads as
+       height rather than as the whole character sliding up the screen. */
+    hard_shadow(c, H.draw_x, H.draw_y, 0.62f, 0.56f, 0.9f - z * 0.5f);
 
     if (H.over && H.death == 0) {
-        /* Pancaked: flatten the whole stack in place. */
         float flat = pa_clamp01(H.death_t * 6.0f);
         for (int i = 0; i < ch->count; i++) {
             Part *p = &ch->parts[i];
-            box(c, H.draw_x + p->x, H.draw_y, p->z * (1.0f - flat * 0.9f),
-                p->w * (1.0f + flat * 0.5f), p->h * (1.0f - flat * 0.85f),
-                p->d * (1.0f + flat * 0.5f), p->col);
+            box3(c, H.draw_x + p->x, H.draw_y + p->dy, p->z * (1.0f - flat * 0.9f),
+                 p->w * (1.0f + flat * 0.5f), p->d * (1.0f + flat * 0.5f),
+                 p->h * (1.0f - flat * 0.85f), p->col);
         }
         return;
     }
 
     for (int i = 0; i < ch->count; i++) {
         Part *p = &ch->parts[i];
-        box(c, H.draw_x + p->x, H.draw_y - (p->front ? 0.16f : 0.0f),
-            (p->z + z) * squash, p->w, p->h * squash, p->d, p->col);
+        box3(c, H.draw_x + p->x, H.draw_y + p->dy,
+             (p->z + z) * squash, p->w, p->d, p->h * squash, p->col);
     }
-
-    /* Eyes are drawn flat on top so they always face the camera. */
-    PA_Vec2 ep = project(H.draw_x, H.draw_y - 0.20f, (ch->eye_z + z) * squash);
-    float er = L.tile * 0.055f;
+    /* Eyes on the front face of the head, near its outer corners, as square
+       voxels like everything else. */
     for (int e = -1; e <= 1; e += 2) {
-        pa_fill_circle(c, ep.x + (float)e * ch->head_w * L.tile * 0.26f, ep.y, er,
-                       pa_hex(0x141024));
+        PA_Vec2 ep = project(H.draw_x + (float)e * ch->head_w * 0.30f,
+                             H.draw_y + ch->head_front - 0.005f, (ch->eye_z + z) * squash);
+        float sz = L.tile * 0.065f;
+        pa_fill_rect(c, ep.x - sz * 0.5f, ep.y - sz * 0.5f, sz, sz, pa_hex(0x141024));
     }
 }
 
 static void hopper_render(PA_Canvas *c) {
     if (L.w != c->w || L.h != c->h) compute_layout(c->w, c->h);
 
-    /* Sky up top, a deeper tone underneath. The slab floats over the darker
-       half, which is what gives it a cut-out silhouette. */
-    PA_Paint sky = pa_linear(0, 0, 0, (float)c->h);
-    pa_stop(&sky, 0.00f, pa_shade(pal_sky(), 0.20f));
-    pa_stop(&sky, 0.42f, pal_sky());
-    pa_stop(&sky, 0.62f, pa_shade(pal_sky(), -0.34f));
-    pa_stop(&sky, 1.00f, pa_shade(pal_sky(), -0.52f));
-    pa_fill_rect_paint(c, 0, 0, (float)c->w, (float)c->h, &sky);
+    pa_clear(c, pal_sky());
 
-    /* Painter's algorithm along the row axis: far rows first. */
     int far = (int)ceilf(H.cam_y) + L.ahead;
     int near = (int)floorf(H.cam_y) - L.behind;
-    int player_row = (int)floorf(H.draw_y + 0.5f);
 
+    /* 1. Ground, far to near. */
     for (int i = far; i >= near; i--) {
         Row *r = row_at(i);
-        if (r) draw_row(c, r);
+        if (r) draw_ground(c, r);
     }
+
+    /* 2. Everything standing on the ground, sorted by where it touches the
+          ground on screen. Sorting per object rather than per row is what the
+          rotated camera requires: within one row, a prop further right is
+          nearer the camera, so row order alone gets overlaps wrong. */
+    g_draw_n = 0;
     for (int i = far; i >= near; i--) {
         Row *r = row_at(i);
         if (!r) continue;
-        draw_row_props(c, r);
-        /* The player draws inside the row loop so props in front occlude them. */
-        if (player_row == i) draw_player(c);
+        if (r->type == ROW_GRASS) {
+            for (int t = 0; t < COLS; t++) {
+                if (r->has_tree[t]) push(DR_TREE, i, t, (float)(t - HALF), 0.0f);
+            }
+            for (int t = HALF + 1; t <= L.wide + HALF + 2; t++) {
+                float hh, ss;
+                if (deco_at(r, t, &hh, &ss)) push(DR_DECO, i, t, (float)t, 0.0f);
+                if (deco_at(r, -t, &hh, &ss)) push(DR_DECO, i, -t, (float)(-t), 0.0f);
+            }
+        } else if (r->type == ROW_ROAD) {
+            for (int m = 0; m < r->mover_count; m++) push(DR_CAR, i, m, r->movers[m].x, 0.0f);
+        } else if (r->type == ROW_WATER) {
+            /* Logs sort well behind anything at the same spot, so a rider is
+               always drawn on top of the log it is standing on. */
+            for (int m = 0; m < r->mover_count; m++) push(DR_LOG, i, m, r->movers[m].x, -L.tile);
+        } else if (r->type == ROW_RAIL) {
+            push(DR_SIGNAL, i, (r->index & 1) ? 1 : -1,
+                 (r->index & 1) ? SIGNAL_COL : -SIGNAL_COL, 0.0f);
+            if (r->train_on) push(DR_TRAIN, i, 0, r->train_x, 0.0f);
+        }
+        if (r->coin != -99) push(DR_COIN, i, 0, (float)(r->coin - HALF), 0.0f);
     }
-    if (player_row > far || player_row < near) draw_player(c);
+    push(DR_PLAYER, (int)floorf(H.draw_y + 0.5f), 0, H.draw_x, 2.0f);
+    qsort(g_draw, (size_t)g_draw_n, sizeof(Drawable), draw_cmp);
+
+    for (int k = 0; k < g_draw_n; k++) {
+        Drawable *d = &g_draw[k];
+        Row *r = row_at(d->row);
+        switch (d->kind) {
+            case DR_TREE:
+                if (r) draw_tree(c, d->x, (float)d->row, r->tree_h[d->idx], r->tree_s[d->idx]);
+                break;
+            case DR_DECO: {
+                float hh, ss;
+                if (r && deco_at(r, d->idx, &hh, &ss)) draw_tree(c, d->x, (float)d->row, hh, ss);
+                break;
+            }
+            case DR_CAR:    if (r) draw_car(c, r, &r->movers[d->idx]); break;
+            case DR_LOG:    if (r) draw_log(c, r, &r->movers[d->idx]); break;
+            case DR_TRAIN:  if (r) draw_train(c, r); break;
+            case DR_SIGNAL: if (r) draw_signal(c, r, (float)d->idx); break;
+            case DR_COIN:   if (r) draw_coin(c, r); break;
+            case DR_PLAYER: draw_player(c); break;
+        }
+    }
 
     /* Eagle, on the idle death. */
     if (H.eagle > 0.0f) {
@@ -925,63 +1089,55 @@ static void hopper_render(PA_Canvas *c) {
         float w = L.tile * 1.5f;
         float flap = sinf(H.time * 14.0f) * w * 0.16f;
         PA_Vec2 wing[5] = {
-            { p.x, p.y },
-            { p.x - w, p.y - w * 0.35f + flap },
-            { p.x - w * 0.3f, p.y + w * 0.12f },
-            { p.x + w * 0.3f, p.y + w * 0.12f },
+            { p.x, p.y }, { p.x - w, p.y - w * 0.35f + flap },
+            { p.x - w * 0.3f, p.y + w * 0.12f }, { p.x + w * 0.3f, p.y + w * 0.12f },
             { p.x + w, p.y - w * 0.35f - flap }
         };
         pa_fill_poly(c, wing, 5, pa_hex(0x2A2438));
-        pa_fill_ellipse(c, p.x, p.y + w * 0.06f, w * 0.28f, w * 0.20f, pa_hex(0x5A4B6E));
     }
 
-    pa_vignette(c, 0.55f);
-
-    pa_hud_scrim(c, 96.0f);
-
-    /* HUD. Left of x=104 belongs to the hub's MENU button. */
+    /* HUD, in the reference's idiom: chunky outlined numerals in the two top
+       corners and almost nothing else. Left of x=100 is the hub's MENU. */
     char buf[48];
     snprintf(buf, sizeof(buf), "%d", H.score);
-    pa_text(c, buf, 104.0f, 34.0f, 22.0f, PA_RGB(255, 255, 255), PA_ALIGN_LEFT, 2.0f);
-
-    snprintf(buf, sizeof(buf), "BEST %d", g_best > H.score ? g_best : H.score);
-    pa_text(c, buf, (float)c->w * 0.5f + 40.0f, 36.0f, 13.0f,
-            PA_RGBA(255, 255, 255, 170), PA_ALIGN_CENTER, 3.0f);
-
+    pa_text_bold(c, buf, 106.0f, 22.0f, 40.0f, PA_RGB(255, 255, 255), PA_RGB(20, 18, 28),
+                 PA_ALIGN_LEFT, 3.0f, 2.3f);
+    /* Coin count with a coin glyph to its right, as in the reference: a small
+       outlined square in red carrying a pale mark. */
+    float glyph = 20.0f;
+    float gx = (float)c->w - 22.0f - glyph, gy = 30.0f;
+    pa_round_rect(c, gx - 3.0f, gy - 3.0f, glyph + 6.0f, glyph + 6.0f, 5.0f, PA_RGB(20, 18, 28));
+    pa_round_rect(c, gx, gy, glyph, glyph, 3.0f, pa_hex(0xE8453C));
+    pa_fill_rect(c, gx + glyph * 0.30f, gy + glyph * 0.24f, glyph * 0.40f, glyph * 0.18f, pa_hex(0xFFE0A0));
+    pa_fill_rect(c, gx + glyph * 0.30f, gy + glyph * 0.24f, glyph * 0.18f, glyph * 0.52f, pa_hex(0xFFE0A0));
+    pa_fill_rect(c, gx + glyph * 0.30f, gy + glyph * 0.58f, glyph * 0.40f, glyph * 0.18f, pa_hex(0xFFE0A0));
     snprintf(buf, sizeof(buf), "%d", H.coins);
-    pa_text(c, buf, (float)c->w - 20.0f, 34.0f, 18.0f,
-            PA_RGB(255, 201, 60), PA_ALIGN_RIGHT, 2.0f);
+    pa_text_bold(c, buf, gx - 10.0f, 26.0f, 28.0f, PA_RGB(255, 222, 40),
+                 PA_RGB(20, 18, 28), PA_ALIGN_RIGHT, 3.0f, 2.3f);
+    snprintf(buf, sizeof(buf), "TOP %d", g_best > H.score ? g_best : H.score);
+    pa_text(c, buf, 108.0f, 76.0f, 12.0f, PA_RGBA(255, 255, 255, 210), PA_ALIGN_LEFT, 2.0f);
 
-    if (H.score < 4) {
-        pa_text(c, "TAP TO HOP - SWIPE TO SIDESTEP", (float)c->w * 0.5f,
-                (float)c->h - 46.0f, 12.0f, PA_RGBA(255, 255, 255, 150),
-                PA_ALIGN_CENTER, 3.0f);
+    if (H.score < 1 && !H.over) {
+        pa_text_bold(c, "TAP TO HOP", (float)c->w * 0.5f, (float)c->h * 0.86f, 20.0f,
+                     PA_RGB(255, 255, 255), PA_RGB(20, 18, 28), PA_ALIGN_CENTER, 4.0f, 1.6f);
     }
 
-    /* Idle warning vignette - the eagle's tell. */
     if (H.idle > IDLE_LIMIT - 2.0f && !H.over) {
         float warn = pa_clamp01((H.idle - (IDLE_LIMIT - 2.0f)) * 0.5f);
-        PA_Paint vg = pa_radial((float)c->w * 0.5f, (float)c->h * 0.5f,
-                                (float)c->h * 0.25f, (float)c->h * 0.75f);
-        pa_stop(&vg, 0.0f, PA_RGBA(120, 20, 30, 0));
-        pa_stop(&vg, 1.0f, PA_RGBA(120, 20, 30, (int)(warn * 140.0f)));
-        pa_fill_rect_paint(c, 0, 0, (float)c->w, (float)c->h, &vg);
+        pa_vignette(c, warn * 0.9f);
     }
 
     if (H.over) {
         static const char *REASONS[4] = {
-            "FLATTENED BY TRAFFIC", "THE EXPRESS DOES NOT BRAKE",
-            "INTO THE DRINK", "THE EAGLE GOT BORED OF WAITING"
+            "FLATTENED", "HIT BY A TRAIN", "SPLASH", "THE EAGLE GOT YOU"
         };
         float a = pa_clamp01(H.death_t * 2.4f);
-        pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h,
-                     PA_RGBA(10, 8, 24, (int)(a * 170.0f)));
-        pa_text(c, H.score >= g_best ? "NEW BEST" : "SQUASHED",
-                (float)c->w * 0.5f, (float)c->h * 0.42f, 38.0f,
-                H.score >= g_best ? PA_RGB(126, 240, 160) : PA_RGB(255, 107, 122),
-                PA_ALIGN_CENTER, 6.0f);
-        pa_text(c, REASONS[H.death], (float)c->w * 0.5f, (float)c->h * 0.50f, 12.0f,
-                PA_RGBA(255, 255, 255, 170), PA_ALIGN_CENTER, 3.0f);
+        pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(10, 8, 24, (int)(a * 150.0f)));
+        pa_text_bold(c, REASONS[H.death], (float)c->w * 0.5f, (float)c->h * 0.40f, 30.0f,
+                     PA_RGB(255, 255, 255), PA_RGB(20, 18, 28), PA_ALIGN_CENTER, 4.0f, 2.0f);
+        snprintf(buf, sizeof(buf), "SCORE %d", H.score);
+        pa_text_bold(c, buf, (float)c->w * 0.5f, (float)c->h * 0.48f, 20.0f,
+                     PA_RGB(255, 222, 40), PA_RGB(20, 18, 28), PA_ALIGN_CENTER, 3.0f, 1.8f);
     }
 }
 
