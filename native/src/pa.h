@@ -145,7 +145,9 @@ void  pa_text(PA_Canvas *c, const char *text, float x, float y, float size,
 /* ----------------------------------------------------------------- input -- */
 typedef enum {
     PA_KEY_LEFT, PA_KEY_RIGHT, PA_KEY_UP, PA_KEY_DOWN,
-    PA_KEY_SPACE, PA_KEY_ESC, PA_KEY_ENTER, PA_KEY_COUNT
+    PA_KEY_SPACE, PA_KEY_ESC, PA_KEY_ENTER,
+    PA_KEY_PAGEUP, PA_KEY_PAGEDOWN, PA_KEY_HOME, PA_KEY_END,
+    PA_KEY_COUNT
 } PA_Key;
 
 typedef struct {
@@ -156,6 +158,10 @@ typedef struct {
     int   released;        /* came up this frame */
     int   tapped;          /* released without travelling far */
     int   swipe;           /* one of PA_SWIPE_* for the frame it lands */
+    /* Mouse wheel for the frame, in notches; positive is away from the user.
+       Edge triggered like the pointer flags, so one notch is consumed by one
+       simulation step however many steps a frame happens to run. */
+    float wheel;
     int   keys[PA_KEY_COUNT];
     int   key_pressed[PA_KEY_COUNT];
 } PA_Input;

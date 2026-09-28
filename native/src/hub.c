@@ -227,6 +227,31 @@ void pa_app_update(float dt, const PA_Input *in) {
         /* Drag to scroll the grid. The drag is tracked from where it started
            rather than integrated frame to frame, so a fast flick cannot drift
            away from the finger. */
+        /*
+         * Wheel first. Drag-to-scroll alone was a mobile assumption: on a
+         * desktop the wheel is the first thing anyone reaches for, and with no
+         * handler for it the grid simply appeared frozen.
+         */
+        if (in->wheel != 0.0f && g_scroll_max > 0.0f) {
+            g_scroll = pa_clampf(g_scroll - in->wheel * 96.0f, 0.0f, g_scroll_max);
+            g_scroll_vel = 0.0f;
+        }
+
+        /* Keyboard, for the same reason. */
+        if (g_scroll_max > 0.0f) {
+            float key_scroll = 0.0f;
+            if (in->keys[PA_KEY_DOWN]) key_scroll += 1.0f;
+            if (in->keys[PA_KEY_UP])   key_scroll -= 1.0f;
+            if (key_scroll != 0.0f) {
+                g_scroll = pa_clampf(g_scroll + key_scroll * 900.0f * dt, 0.0f, g_scroll_max);
+                g_scroll_vel = 0.0f;
+            }
+            if (in->key_pressed[PA_KEY_PAGEDOWN]) g_scroll = pa_clampf(g_scroll + (float)g_view_h * 0.8f, 0.0f, g_scroll_max);
+            if (in->key_pressed[PA_KEY_PAGEUP])   g_scroll = pa_clampf(g_scroll - (float)g_view_h * 0.8f, 0.0f, g_scroll_max);
+            if (in->key_pressed[PA_KEY_HOME])     g_scroll = 0.0f;
+            if (in->key_pressed[PA_KEY_END])      g_scroll = g_scroll_max;
+        }
+
         if (in->pressed) {
             g_drag_from_y = in->y;
             g_scroll_from = g_scroll;
@@ -239,7 +264,7 @@ void pa_app_update(float dt, const PA_Input *in) {
             if (fabsf(moved) > g_drag_travel) g_drag_travel = fabsf(moved);
             /* Only once the finger has clearly travelled does this become a
                scroll; below that it is still a tap on a card. */
-            if (g_drag_travel > 8.0f) {
+            if (g_drag_travel > 6.0f) {
                 g_scroll_active = 1;
                 float next = pa_clampf(g_scroll_from + moved, 0.0f, g_scroll_max);
                 g_scroll_vel = (next - g_scroll) / (dt > 0.0001f ? dt : 0.0001f);

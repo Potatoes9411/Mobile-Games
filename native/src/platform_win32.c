@@ -26,6 +26,7 @@ static int         g_client_w = 540, g_client_h = 960;
 
 /* Pointer bookkeeping for the swipe/tap classification. */
 static float g_press_x, g_press_y;
+static float g_pending_wheel;
 static double g_press_time;
 static int    g_pending_press, g_pending_release;
 static float  g_prev_x, g_prev_y;
@@ -55,6 +56,10 @@ static void set_key(WPARAM vk, int down) {
         case VK_SPACE: idx = PA_KEY_SPACE; break;
         case VK_ESCAPE: idx = PA_KEY_ESC;  break;
         case VK_RETURN: idx = PA_KEY_ENTER; break;
+        case VK_PRIOR: idx = PA_KEY_PAGEUP; break;
+        case VK_NEXT:  idx = PA_KEY_PAGEDOWN; break;
+        case VK_HOME:  idx = PA_KEY_HOME; break;
+        case VK_END:   idx = PA_KEY_END; break;
         default: return;
     }
     if (down && !g_input.keys[idx]) g_input.key_pressed[idx] = 1;
@@ -100,6 +105,12 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g_input.down = 0;
             return 0;
 
+        case WM_MOUSEWHEEL:
+            /* One notch is WHEEL_DELTA. Accumulated here and handed over whole
+               on the next frame, so a fast flick is not quantised away. */
+            g_pending_wheel += (float)GET_WHEEL_DELTA_WPARAM(wp) / (float)WHEEL_DELTA;
+            return 0;
+
         case WM_MOUSEMOVE:
             g_input.x = (float)GET_X_LPARAM_SAFE(lp);
             g_input.y = (float)GET_Y_LPARAM_SAFE(lp);
@@ -121,6 +132,8 @@ static void begin_frame(void) {
     g_input.released = g_pending_release;
     g_input.tapped = 0;
     g_input.swipe = PA_SWIPE_NONE;
+    g_input.wheel = g_pending_wheel;
+    g_pending_wheel = 0.0f;
 
     if (g_pending_release) {
         float dx = g_input.x - g_press_x;
@@ -272,6 +285,7 @@ static int run_headless(const char *path, double seconds, int play, int autoplay
             g_input.released = 0;
             g_input.tapped = 0;
             g_input.swipe = PA_SWIPE_NONE;
+            g_input.wheel = 0.0f;
             for (int k = 0; k < PA_KEY_COUNT; k++) g_input.key_pressed[k] = 0;
         }
         if (steps >= MAX_STEPS) accumulator = 0.0;
@@ -390,6 +404,7 @@ int main(int argc, char **argv) {
             g_input.released = 0;
             g_input.tapped = 0;
             g_input.swipe = PA_SWIPE_NONE;
+            g_input.wheel = 0.0f;
             for (int k = 0; k < PA_KEY_COUNT; k++) g_input.key_pressed[k] = 0;
         }
         /* If we hit the step ceiling the machine cannot keep up; drop the debt
