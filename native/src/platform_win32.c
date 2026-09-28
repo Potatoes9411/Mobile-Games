@@ -269,7 +269,11 @@ static int run_headless(const char *path, double seconds, int play, int autoplay
              * nothing to do with the loop being correct - which is exactly the
              * thing under test.
              */
-            if (autoplay && sim_time >= next_input) {
+            /* Modes 4 and 5 hold an arrow key instead of swiping, for games
+               steered by a held direction (Helix Drop's spin). */
+            g_input.keys[PA_KEY_RIGHT] = autoplay == 4;
+            g_input.keys[PA_KEY_LEFT] = autoplay == 5;
+            if (autoplay && autoplay < 4 && sim_time >= next_input) {
                 next_input += 0.18;
                 g_input.swipe = (autoplay == 2) ? PA_SWIPE_LEFT
                               : (autoplay == 3) ? PA_SWIPE_RIGHT : PA_SWIPE_UP;
