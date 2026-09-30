@@ -179,6 +179,8 @@ enum { PA_SWIPE_NONE = 0, PA_SWIPE_LEFT, PA_SWIPE_RIGHT, PA_SWIPE_UP, PA_SWIPE_D
 void pa_audio_init(void);
 void pa_audio_shutdown(void);
 void pa_audio_set_volume(float v);
+/** Stop pulling audio while the app is in the background, and resume. */
+void pa_audio_pause(int paused);
 /** A swept tone. `shape` 0 sine, 1 triangle, 2 square, 3 saw. */
 void pa_tone(float from_hz, float to_hz, float seconds, int shape, float gain);
 void pa_noise(float seconds, float gain);
@@ -192,6 +194,9 @@ void pa_sfx(const char *name);
  */
 void  pa_save_load(void);
 void  pa_save_flush(void);
+/** Put the save file in `dir` instead of beside the executable - the only
+    writable place a phone app has is its own data directory. */
+void  pa_save_set_dir(const char *dir);
 int   pa_save_get(const char *key, int fallback);
 void  pa_save_set(const char *key, int value);
 

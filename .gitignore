@@ -55,3 +55,6 @@ desktop.ini
 # measure, never committed. Regenerate with tools/refs/fetch_refs.py.
 tools/refs/plates/
 dist/*.save
+
+# ---- Android build artifacts ------------------------------------------------
+native/build_android/

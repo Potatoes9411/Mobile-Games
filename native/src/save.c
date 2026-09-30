@@ -21,6 +21,10 @@ static int   g_dirty;
 static char  g_path[1024];
 static int   g_loaded;
 
+void pa_save_set_dir(const char *dir) {
+    if (dir && dir[0]) snprintf(g_path, sizeof(g_path), "%s/pocket-arcade.save", dir);
+}
+
 static void resolve_path(void) {
     if (g_path[0]) return;
 #ifdef _WIN32

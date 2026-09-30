@@ -1,14 +1,21 @@
 /* ===========================================================================
    POCKET ARCADE - audio
-   A WinMM streaming mixer with a tiny synth on top. The browser build makes
-   every sound from oscillators rather than samples; this does the same, which
-   is why the native port needs no audio assets at all.
+   A streaming mixer with a tiny synth on top. Every sound is made from
+   oscillators rather than samples, which is why the native builds need no
+   audio assets at all. The synth and mixer are shared; only the device that
+   pulls mixed blocks differs - WinMM on Windows, AAudio on Android.
    =========================================================================== */
 #include "pa.h"
-#include <windows.h>
-#include <mmsystem.h>
 #include <math.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <mmsystem.h>
+#elif defined(__ANDROID__)
+#include <aaudio/AAudio.h>
+#include <pthread.h>
+#endif
 
 #define SAMPLE_RATE 44100
 #define BLOCK_FRAMES 512
@@ -26,16 +33,29 @@ typedef struct {
     float noise_low;
 } Voice;
 
+static Voice      g_voices[MAX_VOICES];
+static float      g_volume = 0.8f;
+static int        g_audio_ok;      /* a device is open and pulling blocks */
+
+#if defined(_WIN32)
 static HWAVEOUT   g_out;
 static WAVEHDR    g_hdr[BLOCK_COUNT];
 static short      g_buf[BLOCK_COUNT][BLOCK_FRAMES * 2];
 static int        g_block;
 static CRITICAL_SECTION g_lock;
-static Voice      g_voices[MAX_VOICES];
-static float      g_volume = 0.8f;
 static HANDLE     g_thread;
 static volatile LONG g_running;
-static HANDLE     g_ready;
+#define LOCK()   EnterCriticalSection(&g_lock)
+#define UNLOCK() LeaveCriticalSection(&g_lock)
+#elif defined(__ANDROID__)
+static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+static AAudioStream   *g_stream;
+#define LOCK()   pthread_mutex_lock(&g_lock)
+#define UNLOCK() pthread_mutex_unlock(&g_lock)
+#else
+#define LOCK()   ((void)0)
+#define UNLOCK() ((void)0)
+#endif
 
 static float voice_sample(Voice *v) {
     float t = (float)v->pos / (float)v->length;
@@ -75,7 +95,7 @@ static float voice_sample(Voice *v) {
 static void mix_block(short *dst, int frames) {
     memset(dst, 0, (size_t)frames * 2 * sizeof(short));
 
-    EnterCriticalSection(&g_lock);
+    LOCK();
     for (int f = 0; f < frames; f++) {
         float acc = 0.0f;
         for (int i = 0; i < MAX_VOICES; i++) {
@@ -92,9 +112,10 @@ static void mix_block(short *dst, int frames) {
         dst[f * 2] = s;
         dst[f * 2 + 1] = s;
     }
-    LeaveCriticalSection(&g_lock);
+    UNLOCK();
 }
 
+#if defined(_WIN32)
 static DWORD WINAPI audio_thread(LPVOID unused) {
     (void)unused;
     while (InterlockedCompareExchange(&g_running, 1, 1)) {
@@ -126,6 +147,7 @@ void pa_audio_init(void) {
         g_out = NULL;
         return;
     }
+    g_audio_ok = 1;
 
     for (int i = 0; i < BLOCK_COUNT; i++) {
         memset(&g_hdr[i], 0, sizeof(WAVEHDR));
@@ -134,7 +156,6 @@ void pa_audio_init(void) {
         waveOutPrepareHeader(g_out, &g_hdr[i], sizeof(WAVEHDR));
     }
 
-    g_ready = NULL;
     InterlockedExchange(&g_running, 1);
     g_thread = CreateThread(NULL, 0, audio_thread, NULL, 0, NULL);
 }
@@ -151,14 +172,68 @@ void pa_audio_shutdown(void) {
     for (int i = 0; i < BLOCK_COUNT; i++) waveOutUnprepareHeader(g_out, &g_hdr[i], sizeof(WAVEHDR));
     waveOutClose(g_out);
     g_out = NULL;
+    g_audio_ok = 0;
     DeleteCriticalSection(&g_lock);
 }
+
+void pa_audio_pause(int paused) { (void)paused; }
+
+#elif defined(__ANDROID__)
+/* AAudio pulls blocks on its own real-time thread through this callback. */
+static aaudio_data_callback_result_t pull(AAudioStream *stream, void *user, void *data,
+                                          int32_t frames) {
+    (void)stream; (void)user;
+    mix_block((short *)data, frames);
+    return AAUDIO_CALLBACK_RESULT_CONTINUE;
+}
+
+void pa_audio_init(void) {
+    memset(g_voices, 0, sizeof(g_voices));
+    AAudioStreamBuilder *b = NULL;
+    if (AAudio_createStreamBuilder(&b) != AAUDIO_OK) return;
+    AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
+    AAudioStreamBuilder_setChannelCount(b, 2);
+    AAudioStreamBuilder_setSampleRate(b, SAMPLE_RATE);
+    AAudioStreamBuilder_setPerformanceMode(b, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    AAudioStreamBuilder_setDataCallback(b, pull, NULL);
+    aaudio_result_t r = AAudioStreamBuilder_openStream(b, &g_stream);
+    AAudioStreamBuilder_delete(b);
+    /* Same rule as the desktop: no device means silence, never a failure. */
+    if (r != AAUDIO_OK || !g_stream) { g_stream = NULL; return; }
+    if (AAudioStream_requestStart(g_stream) != AAUDIO_OK) {
+        AAudioStream_close(g_stream);
+        g_stream = NULL;
+        return;
+    }
+    g_audio_ok = 1;
+}
+
+void pa_audio_shutdown(void) {
+    if (!g_stream) return;
+    AAudioStream_requestStop(g_stream);
+    AAudioStream_close(g_stream);
+    g_stream = NULL;
+    g_audio_ok = 0;
+}
+
+/* Backgrounded apps must stop pulling audio; the stream is kept and resumed. */
+void pa_audio_pause(int paused) {
+    if (!g_stream) return;
+    if (paused) AAudioStream_requestPause(g_stream);
+    else        AAudioStream_requestStart(g_stream);
+}
+
+#else
+void pa_audio_init(void) { }
+void pa_audio_shutdown(void) { }
+void pa_audio_pause(int paused) { (void)paused; }
+#endif
 
 void pa_audio_set_volume(float v) { g_volume = pa_clamp01(v); }
 
 static void push_voice(int shape, float from, float to, float seconds, float gain) {
-    if (!g_out || g_volume <= 0.0f) return;
-    EnterCriticalSection(&g_lock);
+    if (!g_audio_ok || g_volume <= 0.0f) return;
+    LOCK();
     for (int i = 0; i < MAX_VOICES; i++) {
         if (g_voices[i].active) continue;
         Voice *v = &g_voices[i];
@@ -175,7 +250,7 @@ static void push_voice(int shape, float from, float to, float seconds, float gai
         v->noise_low = 0.0f;
         break;
     }
-    LeaveCriticalSection(&g_lock);
+    UNLOCK();
 }
 
 void pa_tone(float from_hz, float to_hz, float seconds, int shape, float gain) {
