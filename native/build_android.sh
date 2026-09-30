@@ -117,10 +117,14 @@ mkdir -p "lib/arm64-v8a" "lib/armeabi-v7a"
 cp "$BUILD/lib/arm64-v8a/libpocketarcade.so" "lib/arm64-v8a/"
 cp "$BUILD/lib/armeabi-v7a/libpocketarcade.so" "lib/armeabi-v7a/"
 
-# Rebuild the APK zip
+# Rebuild the APK zip — .so and resources.arsc MUST be STORED (uncompressed)
+# or Android refuses to install the APK.
 cd "$BUILD"
 rm -f unsigned.apk
-(cd "$APK_STAGE" && zip -q -r "$BUILD/unsigned.apk" .)
+(cd "$APK_STAGE" && \
+    zip -q -0 "$BUILD/unsigned.apk" resources.arsc && \
+    zip -q -0 -r "$BUILD/unsigned.apk" lib/ && \
+    zip -q -r "$BUILD/unsigned.apk" AndroidManifest.xml)
 
 # Zipalign
 "$ZIPALIGN" -f 4 "$BUILD/unsigned.apk" "$BUILD/aligned.apk"
