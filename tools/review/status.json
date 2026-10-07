@@ -11,7 +11,8 @@
   "Helix Drop re-pass merged; round 1 blind review started.",
   "Roller Splat re-pass merged; round 1 blind review started. Block Storm builder resumed on round 2.",
   "Helix Drop round 1: OURS WINS the blind comparison (slight). Confirmation round queued after the font upgrade.",
-  "Roller Splat round 1: reference wins clearly (was overwhelming). Builder resumed on round 2."
+  "Roller Splat round 1: reference wins clearly (was overwhelming). Builder resumed on round 2.",
+  "Typography upgrade merged into every game. Mob Clash native port merged; round 1 blind review started. Hub builder started."
  ],
  "engine": [
   {
@@ -21,13 +22,13 @@
   },
   {
    "name": "Typography",
-   "state": "building",
-   "note": "Filled TrueType display + UI faces replacing the stroke font."
+   "state": "done",
+   "note": "Filled vector text: Fredoka Bold display + Nunito ExtraBold UI (OFL), outlines, gradients, shadows. Live in every game."
   },
   {
    "name": "Hub & shell",
-   "state": "partial",
-   "note": "Pause sheet done. Home screen, meta progression and transitions still to rebuild."
+   "state": "building",
+   "note": "Pause sheet done. Builder rebuilding the home screen as a bright casual-game lobby with account level, gems, missions and streak."
   },
   {
    "name": "Android APK",
@@ -94,10 +95,10 @@
    "id": "mobclash",
    "name": "Mob Clash: Gate Siege",
    "ref": "Mob Control",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "",
-   "gap": "Native port in progress (was web-only)."
+   "gap": "Native port landed: cannon, gates, crowds, castle, champion, upgrades, win/fail. Round 1 blind review running."
   },
   {
    "id": "paper",
