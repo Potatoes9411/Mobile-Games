@@ -24,7 +24,8 @@
   "New hub lobby and meta layer merged; exe and APK rebuilt. Horde Arena r2, Void Muncher re-pass and Roller Splat r4 sent to blind critics.",
   "Roller Splat wins round 4 clearly; confirmation against the other reference set running. Horde Arena now loses only slightly; Void Muncher clearly (was overwhelming).",
   "Roller Splat split the reference sets (won set 2 clearly, lost set 1 slightly). New rule: a game is done only when one build beats both reference sets.",
-  "Block Storm DONE: the same build beat both Block Blast reference sets clearly."
+  "Block Storm DONE: the same build beat both Block Blast reference sets clearly.",
+  "Helix Drop DONE: the same build beat both Helix Jump reference sets clearly."
  ],
  "engine": [
   {
@@ -77,9 +78,9 @@
    "name": "Helix Drop",
    "ref": "Helix Jump",
    "phase": "won",
-   "round": 2,
-   "verdict": "Ours wins, clear (confirmed)",
-   "gap": "Won two independent blind rounds (slight, then clear against different reference shots). Done; re-checked after engine changes."
+   "round": 3,
+   "verdict": "Ours wins, clear against both reference sets (same build)",
+   "gap": "Done. Reference still has collectible ball skins and a leaderboard."
   },
   {
    "id": "splat",
