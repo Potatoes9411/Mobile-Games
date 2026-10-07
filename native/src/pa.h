@@ -133,21 +133,95 @@ void pa_line(PA_Canvas *c, float x0, float y0, float x1, float y1, float width, 
 
 /* ------------------------------------------------------------------ text -- */
 /*
- * The font is stroke defined rather than a bitmap, so it stays crisp at any
- * size and ships as a few hundred bytes of coordinates instead of an atlas.
+ * Text is real filled vector type: two embedded TrueType faces (SIL OFL, see
+ * src/third_party/), outlines flattened once per glyph and filled through the
+ * same antialiased non-zero polygon filler as the rest of the art, so it is
+ * crisp at any size and gradient paints work on it.
+ *
+ * Conventions shared by every call below:
+ *   size  cap height in pixels (an "H" is `size` tall).
+ *   y     the TOP of the capitals; the baseline sits at y + size. Descenders
+ *         (g, p, comma) hang below that.
+ *   x     pen start, centre or end, per the alignment.
+ *   text  UTF-8. Printable ASCII plus the middle dot (U+00B7), multiplication
+ *         sign (U+00D7) and bullet (U+2022); anything else advances a space.
  */
 typedef enum { PA_ALIGN_LEFT, PA_ALIGN_CENTER, PA_ALIGN_RIGHT } PA_Align;
 
+/** Face for `pa_text_ex`. DISPLAY is the heavy rounded face (Fredoka Bold)
+    for scores, titles and buttons; UI is the clean face (Nunito ExtraBold)
+    for small labels. */
+typedef enum { PA_FACE_UI = 0, PA_FACE_DISPLAY = 1 } PA_Face;
+
+/* The original three calls. They set text in capitals (lower case is folded,
+   as the old stroke font did), so existing all-caps layouts hold. */
+
+/** Advance width of `text` as `pa_text` lays it out (UI face). */
 float pa_text_width(const char *text, float size, float tracking);
 
-/** Chunky HUD numerals: a fat black outline under a fat fill, the treatment every
-    reference title uses for its score. `weight` scales the stroke; 1 is body
-    text, 2 to 2.5 is a score readout. */
+/** Display face: `fill` over a thick `outline` (the glyph dilated, not a
+    smear), with a hard drop in the outline colour beneath, the treatment the
+    reference titles use for scores and banners. `weight` scales the outline:
+    1 is a label, 2 to 2.5 a score readout. Passing the same colour for fill
+    and outline asks for heavier plain type: it is emboldened slightly, with
+    no outline ring and no drop. `pa_text_width` measures the UI face; to size
+    a pill around bold text, measure `pa_text_bold_style(...)` with
+    `pa_text_measure`. */
 void  pa_text_bold(PA_Canvas *c, const char *text, float x, float y, float size,
                    PA_Color fill, PA_Color outline, PA_Align align, float tracking,
                    float weight);
+/** UI face, plain fill. */
 void  pa_text(PA_Canvas *c, const char *text, float x, float y, float size,
               PA_Color col, PA_Align align, float tracking);
+
+/* Extended text. Start from `pa_text_style` and set what you need:
+
+     PA_TextStyle s = pa_text_style(PA_FACE_DISPLAY, PA_RGB(255, 255, 255));
+     s.fill_bottom = pa_hex(0xFFC21A);           // vertical gradient
+     s.outline = 4.0f;  s.outline_col = pa_hex(0x1C2040);
+     s.shadow_dy = 5.0f; s.shadow_col = PA_RGBA(0, 0, 0, 90); s.shadow_blur = 3.0f;
+     s.align = PA_ALIGN_CENTER;
+     pa_text_ex(c, "Level 12", cx, 80.0f, 40.0f, &s);
+
+   Fill and outline are composited as one group, so fading both alphas
+   together fades the text as a whole rather than showing the outline
+   through the fill. */
+typedef struct {
+    PA_Face   face;
+    PA_Color  fill;          /* flat fill, or the top colour of a gradient */
+    PA_Color  fill_bottom;   /* alpha 0: flat. Otherwise a vertical gradient
+                                from `fill` at the cap top to this colour at
+                                the baseline. */
+    const PA_Paint *paint;   /* optional, overrides fill/fill_bottom; in canvas
+                                coordinates like every other paint */
+    float     outline;       /* outline thickness in px outside the glyph; 0 none */
+    PA_Color  outline_col;
+    float     shadow_dx, shadow_dy;  /* drop shadow offset in px; both 0 = none */
+    PA_Color  shadow_col;
+    float     shadow_blur;   /* px of softening; 0 is a hard drop */
+    float     tracking;      /* extra px between glyphs (negative tightens) */
+    PA_Align  align;
+    int       caps;          /* non-zero folds a-z to capitals */
+} PA_TextStyle;
+
+/** Defaults: given face and fill, no outline, no shadow, left aligned, case
+    kept as written. */
+PA_TextStyle pa_text_style(PA_Face face, PA_Color fill);
+/** The exact style `pa_text_bold` draws with, to measure it or to start from
+    it (add a gradient, soften the drop, keep lower case). */
+PA_TextStyle pa_text_bold_style(float size, PA_Color fill, PA_Color outline,
+                                PA_Align align, float tracking, float weight);
+
+void  pa_text_ex(PA_Canvas *c, const char *text, float x, float y, float size,
+                 const PA_TextStyle *style);
+
+typedef struct {
+    float width;             /* advance width: what alignment uses */
+    float x0, y0, x1, y1;    /* inked box incl. outline and shadow, relative to
+                                the aligned pen start and the cap-top `y` */
+} PA_TextExtent;
+
+PA_TextExtent pa_text_measure(const char *text, float size, const PA_TextStyle *style);
 
 /* ----------------------------------------------------------------- input -- */
 typedef enum {
