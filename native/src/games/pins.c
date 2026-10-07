@@ -23,7 +23,7 @@
 
 #define DW 540.0f
 #define DH 780.0f
-#define BR 4.7f              /* ball radius */
+#define BR 5.6f              /* ball radius */
 #define BOMB_R 17.0f
 #define WALL_R 7.5f          /* half the glass tube thickness */
 #define PIN_R 3.9f
@@ -49,7 +49,8 @@ typedef struct {
     float x, y, px, py, vx, vy, r;
     float flash;             /* colour-change pop, counts down */
     float fuse;              /* bombs: >0 once lit */
-    unsigned char kind, col, alive, incup;
+    float nx, ny;            /* last wall contact normal this step */
+    unsigned char kind, col, alive, incup, hit, burnt;
 } Ball;
 
 typedef struct { float ax, ay, bx, by, r; } Seg;
@@ -75,7 +76,7 @@ static const PA_Color BALL_COLS[8] = {
     0xFFF2392C, 0xFFFFB81F, 0xFF3FD35A, 0xFF2E9BF0,
     0xFFF25CB4, 0xFF9B5CF0, 0xFFFF7A1A, 0xFF1FD3B6
 };
-#define GREY_COL  0xFFC9CCD0
+#define GREY_COL  0xFFBDBDBD
 #define PIN_COL   0xFF1E7FD6
 #define TUBE_COL  0xFFDCDEE0
 #define TUBE_EDGE 0xFF9DA2A8
@@ -86,6 +87,7 @@ static const PA_Color BALL_COLS[8] = {
      V x y ... Z       glass polyline, corners rounded; its outline is tinted
      W x y ... Z       glass polyline with no tint (dividers, ledges, pegs)
      F x y ... Z       tint only: the interior of a vessel built from pieces
+     T kind n x y ... Z  n balls scattered inside a polygon
      P tx ty hx hy     pin: tip inside the glass, handle (ring) outside
      B kind x y w h n  n balls packed into the box (0 coloured, 1 grey)
      K x y             a bomb
@@ -104,303 +106,312 @@ static const PA_Color BALL_COLS[8] = {
 #define S_ 8
 #define X_ 9
 #define F_ 10
+#define T_ 11
 #define E_ 0
 #define Z_ 9999
 
 /* The bottle neck most levels end in: two tube ends over the cup. */
-#define NECK_L 240,560
-#define NECK_R 300,560
+#define NECK_L 236,560
+#define NECK_R 304,560
 
 /* 1: one pin, the tutorial */
 static const float LV01[] = {
-    V_, NECK_L, 240,500, 135,410, 135,40, 405,40, 405,410, 300,500, NECK_R, Z_,
-    P_, 133,215, 436,215,
-    B_, 0, 141,95,258,114, 210,
-    G_, 135, S_, 1, 0, E_
+    V_, NECK_L, 236,500, 100,410, 100,40, 370,40, 370,410, 304,500, NECK_R, Z_,
+    P_, 98,215, 402,215,
+    B_, 0, 106,95,258,114, 200,
+    G_, 100, S_, 1, 0, E_
 };
 
-/* 2: two floors, either order */
+/* 2: a pin on the diagonal - the pile rides a 45 degree floor */
 static const float LV02[] = {
-    V_, NECK_L, 240,500, 130,410, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    P_, 412,150, 95,150,
-    P_, 128,300, 445,300,
-    B_, 0, 136,50,268,94, 150,
-    B_, 0, 136,200,268,94, 150,
-    G_, 125, S_, 2, 1, 0, E_
+    V_, NECK_L, 236,500, 120,400, 120,40, 430,40, 430,400, 304,500, NECK_R, Z_,
+    P_, 426,350, 106,30,
+    T_, 0, 200, 156,48, 422,48, 422,312, Z_,
+    G_, 100, S_, 1, 0, E_
 };
 
-/* 3: grey balls - colour them before they drop */
+/* 3: pegs - the oddly satisfying one */
 static const float LV03[] = {
-    V_, NECK_L, 240,500, 130,410, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    P_, 128,170, 445,170,
-    P_, 412,330, 95,330,
-    B_, 0, 136,60,268,104, 130,
-    B_, 1, 136,220,268,104, 150,
-    G_, 145, S_, 2, 0, 1, E_
-};
-
-/* 4: a pin as a wall between grey and colour */
-static const float LV04[] = {
-    V_, NECK_L, 240,500, 100,400, 100,40, 440,40, 440,400, 300,500, NECK_R, Z_,
-    P_, 270,326, 270,16,
-    P_, 273,332, 84,332,
-    P_, 267,332, 456,332,
-    B_, 1, 106,120,154,206, 150,
-    B_, 0, 280,120,154,206, 150,
-    G_, 138, S_, 3, 0, 1, 2, X_, 3, 1, 0, 2, E_
-};
-
-/* 5: pegs - the oddly satisfying one */
-static const float LV05[] = {
-    V_, NECK_L, 240,500, 130,410, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
+    V_, NECK_L, 236,500, 130,410, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
     P_, 412,130, 95,130,
-    B_, 0, 136,40,268,84, 210,
+    B_, 0, 136,40,268,84, 170,
     W_, 175,195, 175,215, Z_, W_, 235,195, 235,215, Z_, W_, 295,195, 295,215, Z_, W_, 355,195, 355,215, Z_,
     W_, 205,255, 205,275, Z_, W_, 265,255, 265,275, Z_, W_, 325,255, 325,275, Z_, W_, 385,255, 385,275, Z_,
     W_, 175,315, 175,335, Z_, W_, 235,315, 235,335, Z_, W_, 295,315, 295,335, Z_, W_, 355,315, 355,335, Z_,
     W_, 205,375, 205,395, Z_, W_, 265,375, 265,395, Z_, W_, 325,375, 325,395, Z_,
-    G_, 138, S_, 1, 0, E_
+    G_, 100, S_, 1, 0, E_
 };
 
-/* 6: careful with the bomb */
+/* 4: the long way round - an offset L of glass, grey waiting in the drop */
+static const float LV04[] = {
+    V_, 356,560, 356,290, 80,250, 80,120, 424,120, 424,560, Z_,
+    P_, 230,272, 230,86,
+    P_, 352,480, 452,480,
+    B_, 0, 88,128,136,112, 110,
+    B_, 1, 364,320,52,150, 45,
+    C_, 390,
+    G_, 95, S_, 2, 0, 1, X_, 2, 1, 0, E_
+};
+
+/* 5: the leaning vessel, a pin through the middle */
+static const float LV05[] = {
+    V_, NECK_L, 236,500, 110,330, 100,250, 360,110, 430,130, 420,320, 304,500, NECK_R, Z_,
+    P_, 106,320, 455,320,
+    P_, 300,316, 300,108,
+    W_, 300,262, 420,232, Z_,
+    B_, 1, 116,240,180,74, 90,
+    B_, 0, 306,130,108,96, 70,
+    G_, 95, S_, 2, 1, 0, E_
+};
+
+/* 6: twin flasks over a shared hold */
 static const float LV06[] = {
-    V_, NECK_L, 240,500, 100,400, 100,40, 440,40, 440,400, 300,500, NECK_R, Z_,
+    V_, NECK_L, 236,480, 100,330, 100,60, 250,60, 250,240, 290,240, 290,60, 440,60, 440,330, 304,480, NECK_R, Z_,
+    P_, 256,250, 84,250,
+    P_, 284,250, 456,250,
+    P_, 144,380, 452,380,
+    B_, 1, 108,90,134,154, 100,
+    B_, 0, 298,90,134,154, 100,
+    G_, 105, S_, 3, 0, 1, 2, X_, 3, 2, 0, 1, E_
+};
+
+/* 7: bombs on top - drain the balls out from under them */
+static const float LV07[] = {
+    V_, NECK_L, 236,500, 130,410, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    P_, 128,170, 445,170,
+    P_, 412,330, 95,330,
+    K_, 200,140, K_, 270,130, K_, 340,140,
+    B_, 0, 136,200,268,124, 190,
+    G_, 105, S_, 1, 1, X_, 2, 0, 1, E_
+};
+
+/* 8: careful with the bomb */
+static const float LV08[] = {
+    V_, NECK_L, 236,500, 100,400, 100,40, 440,40, 440,400, 304,500, NECK_R, Z_,
     W_, 270,60, 270,294, Z_,
     P_, 274,300, 84,300,
     P_, 266,300, 456,300,
     K_, 185,270,
-    B_, 0, 280,110,154,184, 220,
-    G_, 145, S_, 1, 1, X_, 1, 0, E_
+    B_, 0, 280,100,154,194, 200,
+    G_, 105, S_, 1, 1, X_, 1, 0, E_
 };
 
-/* 7: send the bomb out of the side door first */
-static const float LV07[] = {
-    F_, NECK_L, 240,500, 130,420, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    W_, 62,326, 130,286, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    W_, NECK_L, 240,500, 130,420, 130,372, 70,412, Z_,
+/* 9: a pin as a wall between grey and colour */
+static const float LV09[] = {
+    V_, NECK_L, 236,500, 100,400, 100,40, 440,40, 440,400, 304,500, NECK_R, Z_,
+    P_, 270,326, 270,16,
+    P_, 273,332, 84,332,
+    P_, 267,332, 456,332,
+    B_, 1, 106,120,154,206, 100,
+    B_, 0, 280,120,154,206, 100,
+    G_, 105, S_, 3, 0, 1, 2, X_, 3, 1, 0, 2, E_
+};
+
+/* 10: send the bomb out of the side door first */
+static const float LV10[] = {
+    F_, NECK_L, 236,500, 130,420, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    W_, 62,326, 130,286, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    W_, NECK_L, 236,500, 130,420, 130,372, 70,412, Z_,
     P_, 128,170, 445,170,
     P_, 100,396, 100,272,
     P_, 134,376, 450,256,
     K_, 180,320,
-    B_, 0, 136,60,268,104, 220,
-    G_, 140, S_, 3, 1, 2, 0, X_, 3, 0, 1, 2, E_
+    B_, 0, 136,50,268,114, 200,
+    G_, 100, S_, 3, 1, 2, 0, X_, 3, 0, 1, 2, E_
 };
 
-/* 8: bombs on top - drain the balls out from under them */
-static const float LV08[] = {
-    V_, NECK_L, 240,500, 130,410, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    P_, 128,170, 445,170,
-    P_, 412,330, 95,330,
-    K_, 200,140, K_, 270,130, K_, 340,140,
-    B_, 0, 136,220,268,104, 190,
-    G_, 130, S_, 1, 1, X_, 2, 0, 1, E_
-};
-
-/* 9: a pocket of colour over a sea of grey */
-static const float LV09[] = {
-    V_, NECK_L, 240,500, 100,400, 100,40, 440,40, 440,400, 300,500, NECK_R, Z_,
+/* 11: a pocket of colour over a sea of grey */
+static const float LV11[] = {
+    V_, NECK_L, 236,500, 100,400, 100,40, 440,40, 440,400, 304,500, NECK_R, Z_,
     W_, 220,46, 220,150, Z_,
     P_, 226,154, 84,154,
     P_, 102,330, 456,330,
     B_, 0, 106,56,108,92, 40,
-    B_, 1, 106,170,328,154, 250,
-    G_, 140, S_, 2, 0, 1, E_
+    B_, 1, 106,170,328,154, 160,
+    G_, 100, S_, 2, 0, 1, E_
 };
 
-/* 10: colour splits over two grey wells */
-static const float LV10[] = {
-    V_, NECK_L, 240,500, 100,400, 100,40, 440,40, 440,400, 300,500, NECK_R, Z_,
+/* 12: two floors, either order */
+static const float LV12[] = {
+    V_, NECK_L, 236,500, 130,410, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    P_, 412,150, 95,150,
+    P_, 128,300, 445,300,
+    B_, 0, 136,50,268,94, 100,
+    B_, 0, 136,200,268,94, 100,
+    G_, 105, S_, 2, 1, 0, E_
+};
+
+/* 13: grey balls - colour them before they drop */
+static const float LV13[] = {
+    V_, NECK_L, 236,500, 130,410, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    P_, 128,170, 445,170,
+    P_, 412,330, 95,330,
+    B_, 0, 136,60,268,104, 90,
+    B_, 1, 136,220,268,104, 110,
+    G_, 105, S_, 2, 0, 1, E_
+};
+
+/* 14: colour splits over two grey wells */
+static const float LV14[] = {
+    V_, NECK_L, 236,500, 100,400, 100,40, 440,40, 440,400, 304,500, NECK_R, Z_,
     P_, 98,150, 456,150,
-    B_, 0, 106,50,328,94, 200,
+    B_, 0, 106,50,328,94, 150,
     W_, 270,190, 270,326, Z_,
     P_, 274,330, 84,330,
     P_, 266,330, 456,330,
-    B_, 1, 106,230,158,94, 100,
-    B_, 1, 282,230,152,94, 100,
-    G_, 140, S_, 3, 0, 1, 2, X_, 3, 1, 0, 2, E_
+    B_, 1, 106,230,158,94, 70,
+    B_, 1, 282,230,152,94, 70,
+    G_, 105, S_, 3, 0, 1, 2, X_, 3, 1, 0, 2, E_
 };
 
-/* 11: dump the grey and the bomb out of the side door */
-static const float LV11[] = {
-    F_, NECK_L, 240,500, 130,420, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    W_, 62,326, 130,286, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    W_, NECK_L, 240,500, 130,420, 130,372, 70,412, Z_,
+/* 15: dump the grey and the bomb out of the side door */
+static const float LV15[] = {
+    F_, NECK_L, 236,500, 130,420, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    W_, 62,326, 130,286, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    W_, NECK_L, 236,500, 130,420, 130,372, 70,412, Z_,
     P_, 128,170, 445,170,
     P_, 100,396, 100,272,
     P_, 134,376, 450,256,
-    B_, 1, 150,220,150,70, 70,
+    B_, 1, 150,220,150,70, 60,
     K_, 210,190,
-    B_, 0, 136,60,268,104, 220,
-    G_, 140, S_, 3, 1, 2, 0, X_, 3, 2, 0, 1, E_
+    B_, 0, 136,50,268,114, 160,
+    G_, 100, S_, 3, 1, 2, 0, X_, 3, 2, 0, 1, E_
 };
 
-/* 12: mix two chambers in the hold before opening the floor */
-static const float LV12[] = {
-    V_, NECK_L, 240,500, 100,410, 100,40, 440,40, 440,410, 300,500, NECK_R, Z_,
+/* 16: mix two chambers in the hold before opening the floor */
+static const float LV16[] = {
+    V_, NECK_L, 236,500, 100,410, 100,40, 440,40, 440,410, 304,500, NECK_R, Z_,
     W_, 270,46, 270,196, Z_,
     P_, 274,200, 84,200,
     P_, 266,200, 456,200,
     P_, 98,370, 456,370,
-    B_, 1, 106,60,158,134, 140,
-    B_, 0, 282,60,152,134, 140,
-    G_, 140, S_, 3, 0, 1, 2, X_, 3, 2, 0, 1, E_
+    B_, 1, 106,60,158,134, 100,
+    B_, 0, 282,60,152,134, 100,
+    G_, 105, S_, 3, 0, 1, 2, X_, 3, 2, 0, 1, E_
 };
 
-/* 13: grey over pegs */
-static const float LV13[] = {
-    V_, NECK_L, 240,500, 130,410, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
+/* 17: grey over pegs */
+static const float LV17[] = {
+    V_, NECK_L, 236,500, 130,410, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
     P_, 412,120, 95,120,
-    B_, 0, 136,40,268,74, 110,
+    B_, 0, 136,40,268,74, 80,
     P_, 128,230, 445,230,
-    B_, 1, 136,130,268,94, 150,
+    B_, 1, 136,130,268,94, 110,
     W_, 175,285, 175,300, Z_, W_, 235,285, 235,300, Z_, W_, 295,285, 295,300, Z_, W_, 355,285, 355,300, Z_,
     W_, 205,340, 205,355, Z_, W_, 265,340, 265,355, Z_, W_, 325,340, 325,355, Z_, W_, 385,340, 385,355, Z_,
     W_, 235,395, 235,410, Z_, W_, 295,395, 295,410, Z_,
-    G_, 145, S_, 2, 0, 1, E_
+    G_, 105, S_, 2, 0, 1, E_
 };
 
-/* 14: three floors, top down */
-static const float LV14[] = {
-    V_, NECK_L, 240,500, 130,410, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
+/* 18: three floors, top down */
+static const float LV18[] = {
+    V_, NECK_L, 236,500, 130,410, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
     P_, 128,140, 445,140,
     P_, 412,260, 95,260,
     P_, 128,380, 445,380,
-    B_, 0, 136,50,268,84, 110,
-    B_, 1, 136,170,268,84, 100,
-    B_, 1, 136,290,268,84, 100,
-    G_, 145, S_, 3, 0, 1, 2, X_, 3, 2, 1, 0, E_
+    B_, 0, 136,50,268,84, 70,
+    B_, 1, 136,170,268,84, 65,
+    B_, 1, 136,290,268,84, 65,
+    G_, 105, S_, 3, 0, 1, 2, X_, 3, 2, 1, 0, E_
 };
 
-/* 15: twin flasks over a shared hold */
-static const float LV15[] = {
-    V_, NECK_L, 240,480, 100,330, 100,60, 250,60, 250,240, 290,240, 290,60, 440,60, 440,330, 300,480, NECK_R, Z_,
-    P_, 256,250, 84,250,
-    P_, 284,250, 456,250,
-    P_, 144,380, 452,380,
-    B_, 1, 108,100,134,144, 140,
-    B_, 0, 298,100,134,144, 140,
-    G_, 145, S_, 3, 0, 1, 2, X_, 3, 2, 0, 1, E_
-};
-
-/* 16: the leaning vessel, a pin through the middle */
-static const float LV16[] = {
-    V_, NECK_L, 240,500, 110,330, 100,250, 360,110, 430,130, 420,320, 300,500, NECK_R, Z_,
-    P_, 106,320, 455,320,
-    P_, 300,316, 300,108,
-    W_, 300,262, 420,232, Z_,
-    B_, 1, 116,250,180,64, 120,
-    B_, 0, 306,140,108,86, 110,
-    G_, 145, S_, 2, 1, 0, E_
-};
-
-/* 17: bombs above, grey below, colour in the middle */
-static const float LV17[] = {
-    V_, NECK_L, 240,500, 130,410, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
+/* 19: bombs above, grey below, colour in the middle */
+static const float LV19[] = {
+    V_, NECK_L, 236,500, 130,410, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
     P_, 128,130, 445,130,
     P_, 412,250, 95,250,
     P_, 128,380, 445,380,
     K_, 190,100, K_, 270,96, K_, 350,100,
-    B_, 0, 136,150,268,94, 120,
-    B_, 1, 136,300,268,74, 85,
-    G_, 140, S_, 2, 1, 2, X_, 3, 0, 1, 2, E_
+    B_, 0, 136,150,268,94, 110,
+    B_, 1, 136,300,268,74, 70,
+    G_, 105, S_, 2, 1, 2, X_, 3, 0, 1, 2, E_
 };
 
-/* 18: zigzag - colour flows over the grey before the gate opens */
-static const float LV18[] = {
-    V_, NECK_L, 240,500, 130,410, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
+/* 20: zigzag - colour flows over the grey before the gate opens */
+static const float LV20[] = {
+    V_, NECK_L, 236,500, 130,410, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
     P_, 412,120, 95,120,
-    B_, 0, 136,40,268,74, 120,
+    B_, 0, 136,40,268,74, 110,
     W_, 130,200, 330,250, Z_,
     W_, 410,300, 210,350, Z_,
     P_, 212,352, 98,262,
-    B_, 1, 220,240,110,50, 60,
-    G_, 128, S_, 2, 0, 1, E_
+    B_, 1, 220,240,110,50, 45,
+    G_, 95, S_, 2, 0, 1, E_
 };
 
-/* 19: colour on the left, a bomb on the right, grey in the hold */
-static const float LV19[] = {
-    V_, NECK_L, 240,500, 100,410, 100,40, 440,40, 440,410, 300,500, NECK_R, Z_,
+/* 21: colour on the left, a bomb on the right, grey in the hold */
+static const float LV21[] = {
+    V_, NECK_L, 236,500, 100,410, 100,40, 440,40, 440,410, 304,500, NECK_R, Z_,
     W_, 270,46, 270,186, Z_,
     P_, 274,190, 84,190,
     P_, 266,190, 456,190,
     P_, 98,370, 456,370,
-    B_, 0, 106,70,158,114, 110,
+    B_, 0, 106,60,158,124, 100,
     K_, 355,160,
-    B_, 1, 106,290,328,74, 110,
-    G_, 135, S_, 2, 0, 2, X_, 3, 1, 0, 2, E_
+    B_, 1, 106,280,328,84, 100,
+    G_, 105, S_, 2, 0, 2, X_, 3, 1, 0, 2, E_
 };
 
-/* 20: the tower - colour, grey, colour, grey */
-static const float LV20[] = {
-    V_, NECK_L, 240,500, 180,430, 180,40, 360,40, 360,430, 300,500, NECK_R, Z_,
+/* 22: the tower - colour, grey, colour, grey */
+static const float LV22[] = {
+    V_, NECK_L, 236,500, 180,430, 180,40, 360,40, 360,430, 304,500, NECK_R, Z_,
     P_, 178,130, 395,130,
     P_, 362,230, 145,230,
     P_, 178,330, 395,330,
     P_, 362,420, 145,420,
-    B_, 0, 186,46,168,78, 70,
-    B_, 1, 186,150,168,74, 70,
-    B_, 0, 186,250,168,74, 70,
-    B_, 1, 186,350,168,64, 70,
-    G_, 145, S_, 4, 0, 1, 2, 3, X_, 4, 3, 2, 1, 0, E_
+    B_, 0, 186,46,168,78, 55,
+    B_, 1, 186,150,168,74, 55,
+    B_, 0, 186,250,168,74, 55,
+    B_, 1, 186,350,168,64, 55,
+    G_, 105, S_, 4, 0, 1, 2, 3, X_, 4, 3, 2, 1, 0, E_
 };
 
-/* 21: twin flasks, one of them hiding a bomb */
-static const float LV21[] = {
-    V_, NECK_L, 240,480, 100,330, 100,60, 250,60, 250,240, 290,240, 290,60, 440,60, 440,330, 300,480, NECK_R, Z_,
+/* 23: twin flasks, one of them hiding a bomb */
+static const float LV23[] = {
+    V_, NECK_L, 236,480, 100,330, 100,60, 250,60, 250,240, 290,240, 290,60, 440,60, 440,330, 304,480, NECK_R, Z_,
     P_, 256,250, 84,250,
     P_, 284,250, 456,250,
     P_, 144,380, 452,380,
-    B_, 0, 108,100,134,144, 110,
+    B_, 0, 108,90,134,154, 100,
     K_, 380,220,
-    B_, 1, 130,300,280,74, 110,
-    G_, 145, S_, 2, 0, 2, X_, 3, 1, 0, 2, E_
+    B_, 1, 130,290,280,84, 100,
+    G_, 105, S_, 2, 0, 2, X_, 3, 1, 0, 2, E_
 };
 
-/* 22: the bomb goes out the door before anything falls on it */
-static const float LV22[] = {
-    F_, NECK_L, 240,500, 130,420, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    W_, 62,326, 130,286, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    W_, NECK_L, 240,500, 130,420, 130,372, 70,412, Z_,
+/* 24: the bomb goes out the door before anything falls on it */
+static const float LV24[] = {
+    F_, NECK_L, 236,500, 130,420, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    W_, 62,326, 130,286, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    W_, NECK_L, 236,500, 130,420, 130,372, 70,412, Z_,
     P_, 128,110, 445,110,
     P_, 412,200, 95,200,
     P_, 100,396, 100,272,
     P_, 134,376, 450,256,
-    B_, 0, 136,46,268,58, 110,
-    B_, 1, 136,130,268,64, 100,
-    K_, 220,315,
-    G_, 140, S_, 4, 2, 3, 0, 1, X_, 4, 0, 1, 2, 3, E_
+    B_, 0, 136,46,268,58, 100,
+    B_, 1, 136,130,268,64, 90,
+    K_, 180,320,
+    G_, 100, S_, 4, 2, 3, 0, 1, X_, 4, 0, 1, 2, 3, E_
 };
 
-/* 23: the long way round */
-static const float LV23[] = {
-    V_, 360,560, 360,290, 90,250, 90,150, 420,150, 420,560, Z_,
-    P_, 240,276, 240,118,
-    P_, 356,480, 452,480,
-    B_, 0, 98,158,136,87, 120,
-    B_, 1, 366,330,48,144, 60,
-    C_, 390,
-    G_, 135, S_, 2, 0, 1, X_, 2, 1, 0, E_
-};
-
-/* 24: everything at once */
-static const float LV24[] = {
-    F_, NECK_L, 240,500, 130,420, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    W_, 62,326, 130,286, 130,40, 410,40, 410,410, 300,500, NECK_R, Z_,
-    W_, NECK_L, 240,500, 130,420, 130,372, 70,412, Z_,
+/* 25: everything at once */
+static const float LV25[] = {
+    F_, NECK_L, 236,500, 130,420, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    W_, 62,326, 130,286, 130,40, 410,40, 410,410, 304,500, NECK_R, Z_,
+    W_, NECK_L, 236,500, 130,420, 130,372, 70,412, Z_,
     W_, 270,46, 270,146, Z_,
     P_, 274,150, 98,150,
     P_, 266,150, 442,150,
     P_, 100,396, 100,272,
     P_, 134,376, 450,256,
     P_, 128,405, 445,405,
-    B_, 0, 136,50,128,94, 95,
-    B_, 1, 276,50,128,94, 90,
+    B_, 0, 136,50,128,94, 85,
+    B_, 1, 276,50,128,94, 85,
     K_, 200,320,
-    G_, 118, S_, 5, 2, 3, 0, 1, 4, X_, 3, 0, 1, 4, E_
+    G_, 95, S_, 5, 2, 3, 0, 1, 4, X_, 3, 0, 1, 4, E_
 };
 
-static const float *const LEVELS[] = { LV01, LV02, LV03, LV04, LV05, LV06, LV07, LV08, LV09, LV10, LV11, LV12,
-                                       LV13, LV14, LV15, LV16, LV17, LV18, LV19, LV20, LV21, LV22, LV23, LV24 };
+static const float *const LEVELS[] = { LV01, LV02, LV03, LV04, LV05, LV06, LV07, LV08, LV09, LV10, LV11, LV12, LV13,
+                                       LV14, LV15, LV16, LV17, LV18, LV19, LV20, LV21, LV22, LV23, LV24, LV25 };
 #define LEVEL_COUNT ((int)(sizeof(LEVELS) / sizeof(LEVELS[0])))
 
 /* ------------------------------------------------------------------ state -- */
@@ -427,7 +438,8 @@ static float g_state_t, g_time, g_goal_t, g_settle_t, g_shake;
 static float g_cup_pulse, g_cup_bounce;
 static float g_tick_cd, g_pop_cd;
 static int   g_pulls;
-static float g_boom_t;        /* a bomb went off: the fail card follows the blast */
+static float g_boom_t;
+static float g_kick;          /* blast shake, 0.15 s */        /* a bomb went off: the fail card follows the blast */
 static float g_intro;         /* level-in fade, also gates sounds */
 static int   g_live;          /* 0 while presettling: no sound, no particles */
 static float g_hint_t;        /* >0 while the hint hand is showing */
@@ -439,6 +451,7 @@ static float g_cx, g_rim, g_bot, g_hw;
 /* the hand: tutorial, hint button and demo all drive the same pointer */
 static float g_hand_x, g_hand_y, g_hand_press;
 static int   g_hand_target;   /* pin index or -1 */
+static float g_tug;           /* tutorial: how far the hand tugs its pin, visual only */
 
 /* demo */
 static int   g_demo, g_demo_wrong, g_demo_step;
@@ -470,9 +483,9 @@ static int layout_for(int level) {
     return first + (level - LEVEL_COUNT) % span;
 }
 
-static void spawn_part(float x, float y, float vx, float vy, PA_Color col, int kind,
+static Part *spawn_part(float x, float y, float vx, float vy, PA_Color col, int kind,
                        float size, float life, int screen) {
-    if (g_npart >= MAXPART || !g_live) return;
+    if (g_npart >= MAXPART || !g_live) return NULL;
     Part *p = &g_part[g_npart++];
     memset(p, 0, sizeof(*p));
     p->x = x; p->y = y; p->vx = vx; p->vy = vy; p->col = col; p->kind = (unsigned char)kind;
@@ -480,6 +493,7 @@ static void spawn_part(float x, float y, float vx, float vy, PA_Color col, int k
     p->life = p->max = life; p->screen = (unsigned char)screen;
     p->rot = pa_rng_range(&g_rng, 0, PA_TAU);
     p->vr = pa_rng_range(&g_rng, -9.0f, 9.0f);
+    return p;
 }
 
 /* ------------------------------------------------------------- level load -- */
@@ -525,32 +539,66 @@ static void add_ball(int kind, float x, float y, float r) {
     b->alive = 1;
 }
 
-static void add_balls(int kind, float x, float y, float w, float h, int n) {
-    /* Hex packing from the bottom of the box upward, nudged a little so the
-       pile does not start as a perfect lattice. */
-    float d = BR * 2.0f + 0.5f;
-    float rowh = d * 0.866f;
-    int placed = 0;
-    (void)h;
-    for (int row = 0; placed < n && row < 300; row++) {
-        float yy = y + h - BR - (float)row * rowh;
-        float x0 = x + BR + ((row & 1) ? d * 0.5f : 0.0f);
-        for (float xx = x0; xx <= x + w - BR + 0.01f && placed < n; xx += d) {
-            add_ball(kind, mx(xx + pa_rng_range(&g_rng, -0.9f, 0.9f)), yy + pa_rng_range(&g_rng, -0.6f, 0.6f),
-                     BR * pa_rng_range(&g_rng, 0.92f, 1.07f));
-            placed++;
+/* Fill a polygon (design coordinates, before mirroring) with n balls. Slots
+   come off a loose hex lattice, are ranked bottom-up with a random lift so
+   the top of the pile comes out ragged, and each one is jittered by up to
+   0.3 of a ball, so a level never starts as a packed rectangle. */
+static int point_in_poly(const PA_Vec2 *p, int n, float x, float y) {
+    int in = 0;
+    for (int i = 0, j = n - 1; i < n; j = i++)
+        if (((p[i].y > y) != (p[j].y > y)) &&
+            (x < (p[j].x - p[i].x) * (y - p[i].y) / (p[j].y - p[i].y) + p[i].x)) in = !in;
+    return in;
+}
+
+static void add_balls_poly(int kind, const PA_Vec2 *poly, int np, int n) {
+    static float slot_x[2400], slot_y[2400], slot_k[2400];
+    float d = BR * 2.06f, rowh = d * 0.88f;
+    float lo = 1e9f, hi = -1e9f, top = 1e9f, bot = -1e9f;
+    for (int i = 0; i < np; i++) {
+        if (poly[i].x < lo) lo = poly[i].x;
+        if (poly[i].x > hi) hi = poly[i].x;
+        if (poly[i].y < top) top = poly[i].y;
+        if (poly[i].y > bot) bot = poly[i].y;
+    }
+    int ns = 0;
+    for (int row = 0; ns < 2400; row++) {
+        float yy = bot - BR - (float)row * rowh;
+        if (yy < top + BR * 0.5f) break;
+        for (float xx = lo + BR + ((row & 1) ? d * 0.5f : 0.0f); xx <= hi - BR && ns < 2400; xx += d) {
+            if (!point_in_poly(poly, np, xx, yy)) continue;
+            slot_x[ns] = xx; slot_y[ns] = yy;
+            slot_k[ns] = (float)row + pa_rng_next(&g_rng) * 2.6f;
+            ns++;
         }
+    }
+    for (int placed = 0; placed < n && placed < ns; placed++) {
+        int best = placed;
+        for (int i = placed + 1; i < ns; i++) if (slot_k[i] < slot_k[best]) best = i;
+        float tx = slot_x[best], ty = slot_y[best], tk = slot_k[best];
+        slot_x[best] = slot_x[placed]; slot_y[best] = slot_y[placed]; slot_k[best] = slot_k[placed];
+        slot_x[placed] = tx; slot_y[placed] = ty; slot_k[placed] = tk;
+        add_ball(kind, mx(tx + pa_rng_range(&g_rng, -0.3f, 0.3f) * d), ty + pa_rng_range(&g_rng, -0.15f, 0.15f) * d,
+                 BR * pa_rng_range(&g_rng, 0.94f, 1.06f));
     }
 }
 
+static void add_balls(int kind, float x, float y, float w, float h, int n) {
+    PA_Vec2 box[4] = { { x, y }, { x + w, y }, { x + w, y + h }, { x, y + h } };
+    add_balls_poly(kind, box, 4, n);
+}
+
 static void build_cup(void) {
-    g_rim = 600.0f; g_bot = 704.0f; g_hw = 52.0f;
+    g_rim = 600.0f; g_bot = 704.0f; g_hw = 58.0f;
     add_seg(g_cx - g_hw, g_rim - 2.0f, g_cx - g_hw, g_bot, 4.0f);
     add_seg(g_cx - g_hw, g_bot, g_cx + g_hw, g_bot, 4.0f);
     add_seg(g_cx + g_hw, g_bot, g_cx + g_hw, g_rim - 2.0f, 4.0f);
 }
 
 static void presettle(float seconds);
+static void bank_stats(void);
+static int  g_run_pulls, g_run_greys, g_banked;
+static PA_Color g_pal[8];
 static void ring_pos(const Pin *p, float *x, float *y);
 
 static void load_level(int level) {
@@ -593,6 +641,14 @@ static void load_level(int level) {
             float x = s[i + 1], y = s[i + 2], w = s[i + 3], h = s[i + 4];
             add_balls(kind, x, y, w, h, (int)s[i + 5]);
             i += 6;
+        } else if (op == T_) {
+            int kind = (int)s[i], n = (int)s[i + 1];
+            i += 2;
+            PA_Vec2 poly[16];
+            int np = 0;
+            while (s[i] != Z_) { if (np < 16) { poly[np].x = s[i]; poly[np].y = s[i + 1]; np++; } i += 2; }
+            i++;
+            add_balls_poly(kind, poly, np, n);
         } else if (op == K_) {
             add_ball(BK_BOMB, mx(s[i]), s[i + 1], BOMB_R);
             i += 2;
@@ -615,9 +671,9 @@ static void load_level(int level) {
     g_count = 0; g_shown_pct = 0;
     g_state = ST_PLAY; g_state_t = 0; g_fail_reason = FAIL_NONE;
     g_goal_t = -1.0f; g_settle_t = 0; g_shake = 0; g_cup_pulse = g_cup_bounce = 0;
-    g_pulls = 0; g_boom_t = 0; g_intro = 0; g_hint_t = 0; g_time = 0;
+    g_pulls = 0; g_boom_t = 0; g_kick = 0; g_run_pulls = g_run_greys = 0; g_banked = 0; g_intro = 0; g_hint_t = 0; g_time = 0;
     g_demo_step = 0; g_demo_wait = 0.8f; g_demo_phase = 0;
-    g_hand_x = DW + 80.0f; g_hand_y = DH * 0.75f; g_hand_press = 0; g_hand_target = -1;
+    g_hand_x = DW + 80.0f; g_hand_y = DH * 0.75f; g_hand_press = 0; g_tug = 0; g_hand_target = -1;
     presettle(1.4f);
     if (level == 0 && g_npin > 0) {
         g_hint_t = 1e6f; g_hand_target = 0;
@@ -651,6 +707,7 @@ static void collide_capsule(Ball *b, float ax, float ay, float bx, float by, flo
     if (d < 1e-4f) { dx = 0; dy = -1; d = 1; }
     float push = (rr - d) / d;
     b->x += dx * push; b->y += dy * push;
+    b->nx = dx / d; b->ny = dy / d; b->hit = 1;
 }
 
 static void pin_points(const Pin *p, float *ax, float *ay, float *bx, float *by) {
@@ -665,35 +722,37 @@ static void light_bomb(Ball *b) {
     if (g_live) pa_tone(1800, 2400, 0.12f, 2, 0.03f);
 }
 
+/* The blast: a 0.35-screen burst of red puffs that swell over 0.4 s, a short
+   hard shake, and every ball caught in it scorched grey for good. */
 static void explode(Ball *bomb) {
     bomb->alive = 0;
-    float R = 74.0f, push = 150.0f;
+    float R = 0.175f * VIEW_W, push = R * 1.7f;
     for (int i = 0; i < g_nb; i++) {
         Ball *b = &g_b[i];
         if (!b->alive) continue;
         float dx = b->x - bomb->x, dy = b->y - bomb->y;
         float d = sqrtf(dx * dx + dy * dy);
         if (b->kind == BK_BOMB) { if (d < R + 20.0f) b->fuse = b->fuse > 0 ? b->fuse : 0.08f; continue; }
-        if (d < R * 0.82f) {
-            b->alive = 0;
-            spawn_part(b->x, b->y, dx * 2.0f, dy * 2.0f - 60.0f, PA_RGB(150, 150, 154), 2, 3.5f, 0.9f, 0);
-        } else if (d < push) {
-            float k = (1.0f - d / push) * 820.0f / (d + 1.0f);
-            b->vx += dx * k; b->vy += dy * k - 120.0f * (1.0f - d / push);
+        if (d < R * 0.85f) {
+            b->kind = BK_GREY; b->burnt = 1; b->flash = 0.3f;
+        }
+        if (d < push) {
+            float k = (1.0f - d / push) * 900.0f / (d + 1.0f);
+            b->vx += dx * k; b->vy += dy * k - 140.0f * (1.0f - d / push);
         }
     }
-    for (int k = 0; k < 90; k++) {
-        float a = pa_rng_range(&g_rng, 0, PA_TAU), r = sqrtf(pa_rng_next(&g_rng)) * 62.0f;
-        float v = pa_rng_range(&g_rng, 20, 150);
-        spawn_part(bomb->x + cosf(a) * r, bomb->y + sinf(a) * r, cosf(a) * v, sinf(a) * v - 20.0f,
-                   pa_mix(pa_hex(0xC41208), pa_hex(0xF2381E), pa_rng_next(&g_rng)),
-                   4, pa_rng_range(&g_rng, 15, 30), pa_rng_range(&g_rng, 0.9f, 1.6f), 0);
+    for (int k = 0; k < 18; k++) {
+        float a = pa_rng_range(&g_rng, 0, PA_TAU), r = sqrtf(pa_rng_next(&g_rng)) * R * 0.5f;
+        Part *p = spawn_part(bomb->x + cosf(a) * r, bomb->y + sinf(a) * r, cosf(a) * 60.0f, sinf(a) * 60.0f - 15.0f,
+                             pa_mix(pa_hex(0xC81E1E), pa_hex(0xFF6B5B), pa_rng_next(&g_rng)),
+                             4, R * 0.20f, pa_rng_range(&g_rng, 0.9f, 1.15f), 0);
+        if (p) p->h = R * pa_rng_range(&g_rng, 0.40f, 0.55f);
     }
-    for (int k = 0; k < 14; k++)
-        spawn_part(bomb->x + pa_rng_range(&g_rng, -22, 22), bomb->y + pa_rng_range(&g_rng, -22, 22),
-                   pa_rng_range(&g_rng, -20, 20), pa_rng_range(&g_rng, -50, -10), PA_RGB(170, 170, 176), 2,
-                   pa_rng_range(&g_rng, 5, 9), pa_rng_range(&g_rng, 1.0f, 1.5f), 0);
-    g_shake = 0.6f;
+    for (int k = 0; k < 10; k++)
+        spawn_part(bomb->x + pa_rng_range(&g_rng, -18, 18), bomb->y + pa_rng_range(&g_rng, -18, 18),
+                   pa_rng_range(&g_rng, -25, 25), pa_rng_range(&g_rng, -60, -15), pa_hex(0xBDBDBD), 2,
+                   pa_rng_range(&g_rng, 6, 11), pa_rng_range(&g_rng, 1.0f, 1.5f), 0);
+    g_kick = 0.15f;
     if (g_live) {
         pa_sfx("boom");
         if (g_state == ST_PLAY && g_boom_t <= 0) g_boom_t = 1.1f;
@@ -708,9 +767,10 @@ static void contact(Ball *a, Ball *b) {
     Ball *c = a->kind == BK_GREY ? b : a;
     /* A ball that has only just turned cannot pass it on yet, so colour
        sweeps through a grey pile as a visible wave instead of in one step. */
-    if (c->flash > 0.30f - 0.035f) return;
+    if (c->flash > 0.30f - 0.035f || g->burnt) return;
     g->kind = BK_COL; g->col = (unsigned char)((c->col + 1 + pa_rng_int(&g_rng, 0, 6)) % 8); g->flash = 0.3f;
-    spawn_part(g->x, g->y, 0, 0, BALL_COLS[g->col], 3, BR, 0.25f, 0);
+    spawn_part(g->x, g->y, 0, 0, g_pal[g->col], 3, BR, 0.25f, 0);
+    g_run_greys++;
     if (g_live && g_pop_cd <= 0) { pa_tone(980, 1500, 0.04f, 0, 0.03f); g_pop_cd = 0.05f; }
 }
 
@@ -721,6 +781,7 @@ static void physics_step(float dt) {
         b->vy += GRAV * dt;
         b->px = b->x; b->py = b->y;
         b->x += b->vx * dt; b->y += b->vy * dt;
+        b->hit = 0;
         if (b->flash > 0) b->flash -= dt;
     }
 
@@ -799,6 +860,16 @@ static void physics_step(float dt) {
         Ball *b = &g_b[i];
         if (!b->alive) continue;
         float vx = (b->x - b->px) / dt, vy = (b->y - b->py) / dt;
+        if (b->hit) {
+            /* restitution 0.3 off the glass and the pins, so a stream
+               scatters where it lands instead of pouring like syrup */
+            float vn0 = b->vx * b->nx + b->vy * b->ny;
+            if (vn0 < -90.0f) {
+                float vn1 = vx * b->nx + vy * b->ny;
+                float k = -0.3f * vn0 - vn1;
+                vx += b->nx * k; vy += b->ny * k;
+            }
+        }
         float sp2 = vx * vx + vy * vy;
         if (sp2 > VMAX * VMAX) { float k = VMAX / sqrtf(sp2); vx *= k; vy *= k; }
         b->vx = vx * 0.9995f; b->vy = vy * 0.9995f;
@@ -834,6 +905,7 @@ static void save_progress(int next) {
 static void win(void) {
     g_state = ST_WIN; g_state_t = 0;
     save_progress(g_level + 1);
+    bank_stats();
     pa_sfx("win");
     for (int k = 0; k < 170; k++) {
         float side = (k & 1) ? 1.0f : -1.0f;
@@ -847,6 +919,7 @@ static void win(void) {
 static void fail(int reason) {
     if (g_state != ST_PLAY) return;
     g_state = ST_FAIL; g_state_t = 0; g_fail_reason = reason;
+    bank_stats();
     g_shake = g_shake > 0.3f ? g_shake : 0.3f;
     pa_sfx("lose");
 }
@@ -855,7 +928,7 @@ static void pull_pin(int k) {
     Pin *p = &g_pin[k];
     if (p->state != 0 || g_state != ST_PLAY) return;
     p->state = 1; p->t = 0;
-    g_pulls++;
+    g_pulls++; g_run_pulls++;
     g_shake = 0.08f;
     g_hint_t = 0;
     if (g_level == 0) g_hand_target = -1;
@@ -866,9 +939,10 @@ static void pull_pin(int k) {
                    pa_hex(0x8CC8FF), 1, pa_rng_range(&g_rng, 1.8f, 3.2f), 0.4f, 0);
 }
 
-static void restart(void) { pa_sfx("select"); load_level(g_level); }
+static void restart(void) { bank_stats(); pa_sfx("select"); load_level(g_level); }
 
 static void next_level(void) {
+    bank_stats();
     pa_sfx("select");
     load_level(g_level + 1);
 }
@@ -883,19 +957,29 @@ static int hint_pin(void) {
 typedef struct { float x, y, w, h; } Box;
 
 #define HUD_H 70.0f
+/* the bar runs the full width less a 0.04 sw margin; on a landscape window
+   it keeps a phone's proportions */
 static void hud_span(float *x0, float *x1) {
-    float w = (float)g_cw - 80.0f;
-    if (w > 470.0f) w = 470.0f;
+    float m = (float)g_cw * 0.04f, w = (float)g_cw - 2.0f * m;
+    if (w > 560.0f) w = 560.0f;
     *x0 = ((float)g_cw - w) * 0.5f; *x1 = *x0 + w;
 }
-static float hud_icon_x(int k) {     /* 0 level, 1 retry, 2 hint, 3 skip, 4 pause */
+enum { HUD_LEVEL, HUD_COLLECTION, HUD_ACHIEVE, HUD_HINT, HUD_SKINS, HUD_PAUSE, HUD_ICONS };
+static float hud_icon_x(int k) {
     float x0, x1;
     hud_span(&x0, &x1);
-    return x0 + (x1 - x0) * (0.10f + 0.2f * (float)k);
+    return x0 + (x1 - x0) * ((float)k + 0.5f) / (float)HUD_ICONS;
+}
+/* retry and skip sit on the studio floor, bottom left and right */
+static Box floor_btn(int k) {
+    float r = 30.0f, cy = (float)g_ch - 58.0f;
+    float cx = k ? (float)g_cw * 0.88f : (float)g_cw * 0.12f;
+    Box b = { cx - r, cy - r, r * 2.0f, r * 2.0f };
+    return b;
 }
 static Box hud_btn(int k) {
     float cx = hud_icon_x(k), cy = HUD_H * 0.5f + 4.0f;
-    Box b = { cx - 30.0f, cy - 30.0f, 60.0f, 60.0f };
+    Box b = { cx - 26.0f, cy - 30.0f, 52.0f, 60.0f };
     return b;
 }
 static Box card_btn(void) {
@@ -939,6 +1023,119 @@ static void ring_pos(const Pin *p, float *x, float *y) {
     *x = bx + p->dx * RING_R; *y = by + p->dy * RING_R;
 }
 
+/* ------------------------------------------------------------------ meta --
+   Skins, stats, achievements and the picture collection, all saved under
+   "pins.*". Run stats are banked when a level ends or is left. */
+static const uint32_t SKINS[6][8] = {
+    { 0xF2392C, 0xFFB81F, 0x3FD35A, 0x2E9BF0, 0xF25CB4, 0x9B5CF0, 0xFF7A1A, 0x1FD3B6 },
+    { 0xFF8FB1, 0xFFC09F, 0xFFE38A, 0xA8E6A1, 0x9ED8F5, 0xC9A7F5, 0xF7A8D8, 0x8EE3D3 },
+    { 0xFF2D95, 0x00E5FF, 0xB4FF00, 0xFFE600, 0x8A2BFF, 0xFF6A00, 0x00FF9C, 0xFF3D3D },
+    { 0x0077B6, 0x00B4D8, 0x48CAE4, 0x90E0EF, 0x2EC4B6, 0x3A86FF, 0x5E60CE, 0x80FFDB },
+    { 0xFF5E5B, 0xFFB347, 0xFFD166, 0xF77F00, 0xD62828, 0xFF8C94, 0xF4A261, 0xE76F51 },
+    { 0x2A9D8F, 0x8AB17D, 0xE9C46A, 0x6A994E, 0x52B788, 0xA7C957, 0x99D98C, 0xF4A261 },
+};
+static const char *const SKIN_NAMES[6] = { "CONFETTI", "CANDY", "NEON", "OCEAN", "SUNSET", "MEADOW" };
+static const int SKIN_UNLOCK[6] = { 0, 2, 5, 9, 14, 20 };
+
+enum { ACH_COUNT = 6 };
+static const char *const ACH_NAMES[ACH_COUNT] = { "FIRST POUR", "STEADY HANDS", "PIN PULLER", "BUCKET LIST", "COLOUR WAVE", "PIN MASTER" };
+static const char *const ACH_DESC[ACH_COUNT] = { "CLEAR A LEVEL", "CLEAR 10 LEVELS", "PULL 100 PINS", "CUP 2000 BALLS", "COLOUR 1000 GREY BALLS", "CLEAR 25 LEVELS" };
+static const int ACH_GOAL[ACH_COUNT] = { 1, 10, 100, 2000, 1000, 25 };
+
+enum { PANEL_NONE, PANEL_COLLECTION, PANEL_ACHIEVE, PANEL_SKINS };
+static int   g_panel;
+static float g_panel_t;
+
+static int cleared(void) { return pa_save_get("pins.level", 0); }
+
+static void apply_skin(void) {
+    int k = pa_save_get("pins.skin", 0);
+    if (k < 0 || k >= 6 || cleared() < SKIN_UNLOCK[k]) k = 0;
+    if (g_demo) k = 0;
+    for (int i = 0; i < 8; i++) g_pal[i] = pa_hex(SKINS[k][i]);
+}
+
+static int ach_value(int a) {
+    switch (a) {
+        case 0: case 1: case 5: return cleared();
+        case 2: return pa_save_get("pins.pulls", 0);
+        case 3: return pa_save_get("pins.balls", 0);
+        default: return pa_save_get("pins.greys", 0);
+    }
+}
+static int ach_done(void) {
+    int n = 0;
+    for (int a = 0; a < ACH_COUNT; a++) if (ach_value(a) >= ACH_GOAL[a]) n++;
+    return n;
+}
+static int skins_open(void) {
+    int n = 0;
+    for (int k = 0; k < 6; k++) if (cleared() >= SKIN_UNLOCK[k]) n++;
+    return n;
+}
+
+/* bank this run's numbers once, whichever way the level is left */
+static void bank_stats(void) {
+    if (g_demo || g_banked) return;
+    g_banked = 1;
+    pa_save_set("pins.pulls", pa_save_get("pins.pulls", 0) + g_run_pulls);
+    pa_save_set("pins.balls", pa_save_get("pins.balls", 0) + g_count);
+    pa_save_set("pins.greys", pa_save_get("pins.greys", 0) + g_run_greys);
+    pa_save_flush();
+}
+
+static int has_news(int panel) {
+    if (g_demo) return panel != PANEL_ACHIEVE;   /* captures show the dots as a player sees them */
+    if (panel == PANEL_COLLECTION) return cleared() > pa_save_get("pins.seen_pc", 0);
+    if (panel == PANEL_SKINS) return skins_open() > pa_save_get("pins.seen_sk", 1);
+    return ach_done() > pa_save_get("pins.seen_ac", 0);
+}
+
+static void open_panel(int which) {
+    g_panel = which; g_panel_t = 0;
+    pa_sfx("select");
+    if (g_demo) return;
+    if (which == PANEL_COLLECTION) pa_save_set("pins.seen_pc", cleared());
+    if (which == PANEL_SKINS) pa_save_set("pins.seen_sk", skins_open());
+    if (which == PANEL_ACHIEVE) pa_save_set("pins.seen_ac", ach_done());
+    pa_save_flush();
+}
+
+static Box panel_card(void) {
+    float w = (float)g_cw * 0.88f, h = (float)g_ch * 0.70f;
+    if (h > 780.0f) h = 780.0f;
+    if (w > 520.0f) w = 520.0f;
+    Box b = { ((float)g_cw - w) * 0.5f, ((float)g_ch - h) * 0.5f + 20.0f, w, h };
+    return b;
+}
+static Box panel_close(void) {
+    Box c = panel_card();
+    Box b = { c.x + c.w - 52.0f, c.y - 18.0f, 64.0f, 64.0f };
+    return b;
+}
+static Box skin_tile(int k) {
+    Box c = panel_card();
+    float gap = 14.0f, tw = (c.w - 40.0f - gap) * 0.5f, th = (c.h - 150.0f - gap * 2.0f) / 3.0f;
+    Box b = { c.x + 20.0f + (float)(k % 2) * (tw + gap), c.y + 110.0f + (float)(k / 2) * (th + gap), tw, th };
+    return b;
+}
+
+static void panel_input(const PA_Input *in) {
+    if (!in->pressed || g_panel_t < 0.15f) return;
+    Box c = panel_card();
+    if (in_box(panel_close(), in->x, in->y) || !in_box(c, in->x, in->y)) { g_panel = PANEL_NONE; pa_sfx("select"); return; }
+    if (g_panel == PANEL_SKINS) {
+        for (int k = 0; k < 6; k++) if (in_box(skin_tile(k), in->x, in->y)) {
+            if (cleared() >= SKIN_UNLOCK[k]) {
+                if (!g_demo) { pa_save_set("pins.skin", k); pa_save_flush(); }
+                apply_skin();
+                pa_tone(880, 1320, 0.08f, 1, 0.08f);
+            } else pa_tone(300, 220, 0.12f, 3, 0.06f);
+        }
+    }
+}
+
+
 /* --------------------------------------------------------------- update -- */
 static void s_start(void) {
     g_demo = pa_demo_mode();
@@ -952,6 +1149,8 @@ static void s_start(void) {
         lv = pa_save_get("pins.current", pa_save_get("pins.level", 0));
         if (lv < 0) lv = 0;
     }
+    g_panel = PANEL_NONE;
+    apply_skin();
     load_level(lv);
 }
 
@@ -990,15 +1189,30 @@ static void update_hand(float dt) {
     float tx, ty, press = 0;
     if (target >= 0) {
         ring_pos(&g_pin[target], &tx, &ty);
-        if (g_demo) press = g_demo_phase == 2 ? 1.0f : 0.0f;
+        if (g_demo) press = g_demo_phase == 2 || g_pin[target].state == 1 ? 1.0f : 0.0f;
         else {
-            /* tutorial loop: hover, tap, hover */
-            float ph = fmodf(g_time, 1.3f);
-            press = (ph > 0.55f && ph < 0.80f) ? 1.0f : 0.0f;
+            /* tutorial loop, 1.2 s: grip the ring, drag it out along the pin
+               (up to 0.3 of the screen, as far as the edge allows), let go */
+            const Pin *p = &g_pin[target];
+            float ph = fmodf(g_time, 1.2f);
+            float room = 0.3f * VIEW_W;
+            float ex = p->dx > 0 ? (DW + VIEW_W) * 0.5f - 14.0f - tx : p->dx < 0 ? tx - ((DW - VIEW_W) * 0.5f + 14.0f) : 1e9f;
+            float ey = p->dy < 0 ? ty + 40.0f : 1e9f;
+            if (fabsf(p->dx) > 0.01f && ex / fabsf(p->dx) < room) room = ex / fabsf(p->dx);
+            if (p->dy < -0.01f && ey / fabsf(p->dy) < room) room = ey / fabsf(p->dy);
+            if (room < 0) room = 0;
+            float d = room * pa_smooth(pa_clamp01((ph - 0.25f) / 0.55f));
+            press = ph > 0.12f && ph < 0.92f ? 1.0f : 0.0f;
+            if (ph > 0.92f) d = room * (1.0f - pa_smooth((ph - 0.92f) / 0.28f));
+            tx += p->dx * d; ty += p->dy * d;
+            g_tug = d < 10.0f ? d : 10.0f;
+            if (ph > 0.92f) g_tug = 0;
+            g_hand_x = tx; g_hand_y = ty;
         }
     } else {
         tx = DW + 110.0f; ty = DH * 0.62f;
     }
+    if (target < 0 || g_demo) g_tug = 0;
     float k = g_demo ? 9.0f : 6.0f;
     g_hand_x = pa_approach(g_hand_x, tx, k, dt);
     g_hand_y = pa_approach(g_hand_y, ty, k, dt);
@@ -1011,19 +1225,28 @@ static void s_update(float dt, const PA_Input *in) {
     g_state_t += dt;
     g_intro = pa_clamp01(g_intro + dt * 3.0f);
     if (g_shake > 0) g_shake = pa_approach(g_shake, 0, 5.0f, dt);
+    if (g_kick > 0) g_kick -= dt;
     g_cup_pulse = pa_approach(g_cup_pulse, 0, 8.0f, dt);
     g_cup_bounce = pa_approach(g_cup_bounce, 0, 7.0f, dt);
     g_tick_cd -= dt; g_pop_cd -= dt;
+    if (g_panel != PANEL_NONE) {         /* a panel is up: the level waits */
+        g_panel_t += dt;
+        panel_input(in);
+        return;
+    }
 
     if (in->pressed) {
         if (g_state == ST_PLAY) {
-            if (in_box(hud_btn(1), in->x, in->y)) { restart(); return; }
-            if (in_box(hud_btn(2), in->x, in->y)) {
+            if (in_box(floor_btn(0), in->x, in->y)) { restart(); return; }
+            if (in_box(floor_btn(1), in->x, in->y)) { save_progress(g_level + 1); next_level(); return; }
+            if (in_box(hud_btn(HUD_HINT), in->x, in->y)) {
                 int h = hint_pin();
-                if (h >= 0) { g_hand_target = h; g_hint_t = 3.0f; pa_sfx("select"); }
+                if (h >= 0) { g_hand_target = h; g_hint_t = 3.6f; pa_sfx("select"); }
                 return;
             }
-            if (in_box(hud_btn(3), in->x, in->y)) { save_progress(g_level + 1); next_level(); return; }
+            if (in_box(hud_btn(HUD_COLLECTION), in->x, in->y)) { open_panel(PANEL_COLLECTION); return; }
+            if (in_box(hud_btn(HUD_ACHIEVE), in->x, in->y)) { open_panel(PANEL_ACHIEVE); return; }
+            if (in_box(hud_btn(HUD_SKINS), in->x, in->y)) { open_panel(PANEL_SKINS); return; }
             int k = pin_at(in->x, in->y);
             if (k >= 0) pull_pin(k);
         } else if (g_state_t > 0.7f) {
@@ -1116,9 +1339,12 @@ static void s_update(float dt, const PA_Input *in) {
             p->rot += p->vr * dt;
         } else if (p->kind == 1) {
             p->vy += 600.0f * dt;
-        } else if (p->kind == 2 || p->kind == 4) {
+        } else if (p->kind == 2) {
             p->vx *= 1.0f - 2.5f * dt; p->vy *= 1.0f - 2.5f * dt;
-            p->w += (p->kind == 4 ? 14.0f : 8.0f) * dt;
+            p->w += 8.0f * dt;
+        } else if (p->kind == 4) {
+            p->vx *= 1.0f - 4.0f * dt; p->vy *= 1.0f - 4.0f * dt;
+            p->w = pa_approach(p->w, p->h, 9.0f, dt);
         }
         p->x += p->vx * dt; p->y += p->vy * dt;
         g_part[w++] = *p;
@@ -1238,13 +1464,15 @@ static void draw_ball(PA_Canvas *c, float x, float y, float r, PA_Color col, flo
         col = pa_mix(col, PA_RGB(255, 255, 255), 0.45f * k);
     }
     if (r < 2.2f) { pa_fill_circle(c, x, y, r, col); return; }
-    PA_Paint p = pa_radial(x - r * 0.35f, y - r * 0.40f, 0.0f, r * 1.45f);
-    pa_stop(&p, 0.0f, pa_shade(col, 0.50f));
-    pa_stop(&p, 0.30f, col);
-    pa_stop(&p, 0.80f, pa_shade(col, -0.15f));
-    pa_stop(&p, 1.0f, pa_shade(col, -0.32f));
-    pa_fill_ellipse_paint(c, x, y, r, r, &p);
-    pa_fill_circle(c, x - r * 0.34f, y - r * 0.38f, r * 0.26f, PA_RGBA(255, 255, 255, 200));
+    /* a 1 px darker rim, a radial body falling 20% darker, a white spot */
+    pa_fill_circle(c, x, y, r, pa_shade(col, -0.40f));
+    float ri = r - 1.0f;
+    PA_Paint p = pa_radial(x - ri * 0.35f, y - ri * 0.40f, 0.0f, ri * 1.40f);
+    pa_stop(&p, 0.0f, pa_shade(col, 0.38f));
+    pa_stop(&p, 0.38f, col);
+    pa_stop(&p, 1.0f, pa_shade(col, -0.20f));
+    pa_fill_ellipse_paint(c, x, y, ri, ri, &p);
+    pa_fill_circle(c, x - r * 0.36f, y - r * 0.38f, r * 0.30f, PA_RGBA(255, 255, 255, 179));
 }
 
 /* The bomb: a glossy black sphere with a steel cap, a brown wick and a spark
@@ -1288,7 +1516,7 @@ static void draw_balls(PA_Canvas *c, int cup_pass) {
         if (!b->alive || b->kind == BK_BOMB) continue;
         int inside = b->y > g_rim - BR && fabsf(b->x - g_cx) < g_hw + BR;
         if (inside != cup_pass) continue;
-        PA_Color col = b->kind == BK_GREY ? GREY_COL : BALL_COLS[b->col];
+        PA_Color col = b->kind == BK_GREY ? GREY_COL : g_pal[b->col];
         draw_ball(c, sx(b->x), sy(b->y), b->r * g_s, col, b->flash);
     }
 }
@@ -1302,6 +1530,9 @@ static void draw_pin(PA_Canvas *c, const Pin *p) {
     if (p->state == 1) a = 1.0f - pa_clamp01((p->t - 0.6f) / 0.4f);
     float ax, ay, bx, by;
     pin_points(p, &ax, &ay, &bx, &by);
+    if (g_tug > 0 && p == &g_pin[g_hand_target < 0 ? 0 : g_hand_target] && g_hand_target >= 0) {
+        ax += p->dx * g_tug; ay += p->dy * g_tug; bx += p->dx * g_tug; by += p->dy * g_tug;
+    }
     float x0 = sx(ax), y0 = sy(ay), x1 = sx(bx), y1 = sy(by);
     float w = PIN_R * 2.0f * g_s;
     PA_Color base = pa_alpha(PIN_COL, a), dark = pa_alpha(pa_shade(PIN_COL, -0.42f), a);
@@ -1413,13 +1644,16 @@ static void draw_cup_front(PA_Canvas *c) {
     pa_text(c, buf, cx, py + ph * 0.5f - ts * 0.5f, ts, PA_RGBA(235, 236, 238, 255), PA_ALIGN_CENTER, 1.0f);
 }
 
+/* screen: 1 screen-space particles, 0 design-space ones except the blast,
+   2 the blast cloud alone (drawn behind the balls so scorched ones show) */
 static void draw_particles(PA_Canvas *c, int screen) {
     for (int i = 0; i < g_npart; i++) {
         Part *p = &g_part[i];
-        if (p->screen != screen) continue;
+        if (screen == 2) { if (p->screen || p->kind != 4) continue; }
+        else if (p->screen != screen || (!screen && p->kind == 4)) continue;
         float a = pa_clamp01(p->life / p->max * 2.0f);
-        float x = screen ? p->x : sx(p->x), y = screen ? p->y : sy(p->y);
-        float k = screen ? 1.0f : g_s;
+        float x = screen == 1 ? p->x : sx(p->x), y = screen == 1 ? p->y : sy(p->y);
+        float k = screen == 1 ? 1.0f : g_s;
         if (p->kind == 0) {
             float cw = p->w * 0.5f * k, ch = p->h * 0.5f * k * (0.3f + 0.7f * fabsf(sinf(p->rot * 0.7f)));
             float cs = cosf(p->rot), sn = sinf(p->rot);
@@ -1433,7 +1667,7 @@ static void draw_particles(PA_Canvas *c, int screen) {
         } else if (p->kind == 2) {
             pa_fill_circle(c, x, y, p->w * k, pa_alpha(p->col, a * 0.8f));
         } else if (p->kind == 4) {
-            pa_fill_circle(c, x, y, p->w * k, pa_alpha(p->col, a * 0.50f));
+            pa_fill_circle(c, x, y, p->w * k, pa_alpha(p->col, 0.80f * pa_clamp01(p->life / (p->max - 0.4f))));
         } else {
             float t = 1.0f - p->life / p->max;
             pa_stroke_circle(c, x, y, p->w * k * (1.0f + t * 1.2f), 1.8f * k * (1.0f - t) + 0.4f, pa_alpha(p->col, 1.0f - t));
@@ -1527,62 +1761,236 @@ static void draw_hand(PA_Canvas *c, float x, float y, float press, float s) {
     xf_poly(c, ln, n, x, y, s, ang, PA_RGBA(255, 255, 255, 90));                         /* palm sheen */
 }
 
-static void icon_ring(PA_Canvas *c, float x, float y, float r) {
-    pa_stroke_circle(c, x, y, r, 3.6f, INK);
+/* ---- the collection picture: a still life of a full cup, in 12 pieces ---- */
+static void draw_picture(PA_Canvas *c, float x, float y, float w, float h, int pic) {
+    static const uint32_t skies[4][2] = { { 0x7FD3FF, 0xFFE3F1 }, { 0xFFB36B, 0xFFE9A8 }, { 0x9C8CFF, 0xFFC8E8 }, { 0x6BE3C0, 0xE8FFF4 } };
+    const uint32_t *sk = skies[pic & 3];
+    PA_Paint p = pa_linear(0, y, 0, y + h);
+    pa_stop(&p, 0.0f, pa_hex(sk[0]));
+    pa_stop(&p, 1.0f, pa_hex(sk[1]));
+    pa_fill_rect_paint(c, x, y, w, h, &p);
+    pa_fill_circle(c, x + w * 0.78f, y + h * 0.22f, h * 0.13f, PA_RGBA(255, 255, 255, 170));
+    pa_fill_ellipse(c, x + w * 0.5f, y + h * 0.96f, w * 0.7f, h * 0.18f, PA_RGBA(255, 255, 255, 120));
+    float cx = x + w * 0.5f, cw = w * 0.20f, ct = y + h * 0.42f, cb = y + h * 0.86f;
+    PA_Rng r;
+    pa_rng_seed(&r, 7u + (uint32_t)pic);
+    for (int i = 0; i < 90; i++) {
+        float bx = cx + pa_rng_range(&r, -cw * 0.9f, cw * 0.9f);
+        float by = cb - pa_rng_range(&r, 0, (cb - ct) * 1.25f);
+        if (by < ct) { float dx = (bx - cx) / cw; if (by < ct - (1.0f - dx * dx) * h * 0.12f) continue; }
+        draw_ball(c, bx, by, w * 0.026f, pa_hex(SKINS[pic % 6][pa_rng_int(&r, 0, 7)]), 0);
+    }
+    pa_fill_rect(c, cx - cw, ct, cw * 2.0f, cb - ct, PA_RGBA(255, 255, 255, 60));
+    pa_fill_rect(c, cx - cw * 0.55f, ct + 6.0f, w * 0.018f, cb - ct - 12.0f, PA_RGBA(255, 255, 255, 170));
+    rim_half(c, cx, ct, cw + w * 0.02f, h * 0.035f, w * 0.035f, pa_hex(0xFF7A1A), 1);
+}
+
+static void panel_title(PA_Canvas *c, Box b, const char *t, PA_Color band) {
+    pa_round_rect(c, b.x, b.y, b.w, 78.0f, 24.0f, band);
+    pa_fill_rect(c, b.x, b.y + 50.0f, b.w, 28.0f, band);
+    PA_TextStyle st = pa_text_style(PA_FACE_DISPLAY, PA_RGB(255, 255, 255));
+    st.align = PA_ALIGN_CENTER; st.outline = 3.0f; st.outline_col = pa_shade(band, -0.45f);
+    st.shadow_dy = 3.0f; st.shadow_col = pa_shade(band, -0.45f);
+    pa_text_ex(c, t, b.x + b.w * 0.5f, b.y + 24.0f, 30.0f, &st);
+}
+
+static void draw_panel(PA_Canvas *c) {
+    if (g_panel == PANEL_NONE) return;
+    pa_hub_hide_pause();
+    float k = pa_smooth(pa_clamp01(g_panel_t * 5.0f));
+    pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(30, 32, 44, (int)(150.0f * k)));
+    Box b = panel_card();
+    b.y += (1.0f - k) * 60.0f;
+    pa_round_rect(c, b.x, b.y + 8.0f, b.w, b.h, 24.0f, PA_RGBA(20, 22, 36, 70));
+    pa_round_rect(c, b.x, b.y, b.w, b.h, 24.0f, pa_hex(0xF4F5F8));
+    char buf[48];
+    if (g_panel == PANEL_COLLECTION) {
+        panel_title(c, b, "COLLECTION", pa_hex(0x2E9BF0));
+        int done = cleared(), pic = done / 12, pieces = done % 12;
+        snprintf(buf, sizeof buf, "PICTURE %d  -  %d/12 PIECES", pic + 1, pieces);
+        pa_text(c, buf, b.x + b.w * 0.5f, b.y + 98.0f, 15.0f, INK, PA_ALIGN_CENTER, 1.0f);
+        float gx = b.x + 24.0f, gw = b.w - 48.0f, gy = b.y + 130.0f, gh = gw * 1.05f;
+        if (gh > b.h - 220.0f) gh = b.h - 220.0f;
+        float tw = gw / 3.0f, th = gh / 4.0f;
+        for (int i = 0; i < 12; i++) {
+            float tx = gx + (float)(i % 3) * tw, ty = gy + (float)(i / 3) * th;
+            if (i < pieces) {
+                pa_clip_rect(c, (int)(tx + 2), (int)(ty + 2), (int)(tw - 4), (int)(th - 4));
+                draw_picture(c, gx, gy, gw, gh, pic);
+                pa_clip_reset(c);
+            } else {
+                pa_round_rect(c, tx + 3, ty + 3, tw - 6, th - 6, 10.0f, pa_hex(0xDADDE4));
+                pa_text_bold(c, "?", tx + tw * 0.5f, ty + th * 0.5f - 14.0f, 28.0f, pa_hex(0xB4B9C4), pa_hex(0xB4B9C4), PA_ALIGN_CENTER, 0, 0.2f);
+            }
+        }
+        pa_text(c, "EVERY LEVEL CLEARED ADDS A PIECE", b.x + b.w * 0.5f, gy + gh + 22.0f, 13.0f, pa_hex(0x6A707C), PA_ALIGN_CENTER, 1.0f);
+    } else if (g_panel == PANEL_ACHIEVE) {
+        panel_title(c, b, "ACHIEVEMENTS", pa_hex(0xFFA41F));
+        float rh = (b.h - 120.0f) / (float)ACH_COUNT;
+        for (int a = 0; a < ACH_COUNT; a++) {
+            float ry = b.y + 96.0f + (float)a * rh;
+            int v = ach_value(a), g = ACH_GOAL[a], ok = v >= g;
+            pa_round_rect(c, b.x + 16.0f, ry, b.w - 32.0f, rh - 10.0f, 16.0f, PA_RGB(255, 255, 255));
+            float mx2 = b.x + 52.0f, my = ry + (rh - 10.0f) * 0.5f;
+            pa_fill_circle(c, mx2, my, 22.0f, ok ? pa_hex(0xFFC21F) : pa_hex(0xD5D8DF));
+            pa_fill_circle(c, mx2, my, 15.0f, ok ? pa_hex(0xFFE07A) : pa_hex(0xE8EAEF));
+            pa_text_bold(c, ok ? "!" : "?", mx2, my - 9.0f, 18.0f, ok ? pa_hex(0xB06A00) : pa_hex(0xA0A6B2), ok ? pa_hex(0xB06A00) : pa_hex(0xA0A6B2), PA_ALIGN_CENTER, 0, 0.2f);
+            pa_text_bold(c, ACH_NAMES[a], b.x + 86.0f, ry + 10.0f, 17.0f, INK, INK, PA_ALIGN_LEFT, 1.0f, 0.1f);
+            pa_text(c, ACH_DESC[a], b.x + 86.0f, ry + 33.0f, 11.0f, pa_hex(0x6A707C), PA_ALIGN_LEFT, 0.8f);
+            float bw = b.w - 200.0f, bx = b.x + 86.0f, by = ry + rh - 30.0f;
+            pa_round_rect(c, bx, by, bw, 10.0f, 5.0f, pa_hex(0xE3E6EC));
+            float f = pa_clamp01((float)v / (float)g);
+            if (f > 0.02f) pa_round_rect(c, bx, by, bw * f, 10.0f, 5.0f, ok ? pa_hex(0x3FC45A) : pa_hex(0x2E9BF0));
+            snprintf(buf, sizeof buf, "%d/%d", v < g ? v : g, g);
+            pa_text(c, buf, b.x + b.w - 30.0f, by - 3.0f, 12.0f, INK, PA_ALIGN_RIGHT, 0.5f);
+        }
+    } else {
+        panel_title(c, b, "BALL SKINS", pa_hex(0xF25CB4));
+        int sel = pa_save_get("pins.skin", 0);
+        if (g_demo) sel = 0;
+        for (int s2 = 0; s2 < 6; s2++) {
+            Box t = skin_tile(s2);
+            int open = cleared() >= SKIN_UNLOCK[s2] || s2 == 0;
+            pa_round_rect(c, t.x, t.y, t.w, t.h, 18.0f, s2 == sel ? pa_hex(0x3FC45A) : PA_RGB(255, 255, 255));
+            pa_round_rect(c, t.x + 4, t.y + 4, t.w - 8, t.h - 8, 15.0f, PA_RGB(255, 255, 255));
+            float r = t.w * 0.07f;
+            for (int i = 0; i < 8; i++) {
+                float bx = t.x + t.w * 0.5f + (float)(i % 4 - 1.5f) * r * 2.3f + (i >= 4 ? r * 1.1f : 0.0f);
+                float by = t.y + t.h * 0.42f - (i >= 4 ? r * 1.9f : 0.0f);
+                draw_ball(c, bx, by, r, open ? pa_hex(SKINS[s2][i]) : pa_hex(0xC4C8D0), 0);
+            }
+            pa_text_bold(c, SKIN_NAMES[s2], t.x + t.w * 0.5f, t.y + t.h * 0.66f, 15.0f, INK, INK, PA_ALIGN_CENTER, 1.0f, 0.1f);
+            if (!open) {
+                snprintf(buf, sizeof buf, "CLEAR %d LEVELS", SKIN_UNLOCK[s2]);
+                pa_text(c, buf, t.x + t.w * 0.5f, t.y + t.h * 0.82f, 11.0f, pa_hex(0x8A909C), PA_ALIGN_CENTER, 0.5f);
+            } else if (s2 == sel) {
+                pa_text(c, "IN USE", t.x + t.w * 0.5f, t.y + t.h * 0.82f, 11.0f, pa_hex(0x2E9A48), PA_ALIGN_CENTER, 0.8f);
+            }
+        }
+    }
+    Box x = panel_close();
+    x.y += (1.0f - k) * 60.0f;
+    float cx = x.x + x.w * 0.5f, cy = x.y + x.h * 0.5f;
+    pa_fill_circle(c, cx, cy + 3.0f, 22.0f, PA_RGBA(20, 22, 36, 60));
+    pa_fill_circle(c, cx, cy, 22.0f, pa_hex(0xE8442E));
+    pa_line(c, cx - 8, cy - 8, cx + 8, cy + 8, 4.5f, PA_RGB(255, 255, 255));
+    pa_line(c, cx + 8, cy - 8, cx - 8, cy + 8, 4.5f, PA_RGB(255, 255, 255));
+}
+
+
+static void news_dot(PA_Canvas *c, float x, float y) {
+    pa_fill_circle(c, x, y, 8.5f, PA_RGB(255, 255, 255));
+    pa_fill_circle(c, x, y, 7.0f, pa_hex(0xE53935));
+    pa_text_bold(c, "!", x, y - 5.0f, 10.0f, PA_RGB(255, 255, 255), PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 0, 0.2f);
+}
+
+/* outline-and-fill helper for the chunky icon set: the ink silhouette a few
+   px fatter, then the fill on top */
+static void icon_rrect(PA_Canvas *c, float x, float y, float w, float h, float r, PA_Color fill) {
+    pa_round_rect(c, x - 3.2f, y - 3.2f, w + 6.4f, h + 6.4f, r + 3.2f, INK);
+    pa_round_rect(c, x, y, w, h, r, fill);
 }
 
 static void draw_hud(PA_Canvas *c) {
     float x0, x1;
     hud_span(&x0, &x1);
-    pa_round_rect(c, x0, -24.0f + 4.0f, x1 - x0, HUD_H + 24.0f, 14.0f, PA_RGBA(40, 44, 60, 34));
-    pa_round_rect(c, x0, -24.0f, x1 - x0, HUD_H + 24.0f, 14.0f, PA_RGB(255, 255, 255));
+    pa_round_rect(c, x0, -24.0f + 5.0f, x1 - x0, HUD_H + 24.0f, 16.0f, PA_RGBA(40, 44, 60, 40));
+    pa_round_rect(c, x0, -24.0f, x1 - x0, HUD_H + 24.0f, 16.0f, PA_RGB(255, 255, 255));
     float cy = HUD_H * 0.5f + 4.0f;
     char buf[16];
     /* level badge: number in a ring, LVL under it */
-    float lx = hud_icon_x(0);
-    icon_ring(c, lx, cy - 2.0f, 20.0f);
+    float lx = hud_icon_x(HUD_LEVEL);
+    pa_stroke_circle(c, lx, cy - 3.0f, 19.0f, 3.8f, INK);
     snprintf(buf, sizeof buf, "%d", g_level + 1);
-    float ts = g_level + 1 >= 100 ? 13.0f : 16.0f;
-    pa_text_bold(c, buf, lx, cy - 2.0f - ts * 0.62f, ts, INK, INK, PA_ALIGN_CENTER, 0.5f, 0.15f);
-    pa_round_rect(c, lx - 16.0f, cy + 11.0f, 32.0f, 12.0f, 4.0f, PA_RGB(255, 255, 255));
-    pa_text(c, "LVL", lx, cy + 12.5f, 8.5f, INK, PA_ALIGN_CENTER, 0.8f);
-    /* retry */
+    float ts = g_level + 1 >= 100 ? 13.0f : 17.0f;
+    pa_text_bold(c, buf, lx, cy - 3.0f - ts * 0.5f, ts, INK, INK, PA_ALIGN_CENTER, 0.5f, 0.2f);
+    pa_round_rect(c, lx - 17.0f, cy + 11.0f, 34.0f, 13.0f, 5.0f, PA_RGB(255, 255, 255));
+    pa_text_bold(c, "LVL", lx, cy + 13.0f, 9.0f, INK, INK, PA_ALIGN_CENTER, 0.6f, 0.1f);
+    /* collection: a puzzle piece */
     {
-        float x = hud_icon_x(1), r = 14.0f;
-        PA_Vec2 pts[40];
-        int n = 0;
-        for (int k = 0; k <= 30; k++) {
-            float a = -PA_PI * 0.30f + (PA_TAU * 0.80f) * (float)k / 30.0f;
-            pts[n].x = x + cosf(a) * r; pts[n].y = cy + sinf(a) * r; n++;
+        float x = hud_icon_x(HUD_COLLECTION);
+        for (int pass = 0; pass < 2; pass++) {
+            float g = pass ? 0.0f : 3.2f;
+            PA_Color col = pass ? pa_hex(0x58C7FF) : INK;
+            pa_round_rect(c, x - 13.0f - g, cy - 9.0f - g, 24.0f + 2 * g, 24.0f + 2 * g, 4.0f + g, col);
+            pa_fill_circle(c, x - 1.0f, cy - 11.0f, 6.0f + g, col);
+            pa_fill_circle(c, x + 13.0f, cy + 3.0f, 6.0f + g, col);
         }
-        pa_stroke_poly(c, pts, n, 0, 3.8f, INK);
-        float a0 = -PA_PI * 0.30f;
-        float ex = x + cosf(a0) * r, ey = cy + sinf(a0) * r;
-        PA_Vec2 tri[3] = { { ex - 7.5f, ey - 2.5f }, { ex + 6.5f, ey - 8.5f }, { ex + 4.0f, ey + 7.5f } };
-        pa_fill_poly(c, tri, 3, INK);
+        pa_fill_circle(c, x - 6.0f, cy - 3.0f, 3.0f, PA_RGBA(255, 255, 255, 170));
+        if (has_news(PANEL_COLLECTION)) news_dot(c, x + 16.0f, cy - 16.0f);
     }
-    /* hint bulb */
+    /* achievements: a trophy */
     {
-        float x = hud_icon_x(2);
-        pa_fill_circle(c, x, cy - 5.0f, 11.0f, pa_hex(0xFFE58A));
-        pa_stroke_circle(c, x, cy - 5.0f, 12.0f, 3.6f, INK);
-        pa_line(c, x - 6.0f, cy + 9.0f, x + 6.0f, cy + 9.0f, 3.6f, INK);
-        pa_line(c, x - 4.5f, cy + 14.0f, x + 4.5f, cy + 14.0f, 3.6f, INK);
-        pa_fill_circle(c, x - 4.0f, cy - 9.0f, 2.8f, PA_RGB(255, 255, 255));
+        float x = hud_icon_x(HUD_ACHIEVE);
+        for (int pass = 0; pass < 2; pass++) {
+            float g = pass ? 0.0f : 3.2f;
+            PA_Color col = pass ? pa_hex(0xFFC21F) : INK;
+            PA_Vec2 bowl[8] = { { x - 13 - g, cy - 15 - g }, { x + 13 + g, cy - 15 - g }, { x + 12 + g, cy - 4 },
+                                { x + 6 + g * 0.6f, cy + 4 + g * 0.4f }, { x - 6 - g * 0.6f, cy + 4 + g * 0.4f }, { x - 12 - g, cy - 4 } };
+            pa_fill_poly(c, bowl, 6, col);
+            pa_round_rect(c, x - 3.0f - g, cy + 2.0f, 6.0f + 2 * g, 8.0f, 1.0f, col);
+            pa_round_rect(c, x - 10.0f - g, cy + 9.0f - g, 20.0f + 2 * g, 7.0f + 2 * g, 3.0f + g, col);
+            if (!pass) {
+                pa_stroke_circle(c, x - 13.0f, cy - 8.0f, 6.0f, 3.6f, INK);
+                pa_stroke_circle(c, x + 13.0f, cy - 8.0f, 6.0f, 3.6f, INK);
+            }
+        }
+        pa_fill_rect(c, x - 7.0f, cy - 12.0f, 3.0f, 9.0f, PA_RGBA(255, 255, 255, 180));
+        if (has_news(PANEL_ACHIEVE)) news_dot(c, x + 16.0f, cy - 16.0f);
     }
-    /* skip */
+    /* hint: the yellow bulb */
     {
-        float x = hud_icon_x(3);
-        for (int k = 0; k < 2; k++) {
-            float o = k ? 7.0f : -7.0f;
-            PA_Vec2 tri[3] = { { x + o - 7.5f, cy - 10.5f }, { x + o + 7.5f, cy }, { x + o - 7.5f, cy + 10.5f } };
+        float x = hud_icon_x(HUD_HINT);
+        pa_fill_circle(c, x, cy - 5.0f, 15.0f, INK);
+        pa_fill_circle(c, x, cy - 5.0f, 11.8f, pa_hex(0xFFD43B));
+        icon_rrect(c, x - 6.5f, cy + 7.0f, 13.0f, 9.0f, 2.5f, pa_hex(0xC9CED8));
+        pa_fill_circle(c, x - 4.5f, cy - 9.0f, 3.2f, PA_RGBA(255, 255, 255, 220));
+    }
+    /* skins: a paint brush with a wet tip */
+    {
+        float x = hud_icon_x(HUD_SKINS);
+        pa_line(c, x + 12.0f, cy + 14.0f, x - 2.0f, cy - 1.0f, 9.0f, INK);
+        pa_line(c, x + 12.0f, cy + 14.0f, x - 2.0f, cy - 1.0f, 3.2f, pa_hex(0xC98B4E));
+        PA_Vec2 head[4] = { { x - 2.0f, cy - 6.0f }, { x + 4.0f, cy }, { x - 6.0f, cy + 9.0f }, { x - 15.0f, cy + 4.0f } };
+        PA_Vec2 hd2[4] = { { x - 2.5f, cy - 10.5f }, { x + 8.5f, cy + 0.5f }, { x - 6.5f, cy + 13.5f }, { x - 19.5f, cy + 6.0f } };
+        pa_fill_poly(c, hd2, 4, INK);
+        pa_fill_poly(c, head, 4, pa_hex(0xF25CB4));
+        pa_fill_circle(c, x - 14.0f, cy + 11.0f, 4.0f, INK);
+        pa_fill_circle(c, x - 14.0f, cy + 11.0f, 2.2f, pa_hex(0x2E9BF0));
+        if (has_news(PANEL_SKINS)) news_dot(c, x + 16.0f, cy - 16.0f);
+    }
+    pa_hub_pause_anchor(hud_icon_x(HUD_PAUSE), cy, 19.0f);
+    pa_stroke_circle(c, hud_icon_x(HUD_PAUSE), cy, 22.0f, 3.8f, INK);
+}
+
+static void draw_floor_buttons(PA_Canvas *c) {
+    for (int k = 0; k < 2; k++) {
+        Box b = floor_btn(k);
+        float cx = b.x + b.w * 0.5f, cy = b.y + b.h * 0.5f, r = b.w * 0.5f;
+        pa_shadow(c, cx, cy + r * 0.9f, r * 0.9f, r * 0.25f, 0.18f);
+        pa_fill_circle(c, cx, cy + 3.0f, r, pa_hex(0xC4C7CF));
+        pa_fill_circle(c, cx, cy, r, PA_RGB(255, 255, 255));
+        if (k == 0) {
+            PA_Vec2 pts[40];
+            int n = 0;
+            float rr = r * 0.45f;
+            for (int i = 0; i <= 30; i++) {
+                float a = -PA_PI * 0.30f + (PA_TAU * 0.80f) * (float)i / 30.0f;
+                pts[n].x = cx + cosf(a) * rr; pts[n].y = cy + sinf(a) * rr; n++;
+            }
+            pa_stroke_poly(c, pts, n, 0, 5.0f, INK);
+            float a0 = -PA_PI * 0.30f, ex = cx + cosf(a0) * rr, ey = cy + sinf(a0) * rr;
+            PA_Vec2 tri[3] = { { ex - 8.0f, ey - 3.0f }, { ex + 7.0f, ey - 9.0f }, { ex + 4.5f, ey + 8.0f } };
             pa_fill_poly(c, tri, 3, INK);
+        } else {
+            for (int i = 0; i < 2; i++) {
+                float o = i ? 6.0f : -7.0f;
+                PA_Vec2 tri[3] = { { cx + o - 7.0f, cy - 10.0f }, { cx + o + 7.0f, cy }, { cx + o - 7.0f, cy + 10.0f } };
+                pa_fill_poly(c, tri, 3, INK);
+            }
         }
-        pa_fill_circle(c, x + 15.0f, cy - 13.0f, 8.0f, pa_hex(0xE8442E));
-        pa_text_bold(c, "!", x + 15.0f, cy - 18.0f, 10.0f, PA_RGB(255, 255, 255), PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 0, 0.2f);
+        pa_text_bold(c, k ? "SKIP" : "RETRY", cx, cy + r + 8.0f, 11.0f, INK, INK, PA_ALIGN_CENTER, 0.8f, 0.1f);
     }
-    pa_hub_pause_anchor(hud_icon_x(4), cy, 17.0f);
-    icon_ring(c, hud_icon_x(4), cy, 21.0f);
 }
 
 static void button(PA_Canvas *c, Box b, const char *label, PA_Color col, float pop) {
@@ -1666,10 +2074,16 @@ static void s_render(PA_Canvas *c) {
         shx = sinf(g_time * 91.0f) * g_shake * 12.0f;
         shy = cosf(g_time * 77.0f) * g_shake * 9.0f;
     }
+    if (g_kick > 0) {
+        float k = g_kick / 0.15f;
+        shx += sinf(g_time * 157.0f) * 6.0f * k;
+        shy += cosf(g_time * 131.0f) * 6.0f * k;
+    }
     draw_background(c);
     g_ox += shx; g_oy += shy;
     for (int i = 0; i < g_npoly; i++) if (g_poly[i].fill) glass_fill(c, &g_poly[i]);
     for (int i = 0; i < g_npoly; i++) if (g_poly[i].fill != 2) tube_stroke(c, g_poly[i].p, g_poly[i].n, WALL_R * 2.0f, 1, 0);
+    draw_particles(c, 2);
     draw_cup_back(c);
     draw_balls(c, 1);
     draw_cup_front(c);
@@ -1679,12 +2093,14 @@ static void s_render(PA_Canvas *c) {
     for (int k = 0; k < g_npin; k++) draw_pin(c, &g_pin[k]);
     draw_particles(c, 0);
     if (g_hand_x < DW + 100.0f && g_state == ST_PLAY)
-        draw_hand(c, sx(g_hand_x + 5.0f), sy(g_hand_y + 7.0f), g_hand_press, 1.15f * g_s);
+        draw_hand(c, sx(g_hand_x), sy(g_hand_y), g_hand_press, 0.87f * (float)c->w / 540.0f);
     g_ox -= shx; g_oy -= shy;
 
+    if (g_state == ST_PLAY) draw_floor_buttons(c);
     draw_hud(c);
     if (g_intro < 1.0f) pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(240, 240, 242, (int)(255.0f * (1.0f - g_intro))));
     if (g_state != ST_PLAY) draw_card(c);
+    draw_panel(c);
     draw_particles(c, 1);
 }
 
