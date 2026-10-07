@@ -30,7 +30,7 @@ shot b 6 10.0
 mv b/mobclash_00.png "$out/03_busy_boss_level.png"
 shot c 2 6.5
 mv c/mobclash_00.png "$out/04_gates_vs_red_wave.png"
-shot d 4 30.6,34.5
+shot d 4 26.2,30.0
 mv d/mobclash_00.png "$out/05_castle_destroyed.png"
 mv d/mobclash_01.png "$out/06_victory_results.png"
 shot e 3 17.0

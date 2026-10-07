@@ -29,16 +29,17 @@
 #define VK           0.95f       /* vertical foreshortening of heights */
 #define CANNON_Z     1.0f
 #define DEFENCE_Z    2.6f        /* hazard stripe: reds crossing it hurt the cannon */
-#define UNIT_H       1.25f
+#define UNIT_H       1.05f
 #define BLUE_SPEED   6.4f
-#define HIT_R        0.60f
-#define MAX_BLUE     1500
-#define MAX_RED      1100
+#define HIT_R        0.50f
+#define MAX_BLUE     3000
+#define MAX_RED      2200
 #define MAX_BRUTES   10
 #define MAX_CHAMPS   8
 #define MAX_GATES    12
-#define MAX_LADDER   10
-#define SEP_R        0.52f
+#define MAX_LADDER   40
+#define SEP_R        0.42f
+#define MAX_CANNONS  7
 #define MAX_PARTS    900
 #define MAX_FLOATS   40
 #define MAX_DECOR    90
@@ -53,8 +54,8 @@ enum { G_MUL, G_ADD, G_SUB };
 enum { PK_PUFF, PK_BIT, PK_RING, PK_SPARK, PK_FLASH, PK_DUST };
 enum { T_BLUE, T_RED, T_GLOW, T_COUNT };
 
-typedef struct { float x, z, vx, ph, fresh; uint16_t gates, lad; uint8_t dead; } Mob;
-typedef struct { float x, z, hp, maxhp, flash, ph, size, speed; uint16_t gates; int boss; } Brute;
+typedef struct { float x, z, vx, ph, fresh; uint64_t lad; uint16_t gates; uint8_t dead; } Mob;
+typedef struct { float x, z, hp, maxhp, flash, ph, size, speed, dmg; uint16_t gates; int boss; } Brute;
 typedef struct { int type, val; float x0, x, z, w, amp, spd, ph, pulse, cool; int hunger; } Gate;
 typedef struct { float x, z, y, vx, vz, vy, life, max, size; PA_Color col; int kind; } Part;
 typedef struct { float x, z, y, t, size; PA_Color col; char text[16]; } Float;
@@ -88,7 +89,9 @@ static struct {
     /* level */
     float base_hp, base_max, base_flash, base_shake, collapse;
     int   boss_level, theme, built_level;
-    float cannon_x, cannon_tx, recoil, cannon_flash;
+    float cannon_x, cannon_tx, recoil, cannon_flash, crecoil[MAX_CANNONS];
+    int   shot_i;
+    float dmg_castle, dmg_timer;
     int   cannon_hp, cannon_max;
     float fire_acc, charge, charge_max, charge_flash;
     int   firing;
@@ -113,6 +116,7 @@ static struct {
 /* layout (written by render, read by update for hit tests) */
 static float g_w = 540.0f, g_h = 1170.0f, g_k = 50.8f, g_y0 = 936.0f, g_yh = -140.0f, g_u = 1.0f;
 static float g_shx, g_shy;
+static float g_zoom = 1.0f, g_zpx, g_zpy;   /* render-only camera push-in */
 
 /* ------------------------------------------------------------ palette -- */
 #define C_INK      PA_RGB(38, 30, 74)
@@ -134,9 +138,9 @@ static void layout(float w, float h) {
 }
 
 static float persp(float z) { if (z < -CAM_D + 5.0f) z = -CAM_D + 5.0f; return CAM_D / (z + CAM_D); }
-static float ss(float z) { return g_k * persp(z); }
-static float sx(float x, float z) { return g_w * 0.5f + x * ss(z) + g_shx; }
-static float sy(float z) { return g_yh + (g_y0 - g_yh) * persp(z) + g_shy; }
+static float ss(float z) { return g_k * persp(z) * g_zoom; }
+static float sx(float x, float z) { return g_zpx + (g_w * 0.5f + x * g_k * persp(z) - g_zpx) * g_zoom + g_shx; }
+static float sy(float z) { return g_zpy + (g_yh + (g_y0 - g_yh) * persp(z) - g_zpy) * g_zoom + g_shy; }
 static PA_Vec2 proj(float x, float y, float z) {
     PA_Vec2 v = { sx(x, z), sy(z) - y * ss(z) * VK };
     return v;
@@ -156,8 +160,11 @@ static void txt(PA_Canvas *c, const char *s, float x, float y, float size, PA_Co
 }
 
 /* ------------------------------------------------------------ economy -- */
-static float fire_rate(int lvl)  { return 9.0f + 0.6f * (float)lvl; }
-static int   champ_hp(int lvl)   { return 26 + 12 * lvl; }
+/* mobs per second out of the whole fleet */
+static float fire_rate(int lvl)  { return 27.0f + 1.8f * (float)lvl; }
+static int   champ_hp(int lvl)   { return 80 + 36 * lvl; }
+/* the fleet grows a cannon every second fire-rate level */
+static int   fleet_size(int lvl) { int n = 1 + lvl / 2; return n > MAX_CANNONS ? MAX_CANNONS : n; }
 static float income_mul(int lvl) { return 1.0f + 0.15f * (float)lvl; }
 static int cost_fire(int lvl)   { return (int)(50.0f * powf(1.30f, (float)lvl) + 0.5f) / 5 * 5; }
 static int cost_income(int lvl) { return (int)(90.0f * powf(1.42f, (float)lvl) + 0.5f) / 5 * 5; }
@@ -324,7 +331,7 @@ static void level_build(int n) {
     G.base_max = fmaxf(120.0f, floorf(G.base_max / 5.0f) * 5.0f);
     G.base_hp = G.base_max;
     G.base_flash = G.base_shake = G.collapse = 0.0f;
-    G.cannon_max = G.cannon_hp = 12;
+    G.cannon_max = G.cannon_hp = 30;
     G.cannon_x = G.cannon_tx = 0.0f;
     G.recoil = G.cannon_flash = 0.0f;
     G.fire_acc = 0.9f;
@@ -348,20 +355,20 @@ static void level_build(int n) {
         float z = ROWZ[rows - 1][r];
         int good = mul[r];
         int add = 5 * (int)((fire_rate(n - 1) * 1.6f + 4.0f) / 5.0f);
-        int sub = 4 + n / 2;
-        if (n == 1) { add_gate(G_MUL, 3, -1.2f, z, 4.6f); continue; }
-        if (n == 2) { add_gate(G_MUL, 3, 2.5f, z, 4.2f); add_gate(G_ADD, 10, -2.5f, z, 4.2f); continue; }
+        int sub = 3 * (4 + n / 2);
+        if (n == 1) { add_gate(G_MUL, 3, -1.0f, z, 4.4f); continue; }
+        if (n == 2) { add_gate(G_MUL, 3, 1.95f, z, 3.6f); add_gate(G_ADD, add, -1.95f, z, 3.6f); continue; }
         int pick = pa_rng_int(&G.rng, 0, n >= 7 ? 4 : (n >= 4 ? 3 : 1));
         float side = pa_rng_chance(&G.rng, 0.5f) ? 1.0f : -1.0f;
         switch (pick) {
-            case 0: add_gate(G_MUL, good, frand(-1.8f, 1.8f), z, 4.6f); break;
-            case 1: add_gate(G_MUL, good, -2.55f * side, z, 4.3f); add_gate(G_ADD, add, 2.55f * side, z, 4.1f); break;
-            case 2: add_gate(G_MUL, good, -2.55f * side, z, 4.3f); add_gate(G_SUB, sub, 2.55f * side, z, 4.1f); break;
-            case 3: if (good == 3) { add_gate(G_MUL, 3, -2.6f * side, z, 4.0f); add_gate(G_MUL, 2, 2.5f * side, z, 4.4f); }
-                    else { add_gate(G_MUL, 2, -2.55f * side, z, 4.3f); add_gate(G_ADD, add, 2.55f * side, z, 4.1f); }
+            case 0: add_gate(G_MUL, good, frand(-1.6f, 1.6f), z, 4.2f); break;
+            case 1: add_gate(G_MUL, good, -1.95f * side, z, 3.6f); add_gate(G_ADD, add, 1.95f * side, z, 3.6f); break;
+            case 2: add_gate(G_MUL, good, -1.95f * side, z, 3.6f); add_gate(G_SUB, sub, 1.95f * side, z, 3.6f); break;
+            case 3: if (good == 3) { add_gate(G_MUL, 3, -1.95f * side, z, 3.6f); add_gate(G_MUL, 2, 1.95f * side, z, 3.6f); }
+                    else { add_gate(G_MUL, 2, -1.95f * side, z, 3.6f); add_gate(G_ADD, add, 1.95f * side, z, 3.6f); }
                     break;
-            default: add_gate(G_MUL, good, 0.0f, z, 3.4f); add_gate(G_SUB, sub, -3.55f, z, 2.7f);
-                     add_gate(G_SUB, sub, 3.55f, z, 2.7f); break;
+            default: add_gate(G_MUL, good, 0.0f, z, 2.6f); add_gate(G_SUB, sub, -2.75f, z, 2.0f);
+                     add_gate(G_SUB, sub, 2.75f, z, 2.0f); break;
         }
     }
     /* moving panels from level 4 */
@@ -370,31 +377,19 @@ static void level_build(int n) {
         int lone = i + 1 >= g_ngate || g_gate[i + 1].z != g->z;
         if (i > 0 && g_gate[i - 1].z == g->z) lone = 0;
         if (n >= 4 && lone && pa_rng_chance(&G.rng, n >= 9 ? 0.75f : 0.5f)) {
-            g->amp = fminf(TRACK_HALF - g->w * 0.5f - 0.3f, 1.4f + 0.06f * m);
+            g->amp = fminf(3.8f - g->w * 0.5f, 1.4f + 0.06f * m);
             g->x0 = 0.0f;
             g->spd = frand(0.7f, 1.1f);
             g->ph = frand(0.0f, PA_TAU);
         }
     }
 
-    /* A ladder of +1 panels up one edge on some levels: a side route that
-       pays out steadily, the reference's long blue +1 walls. */
-    if (n >= 3 && (n % 3 == 0 || pa_rng_chance(&G.rng, 0.3f))) {
-        float side = pa_rng_chance(&G.rng, 0.5f) ? 1.0f : -1.0f;
-        float lx = side * (TRACK_HALF - 0.8f);
-        for (float z = 4.5f; z < 27.0f && g_nlad < MAX_LADDER; z += 2.5f) {
+    /* Rails of stacked +1 panels up both edges, the reference's long +1
+       walls: a side route that pays out steadily, and they frame the lane. */
+    for (int sd = -1; sd <= 1; sd += 2) {
+        for (float z = -2.2f; z < 29.0f && g_nlad < MAX_LADDER; z += 1.85f) {
             Ladder *l = &g_lad[g_nlad++];
-            l->x = lx; l->z = z; l->w = 1.3f; l->cool = 0.0f; l->pulse = 0.0f;
-        }
-        /* keep the rows clear of the ladder lane */
-        float edge = TRACK_HALF - 1.6f;
-        for (int i = 0; i < g_ngate; i++) {
-            Gate *g = &g_gate[i];
-            float lo = g->x0 - g->w * 0.5f - g->amp, hi = g->x0 + g->w * 0.5f + g->amp;
-            if (side > 0.0f && hi > edge) { g->x0 -= hi - edge; g->x = g->x0; }
-            if (side < 0.0f && lo < -edge) { g->x0 += -edge - lo; g->x = g->x0; }
-            lo = g->x0 - g->w * 0.5f - g->amp; hi = g->x0 + g->w * 0.5f + g->amp;
-            if (lo < -TRACK_HALF || hi > TRACK_HALF) { g->w = fmaxf(2.4f, g->w - 1.2f); g->amp = fmaxf(0.0f, g->amp - 1.0f); }
+            l->x = (float)sd * (TRACK_HALF - 0.62f); l->z = z; l->w = 1.05f; l->cool = 0.0f; l->pulse = 0.0f;
         }
     }
 
@@ -449,8 +444,8 @@ static void spawn_brute(float x, float hp, int boss) {
     Brute *b = &g_brute[g_nbrute++];
     memset(b, 0, sizeof(*b));
     b->x = x; b->z = TRACK_LEN - 0.8f; b->hp = b->maxhp = hp; b->boss = boss;
-    b->size = boss ? 5.0f : 2.0f; b->speed = boss ? 0.45f : 1.4f;
-    if (boss) b->z = TRACK_LEN - 4.0f;
+    b->size = boss ? 8.0f : 2.0f; b->speed = boss ? 0.3f : 1.4f;
+    if (boss) b->z = 30.0f;
     b->ph = frand(0.0f, PA_TAU);
     pa_tone(110.0f, 70.0f, 0.35f, 3, 0.10f);
 }
@@ -552,7 +547,7 @@ static float bot_target(void) {
             float gx = g->amp > 0.0f ? g->x0 + g->amp * sinf((G.t + eta) * g->spd + g->ph) : g->x;
             if (fabsf(x - gx) < g->w * 0.5f - 0.3f) { float f = gate_factor(g, flow); v *= f; flow *= f; }
         }
-        for (int i = 0; i < g_nlad; i++) if (fabsf(x - g_lad[i].x) < g_lad[i].w * 0.5f - 0.2f) { v *= 1.0f + 3.3f / flow; flow += 3.3f; }
+        for (int i = 0; i < g_nlad; i++) if (g_lad[i].z > CANNON_Z && fabsf(x - g_lad[i].x) < g_lad[i].w * 0.5f) { v *= 1.0f + 0.6f / flow; flow += 0.6f; }
         v -= fabsf(x - G.cannon_x) * 0.01f;
         if (v > best) { best = v; bx = x; }
     }
@@ -614,16 +609,24 @@ static void ladder_pass(Mob *m, float pz) {
         Ladder *l = &g_lad[i];
         if (!(pz < l->z && m->z >= l->z)) continue;
         if (fabsf(m->x - l->x) > l->w * 0.5f) continue;
-        uint16_t bit = (uint16_t)(1u << i);
+        uint64_t bit = (uint64_t)1 << i;
         if (m->lad & bit) continue;
         m->lad |= bit;
         if (l->cool > 0.0f) continue;
-        l->cool = 0.3f; l->pulse = 1.0f;
+        l->cool = 0.45f; l->pulse = 1.0f;
         Mob *c = blue_new(m->x + frand(-0.3f, 0.3f), m->z + 0.1f);
         if (c) { c->gates = m->gates; c->lad = m->lad; c->fresh = 0.4f; c->vx = -l->x * 0.12f; }
         m->fresh = 0.4f;
         if (G.sfx_gate <= 0.0f) { G.sfx_gate = 0.07f; pa_tone(880.0f + 40.0f * (float)i, 1320.0f, 0.04f, 1, 0.035f); }
     }
+}
+
+/* Fleet layout: up to four abreast at the rail, the rest a step behind. */
+static void fleet_slot(int n, int i, float *x, float *z) {
+    int front = n < 4 ? n : 4, row = i < front ? 0 : 1;
+    int cnt = row ? n - front : front, k = row ? i - front : i;
+    *x = ((float)k - (float)(cnt - 1) * 0.5f) * 1.24f;
+    *z = row ? -1.15f : 0.0f;
 }
 
 static void sim_step(float dt, const PA_Input *in, int live) {
@@ -648,7 +651,11 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             }
             G.cannon_tx = pa_approach(G.cannon_tx, tx, 6.0f, dt);
         }
-        G.cannon_tx = pa_clampf(G.cannon_tx, -TRACK_HALF + 0.75f, TRACK_HALF - 0.75f);
+        {
+            int nf = fleet_size(G.up_fire), front = nf < 4 ? nf : 4;
+            float half = (float)(front - 1) * 0.62f;
+            G.cannon_tx = pa_clampf(G.cannon_tx, -TRACK_HALF + 0.75f + half, TRACK_HALF - 0.75f - half);
+        }
         G.cannon_x = pa_approach(G.cannon_x, G.cannon_tx, 24.0f, dt);
         G.firing = fire;
 
@@ -657,9 +664,12 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             G.fire_acc += dt * fire_rate(G.up_fire);
             while (G.fire_acc >= 1.0f) {
                 G.fire_acc -= 1.0f;
-                Mob *m = blue_new(G.cannon_x + frand(-0.25f, 0.25f), CANNON_Z + 0.55f + frand(0.0f, 0.3f));
-                if (m) m->vx = frand(-2.3f, 2.3f) + (G.cannon_tx - G.cannon_x) * 0.6f;
-                G.recoil = 1.0f;
+                /* round robin across the fleet */
+                int nf = fleet_size(G.up_fire), ci = G.shot_i++ % nf;
+                float cx, cz; fleet_slot(nf, ci, &cx, &cz);
+                Mob *m = blue_new(G.cannon_x + cx + frand(-0.2f, 0.2f), CANNON_Z + 0.55f + frand(0.0f, 0.3f));
+                if (m) m->vx = frand(-1.6f, 1.6f) + (G.cannon_tx - G.cannon_x) * 0.6f;
+                G.recoil = 1.0f; G.crecoil[ci] = 1.0f;
                 snd_fire();
                 G.charge += 1.0f;
                 if (G.charge >= G.charge_max) {
@@ -685,11 +695,11 @@ static void sim_step(float dt, const PA_Input *in, int live) {
                 spawn_brute(frand(-2.0f, 2.0f), floorf(G.brute_hp), 0);
         }
         if (G.wave_left > 0) {
-            G.wave_acc += dt * G.red_speed / 0.62f;
+            G.wave_acc += dt * G.red_speed / 0.5f;
             /* the wave pours out as a carpet: full-width ranks, shoulder to shoulder */
             while (G.wave_acc >= 1.0f && G.wave_left > 0 && g_nred < G.red_cap) {
                 G.wave_acc -= 1.0f;
-                int per = 13;
+                int per = 15;
                 for (int k = 0; k < per && G.wave_left > 0; k++) {
                     float x = -TRACK_HALF + 0.5f + (float)k * ((2.0f * TRACK_HALF - 1.0f) / (float)(per - 1));
                     red_new(x + frand(-0.12f, 0.12f), TRACK_LEN - 0.4f + frand(-0.15f, 0.15f));
@@ -700,7 +710,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
         if (!G.boss_spawned && G.t >= G.boss_timer) {
             G.boss_spawned = 1;
             spawn_brute(0.0f, floorf(G.brute_hp * 25.0f), 1);
-            float_text(0.0f, 9.0f, TRACK_LEN - 4.0f, "BOSS!", PA_RGB(255, 90, 80), 1.6f);
+            float_text(0.0f, 12.0f, 30.0f, "BOSS!", PA_RGB(255, 90, 80), 1.6f);
             kick(5.0f);
         }
     } else {
@@ -708,6 +718,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
     }
 
     G.recoil = pa_approach(G.recoil, 0.0f, 14.0f, dt);
+    for (int i = 0; i < MAX_CANNONS; i++) G.crecoil[i] = pa_approach(G.crecoil[i], 0.0f, 12.0f, dt);
 
     /* ---- gates ---- */
     for (int i = 0; i < g_ngate; i++) {
@@ -745,6 +756,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             m->dead = 1;
             if (G.base_hp > 0.0f) {
                 G.base_hp -= 1.0f;
+                G.dmg_castle += 1.0f;
                 G.base_flash = 1.0f;
                 G.base_shake = fminf(1.0f, G.base_shake + 0.15f);
                 if (pa_rng_chance(&G.rng, 0.4f)) sparks(m->x, 0.6f, TRACK_LEN, PA_RGB(255, 240, 200), 2);
@@ -851,7 +863,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
                 if (m->dead) continue;
                 float ddx = m->x - b->x, ddz = m->z - b->z;
                 if (ddx * ddx + ddz * ddz < rad * rad && b->hp > 0.0f) {
-                    m->dead = 1; b->hp -= 1.0f; if (b->flash < 0.15f) b->flash = 1.0f;
+                    m->dead = 1; b->hp -= 1.0f; b->dmg += 1.0f; if (b->flash < 0.15f) b->flash = 1.0f;
                     puff(m->x, m->z, PA_RGB(140, 200, 255), 1, 1.0f);
                     if (pa_rng_chance(&G.rng, 0.25f)) bits(m->x, 0.8f * b->size, b->z - 0.3f * b->size, PA_RGB(255, 206, 60), 2, 3.0f, 3.0f);
                     snd_kill();
@@ -866,7 +878,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             pa_sfx("boom");
             G.kills += 5;
         } else if (b->z < DEFENCE_Z + 0.2f && live) {
-            G.cannon_hp -= b->boss ? 99 : 6;
+            G.cannon_hp -= b->boss ? 999 : 15;
             G.cannon_flash = 1.0f;
             b->hp = 0.0f;
             kick(12.0f);
@@ -930,6 +942,24 @@ static void sim_step(float dt, const PA_Input *in, int live) {
         } else if (b->hp <= 0.0f) {
             impact(b->x, 1.2f, b->z, PA_RGB(90, 170, 255), 12, 4.0f);
             puff(b->x, b->z, PA_RGB(200, 230, 255), 4, 2.0f);
+        }
+    }
+
+    /* outlined damage numbers, batched so they stay readable */
+    G.dmg_timer -= dt;
+    if (G.dmg_timer <= 0.0f) {
+        G.dmg_timer = 0.32f;
+        char buf[16];
+        if (G.dmg_castle >= 1.0f && G.base_hp > 0.0f) {
+            snprintf(buf, sizeof(buf), "-%d", (int)G.dmg_castle);
+            float_text(frand(-2.5f, 2.5f), 6.5f, TRACK_LEN, buf, PA_RGB(255, 255, 255), 1.2f);
+            G.dmg_castle = 0.0f;
+        }
+        for (int i = 0; i < g_nbrute; i++) if (g_brute[i].dmg >= 1.0f && g_brute[i].hp > 0.0f) {
+            Brute *b = &g_brute[i];
+            snprintf(buf, sizeof(buf), "-%d", (int)b->dmg);
+            float_text(b->x + frand(-0.3f, 0.3f) * b->size, 1.6f * b->size, b->z - 0.5f, buf, PA_RGB(255, 236, 90), 1.25f);
+            b->dmg = 0.0f;
         }
     }
 
@@ -1138,9 +1168,9 @@ static float g_spr_k = -1.0f;
 static float spr_height(int s) { return 8.0f + (float)s * 3.0f; }
 
 static void team_cols(int team, PA_Color *mid, PA_Color *lite, PA_Color *dark, PA_Color *rim) {
-    if (team == T_RED) { *mid = pa_hex(0xE8302A); *lite = pa_hex(0xFF8C7C); *dark = pa_hex(0x98121C); *rim = pa_hex(0xFFC9BE); }
+    if (team == T_RED) { *mid = pa_hex(0xE8231E); *lite = pa_hex(0xFF8C7C); *dark = pa_hex(0x98121C); *rim = pa_hex(0xFFC9BE); }
     else if (team == T_GLOW) { *mid = pa_hex(0x8CCBFF); *lite = pa_hex(0xF2FBFF); *dark = pa_hex(0x3F8CF0); *rim = pa_hex(0xFFFFFF); }
-    else { *mid = pa_hex(0x2F8BFF); *lite = pa_hex(0x9FD4FF); *dark = pa_hex(0x1452C8); *rim = pa_hex(0xD2EEFF); }
+    else { *mid = pa_hex(0x2F8BFF); *lite = pa_hex(0x9FD4FF); *dark = pa_hex(0x1452C8); *rim = pa_hex(0xBFE6FF); }
 }
 
 /* One little mob person, foot at (fx, fy), H pixels tall, lit by a key light
@@ -1247,6 +1277,130 @@ static void blit(PA_Canvas *c, const Spr *s, int x, int y) {
             uint32_t o = (rb | g) + sc;
             /* the premultiplied add can't overflow a channel but guard rounding */
             dst[xx] = o & 0xFFFFFFu;
+        }
+    }
+}
+
+/* Paint something once into a premultiplied sprite: drawn on black and on
+   white so the exact coverage falls out, the same trick as the mob sprites. */
+typedef void (*CaptureFn)(PA_Canvas *c, const void *arg);
+static void capture(Spr *sp, float x0, float y0, float x1, float y1, float ax, float ay, CaptureFn fn, const void *arg) {
+    free(sp->a); free(sp->c); sp->a = NULL; sp->c = NULL;
+    int w = (int)ceilf(x1 - x0), h = (int)ceilf(y1 - y0);
+    if (w < 1 || h < 1 || w > 4096 || h > 4096) return;
+    PA_Canvas blk, wht;
+    if (!pa_canvas_init(&blk, w, h)) return;
+    if (!pa_canvas_init(&wht, w, h)) { pa_canvas_free(&blk); return; }
+    pa_clear(&blk, PA_RGB(0, 0, 0)); pa_clear(&wht, PA_RGB(255, 255, 255));
+    float sx_ = g_shx, sy_ = g_shy;
+    g_shx = -floorf(x0); g_shy = -floorf(y0);
+    fn(&blk, arg); fn(&wht, arg);
+    g_shx = sx_; g_shy = sy_;
+    sp->w = w; sp->h = h; sp->ax = (int)(ax - floorf(x0)); sp->ay = (int)(ay - floorf(y0));
+    sp->a = (uint8_t *)malloc((size_t)w * (size_t)h);
+    sp->c = (uint32_t *)malloc((size_t)w * (size_t)h * 4);
+    if (sp->a && sp->c) for (int i = 0; i < w * h; i++) {
+        uint32_t b = blk.px[i], wv = wht.px[i];
+        int d = (int)((wv >> 16) & 255) - (int)((b >> 16) & 255) + (int)((wv >> 8) & 255) - (int)((b >> 8) & 255)
+              + (int)(wv & 255) - (int)(b & 255);
+        int a = 255 - d / 3;
+        sp->a[i] = (uint8_t)(a < 0 ? 0 : (a > 255 ? 255 : a));
+        sp->c[i] = b & 0x00FFFFFFu;
+    }
+    pa_canvas_free(&blk); pa_canvas_free(&wht);
+}
+
+/* Soft discs for particles: a tinted coverage mask is far cheaper than an
+   antialiased polygon for the hundreds of puffs a clash throws up. */
+#define NMASK 48
+static uint8_t *g_mask[NMASK + 1];
+static void mask_build(void) {
+    for (int r = 1; r <= NMASK; r++) {
+        if (g_mask[r]) continue;
+        int d = 2 * r + 2;
+        g_mask[r] = (uint8_t *)malloc((size_t)d * (size_t)d);
+        if (!g_mask[r]) continue;
+        for (int y = 0; y < d; y++) for (int x = 0; x < d; x++) {
+            float dx = (float)x + 0.5f - (float)(r + 1), dy = (float)y + 0.5f - (float)(r + 1);
+            float a = pa_clamp01((float)r - sqrtf(dx * dx + dy * dy) + 0.5f);
+            g_mask[r][y * d + x] = (uint8_t)(a * 255.0f);
+        }
+    }
+}
+static void disc(PA_Canvas *c, float cx, float cy, float rad, PA_Color col, float alpha) {
+    int r = (int)(rad + 0.5f);
+    int al = (int)(alpha * (float)PA_A(col));
+    if (al <= 2) return;
+    if (r > NMASK) { pa_fill_circle(c, cx, cy, rad, pa_alpha(col, alpha * (float)PA_A(col) / 255.0f)); return; }
+    if (r < 1) r = 1;
+    if (!g_mask[r]) return;
+    int d = 2 * r + 2, x0 = (int)cx - (r + 1), y0 = (int)cy - (r + 1);
+    uint32_t cr = PA_R(col), cg = PA_G(col), cb = PA_B(col);
+    for (int y = 0; y < d; y++) {
+        int yy = y0 + y;
+        if (yy < c->clip_y0 || yy >= c->clip_y1) continue;
+        uint32_t *row = c->px + (size_t)yy * (size_t)c->w;
+        const uint8_t *m = g_mask[r] + y * d;
+        for (int x = 0; x < d; x++) {
+            int xx = x0 + x;
+            if (xx < c->clip_x0 || xx >= c->clip_x1 || !m[x]) continue;
+            uint32_t a = (uint32_t)(m[x] * al) >> 8, ia = 255 - a, v = row[xx];
+            uint32_t rr = (cr * a + ((v >> 16) & 255) * ia) >> 8, gg = (cg * a + ((v >> 8) & 255) * ia) >> 8, bb = (cb * a + (v & 255) * ia) >> 8;
+            row[xx] = (rr << 16) | (gg << 8) | bb;
+        }
+    }
+}
+
+/* Cached art under the push-in camera: the sprite was painted at zoom 1 with
+   its anchor at (ax0, ay0); place it about the pivot and scale, nearest. */
+static void blit_zoomed(PA_Canvas *c, const Spr *s, float ax0, float ay0) {
+    if (!s->a) return;
+    float Z = g_zoom;
+    float ox = g_zpx + (ax0 - g_zpx) * Z + g_shx - (float)s->ax * Z;
+    float oy = g_zpy + (ay0 - g_zpy) * Z + g_shy - (float)s->ay * Z;
+    int dw = (int)((float)s->w * Z), dh = (int)((float)s->h * Z);
+    int x0 = (int)ox, y0 = (int)oy;
+    for (int y = 0; y < dh; y++) {
+        int yy = y0 + y;
+        if (yy < c->clip_y0 || yy >= c->clip_y1) continue;
+        int sy_ = (int)((float)y / Z); if (sy_ >= s->h) sy_ = s->h - 1;
+        const uint8_t *ar = s->a + sy_ * s->w;
+        const uint32_t *cr = s->c + sy_ * s->w;
+        uint32_t *dst = c->px + (size_t)yy * (size_t)c->w;
+        for (int x = 0; x < dw; x++) {
+            int xx = x0 + x;
+            if (xx < c->clip_x0 || xx >= c->clip_x1) continue;
+            int sx_ = (int)((float)x / Z); if (sx_ >= s->w) sx_ = s->w - 1;
+            int a = ar[sx_];
+            if (!a) continue;
+            if (a == 255) { dst[xx] = cr[sx_]; continue; }
+            uint32_t d = dst[xx], inv = (uint32_t)(255 - a);
+            uint32_t rb = ((d & 0xFF00FFu) * inv >> 8) & 0xFF00FFu, g = ((d & 0x00FF00u) * inv >> 8) & 0x00FF00u;
+            dst[xx] = ((rb | g) + cr[sx_]) & 0xFFFFFFu;
+        }
+    }
+}
+
+/* the zoom-1 screen position of a world point, for anchoring cached art */
+static PA_Vec2 proj1(float x, float y, float z) {
+    float p = persp(z);
+    PA_Vec2 v = { g_w * 0.5f + x * g_k * p, g_yh + (g_y0 - g_yh) * p - y * g_k * p * VK };
+    return v;
+}
+
+static void frect(PA_Canvas *c, float fx, float fy, float fw, float fh, PA_Color col, float alpha) {
+    int x0 = (int)fx, y0 = (int)fy, x1 = (int)(fx + fw + 0.5f), y1 = (int)(fy + fh + 0.5f);
+    if (x1 <= x0) x1 = x0 + 1;
+    if (y1 <= y0) y1 = y0 + 1;
+    x0 = x0 < c->clip_x0 ? c->clip_x0 : x0; y0 = y0 < c->clip_y0 ? c->clip_y0 : y0;
+    x1 = x1 > c->clip_x1 ? c->clip_x1 : x1; y1 = y1 > c->clip_y1 ? c->clip_y1 : y1;
+    uint32_t a = (uint32_t)(pa_clamp01(alpha) * (float)PA_A(col)), ia = 255 - a;
+    uint32_t cr = PA_R(col) * a, cg = PA_G(col) * a, cb = PA_B(col) * a;
+    for (int y = y0; y < y1; y++) {
+        uint32_t *row = c->px + (size_t)y * (size_t)c->w;
+        for (int x = x0; x < x1; x++) {
+            uint32_t v = row[x];
+            row[x] = (((cr + ((v >> 16) & 255) * ia) >> 8) << 16) | (((cg + ((v >> 8) & 255) * ia) >> 8) << 8) | ((cb + (v & 255) * ia) >> 8);
         }
     }
 }
@@ -1623,11 +1777,28 @@ static void bg_blit(PA_Canvas *c, int dx, int dy) {
     int key = G.built_level * 4 + G.theme;
     if (!g_bg.px || g_bg_key != key || g_bg_w != c->w || g_bg_h != c->h) {
         if (!g_bg.px) pa_canvas_init(&g_bg, c->w, c->h); else pa_canvas_resize(&g_bg, c->w, c->h);
-        float sx_ = g_shx, sy_ = g_shy;
-        g_shx = g_shy = 0.0f;
+        float sx_ = g_shx, sy_ = g_shy, zs = g_zoom;
+        g_shx = g_shy = 0.0f; g_zoom = 1.0f;
         bg_build();
-        g_shx = sx_; g_shy = sy_;
+        g_shx = sx_; g_shy = sy_; g_zoom = zs;
         g_bg_key = key; g_bg_w = c->w; g_bg_h = c->h;
+    }
+    if (g_zoom != 1.0f) {
+        /* push-in: a nearest-neighbour scale of the cached scenery about the pivot */
+        static int xs[4096];
+        int w = c->w < 4096 ? c->w : 4096;
+        for (int x = 0; x < w; x++) {
+            int v = (int)(g_zpx + ((float)(x - dx) - g_zpx) / g_zoom);
+            xs[x] = v < 0 ? 0 : (v >= c->w ? c->w - 1 : v);
+        }
+        for (int y = 0; y < c->h; y++) {
+            int v = (int)(g_zpy + ((float)(y - dy) - g_zpy) / g_zoom);
+            v = v < 0 ? 0 : (v >= c->h ? c->h - 1 : v);
+            uint32_t *dst = c->px + (size_t)y * (size_t)c->w;
+            const uint32_t *src = g_bg.px + (size_t)v * (size_t)c->w;
+            for (int x = 0; x < w; x++) dst[x] = src[xs[x]];
+        }
+        return;
     }
     for (int y = 0; y < c->h; y++) {
         int syy = y - dy; syy = syy < 0 ? 0 : (syy >= c->h ? c->h - 1 : syy);
@@ -1657,15 +1828,12 @@ static void lbox(PA_Canvas *c, float x0, float x1, float z0, float z1, float y0,
     pa_line(c, e0.x, e0.y, e1.x, e1.y, fmaxf(1.0f, ss(z0) * 0.06f), PA_RGBA(255, 255, 255, 90));
 }
 
-static void draw_castle(PA_Canvas *c) {
+static void draw_castle_look(PA_Canvas *c, float fl, float sh, float drop) {
     float L = TRACK_LEN;
-    float fl = G.base_flash * 0.22f;
-    float sh = G.base_shake * 0.15f * sinf(G.clock * 60.0f);
-    float hk = 1.0f - 0.85f * pa_smooth(G.collapse);
+    float hk = 1.0f - 0.85f * pa_smooth(drop);
     PA_Color red = pa_mix(PA_RGB(222, 58, 60), PA_RGB(255, 255, 255), fl);
     PA_Color wht = pa_mix(PA_RGB(242, 236, 232), PA_RGB(255, 255, 255), fl);
     PA_Color roof = PA_RGB(70, 58, 108);
-    float drop = G.collapse;
 
     /* keep */
     lbox(c, -3.0f + sh, 3.0f + sh, L + 1.7f, L + 4.6f, 0.0f, 6.4f * hk, red);
@@ -1720,6 +1888,25 @@ static void draw_castle(PA_Canvas *c) {
             lbox(c, rx, rx + 0.7f, rz, rz + 0.6f, 0.0f, 0.5f + 0.4f * (float)(i % 2), i % 4 == 0 ? wht : red);
         }
     }
+}
+
+/* ---- static art caches: castle and gate panels are painted once per level ---- */
+static Spr g_castle_spr[2];
+static Spr g_gate_spr[MAX_GATES][2];
+static Spr g_lad_spr[MAX_LADDER];
+static float g_gate_xb[MAX_GATES];
+static int g_cache_key = -1;
+static float g_cache_k = -1.0f, g_cache_w = -1.0f, g_cache_h = -1.0f;
+
+static void cap_castle(PA_Canvas *c, const void *arg) { draw_castle_look(c, *(const float *)arg, 0.0f, 0.0f); }
+
+static void draw_castle(PA_Canvas *c) {
+    float fl = G.base_flash > 0.35f ? 0.22f : 0.0f;
+    float sh = G.base_shake * 0.15f * sinf(G.clock * 60.0f);
+    if (G.collapse > 0.0f || !g_castle_spr[0].a) { draw_castle_look(c, G.base_flash * 0.22f, sh, G.collapse); return; }
+    if (g_zoom != 1.0f) { PA_Vec2 a = proj1(0.0f, 0.0f, TRACK_LEN); blit_zoomed(c, &g_castle_spr[fl > 0.0f ? 1 : 0], a.x, a.y); return; }
+    PA_Vec2 a = proj(0.0f, 0.0f, TRACK_LEN);
+    blit(c, &g_castle_spr[fl > 0.0f ? 1 : 0], (int)(a.x + sh * ss(TRACK_LEN)), (int)a.y);
 }
 
 static void draw_castle_hp(PA_Canvas *c) {
@@ -1797,14 +1984,85 @@ static void gate_label(const Gate *g, char *buf, size_t n) {
     else snprintf(buf, n, "-%d", g->val);
 }
 
-static void draw_gate(PA_Canvas *c, const Gate *g) {
+#define GATE_HT 2.2f
+#define LAD_HT  1.1f
+static void gate_live(PA_Canvas *c, const Gate *g, float pulse, int dim) {
     char buf[12]; gate_label(g, buf, sizeof(buf));
     int kind = g->type == G_SUB ? PANEL_RED : (g->type == G_MUL && g->val >= 3 ? PANEL_MAGENTA : PANEL_BLUE);
-    draw_panel(c, g->x - g->w * 0.5f, g->x + g->w * 0.5f, g->z, 2.2f + g->pulse * 0.1f, kind, buf, g->pulse, g->cool > 0.0f, 1.0f);
+    draw_panel(c, g->x - g->w * 0.5f, g->x + g->w * 0.5f, g->z, GATE_HT, kind, buf, pulse, dim, 1.0f);
+}
+typedef struct { const Gate *g; int dim; } GateCap;
+static void cap_gate(PA_Canvas *c, const void *arg) { const GateCap *gc = (const GateCap *)arg; gate_live(c, gc->g, 0.0f, gc->dim); }
+static void cap_lad(PA_Canvas *c, const void *arg) {
+    const Ladder *l = (const Ladder *)arg;
+    draw_panel(c, l->x - l->w * 0.5f, l->x + l->w * 0.5f, l->z, LAD_HT, PANEL_BLUE, "+1", 0.0f, 0, 0.62f);
+}
+
+/* the pulse when a crowd goes through: a white rim and a lift of the glass */
+static void panel_pulse(PA_Canvas *c, float x0, float x1, float z, float ht, float pulse) {
+    if (pulse <= 0.05f) return;
+    PA_Vec2 q0 = proj(x0, 0.0f, z), q1 = proj(x1, ht, z);
+    float w = q1.x - q0.x, h = q0.y - q1.y, t = fmaxf(2.0f, ss(z) * 0.12f * pulse);
+    PA_Color wc = PA_RGB(255, 255, 255);
+    frect(c, q0.x + t, q1.y + t, w - 2.0f * t, h - 2.0f * t, wc, 0.35f * pulse);
+    frect(c, q0.x, q1.y, w, t, wc, 0.85f * pulse);
+    frect(c, q0.x, q0.y - t, w, t, wc, 0.85f * pulse);
+    frect(c, q0.x, q1.y + t, t, h - 2.0f * t, wc, 0.85f * pulse);
+    frect(c, q1.x - t, q1.y + t, t, h - 2.0f * t, wc, 0.85f * pulse);
+}
+
+static void panel_bounds(float x0, float x1, float z, float ht, float *bx0, float *by0, float *bx1, float *by1) {
+    float k = ss(z);
+    *bx0 = sx(x0 - 0.7f, z) - 6.0f; *bx1 = sx(x1 + 0.7f, z) + 6.0f;
+    *by0 = sy(z) - (ht + 0.9f) * k - 6.0f; *by1 = sy(z) + 0.8f * k + 6.0f;
+}
+
+static void caches_refresh(void) {
+    int key = G.built_level;
+    if (key == g_cache_key && g_k == g_cache_k && g_w == g_cache_w && g_h == g_cache_h) return;
+    g_cache_key = key; g_cache_k = g_k; g_cache_w = g_w; g_cache_h = g_h;
+    float zs = g_zoom; g_zoom = 1.0f;
+    float L = TRACK_LEN, kl = ss(L);
+    PA_Vec2 a = proj(0.0f, 0.0f, L);
+    for (int v = 0; v < 2; v++) {
+        float fl = v ? 0.22f : 0.0f;
+        capture(&g_castle_spr[v], sx(-7.6f, L) - 4.0f, a.y - 13.0f * kl, sx(7.6f, L) + 4.0f, a.y + 2.0f * kl, a.x, a.y, cap_castle, &fl);
+    }
+    for (int i = 0; i < g_ngate; i++) {
+        const Gate *g = &g_gate[i];
+        float bx0, by0, bx1, by1;
+        panel_bounds(g->x - g->w * 0.5f, g->x + g->w * 0.5f, g->z, GATE_HT, &bx0, &by0, &bx1, &by1);
+        g_gate_xb[i] = g->x;
+        for (int v = 0; v < 2; v++) {
+            if (v && g->type == G_MUL) { free(g_gate_spr[i][1].a); free(g_gate_spr[i][1].c); g_gate_spr[i][1].a = NULL; g_gate_spr[i][1].c = NULL; continue; }
+            GateCap gc = { g, v };
+            capture(&g_gate_spr[i][v], bx0, by0, bx1, by1, sx(g->x, g->z), sy(g->z), cap_gate, &gc);
+        }
+    }
+    for (int i = 0; i < g_nlad; i++) {
+        const Ladder *l = &g_lad[i];
+        float bx0, by0, bx1, by1;
+        panel_bounds(l->x - l->w * 0.5f, l->x + l->w * 0.5f, l->z, LAD_HT, &bx0, &by0, &bx1, &by1);
+        capture(&g_lad_spr[i], bx0, by0, bx1, by1, sx(l->x, l->z), sy(l->z), cap_lad, l);
+    }
+    g_zoom = zs;
+}
+
+static void draw_gate(PA_Canvas *c, const Gate *g) {
+    int gi = (int)(g - g_gate), dim = g->cool > 0.0f;
+    const Spr *sp = &g_gate_spr[gi][dim];
+    if (!sp->a || (g->x != g_gate_xb[gi] && g->amp == 0.0f)) { gate_live(c, g, g->pulse, dim); return; }
+    if (g_zoom != 1.0f) { PA_Vec2 a = proj1(g->x, 0.0f, g->z); blit_zoomed(c, sp, a.x, a.y); return; }
+    blit(c, sp, (int)sx(g->x, g->z), (int)sy(g->z));
+    panel_pulse(c, g->x - g->w * 0.5f, g->x + g->w * 0.5f, g->z, GATE_HT, g->pulse);
 }
 
 static void draw_ladder(PA_Canvas *c, const Ladder *l) {
-    draw_panel(c, l->x - l->w * 0.5f, l->x + l->w * 0.5f, l->z, 1.3f, PANEL_BLUE, "+1", l->pulse, 0, 0.62f);
+    const Spr *sp = &g_lad_spr[(int)(l - g_lad)];
+    if (!sp->a) { cap_lad(c, l); panel_pulse(c, l->x - l->w * 0.5f, l->x + l->w * 0.5f, l->z, LAD_HT, l->pulse); return; }
+    if (g_zoom != 1.0f) { PA_Vec2 a = proj1(l->x, 0.0f, l->z); blit_zoomed(c, sp, a.x, a.y); return; }
+    blit(c, sp, (int)sx(l->x, l->z), (int)sy(l->z));
+    panel_pulse(c, l->x - l->w * 0.5f, l->x + l->w * 0.5f, l->z, LAD_HT, l->pulse);
 }
 
 /* ---- brutes: enemy giants (yellow, red bands, facing us) and our champion ---- */
@@ -1835,17 +2093,16 @@ static void draw_brute(PA_Canvas *c, const Brute *b, int enemy) {
     for (int s = -1; s <= 1; s += 2) {
         float ax = f.x + (float)s * k * 0.78f, ay = ty - u * 1.15f + (float)s * sw * u * 0.08f;
         pa_round_rect(c, ax - k * 0.25f, ay - k * 0.02f, k * 0.54f, u * 1.05f, k * 0.26f, rim);
-        PA_Paint pa = pa_linear(ax - k * 0.25f, ay, ax + k * 0.25f, ay);
-        pa_stop(&pa, 0.0f, s < 0 ? bodyL : body); pa_stop(&pa, 1.0f, s < 0 ? body : bodyD);
-        pa_round_rect_paint(c, ax - k * 0.29f, ay, k * 0.54f, u * 1.05f, k * 0.26f, &pa);
+        pa_round_rect(c, ax - k * 0.29f, ay, k * 0.54f, u * 1.05f, k * 0.26f, s < 0 ? body : pa_mix(body, bodyD, 0.55f));
+        pa_round_rect(c, ax - k * 0.25f, ay + k * 0.05f, k * 0.2f, u * 0.9f, k * 0.1f, s < 0 ? bodyL : body);
         pa_round_rect(c, ax - k * 0.31f, ay + u * 0.62f, k * 0.58f, u * 0.17f, k * 0.06f, band);
         pa_fill_circle(c, ax - k * 0.02f, ay + u * 1.0f, k * 0.27f, s < 0 ? body : pa_mix(body, bodyD, 0.4f));
     }
     /* torso with a rim on the right and a glossy key light */
     pa_round_rect(c, f.x - k * 0.58f, ty - u * 1.45f, k * 1.24f, u * 1.32f, k * 0.42f, rim);
-    PA_Paint pt = pa_radial(f.x - k * 0.3f, ty - u * 1.15f, 0.0f, k * 1.3f);
-    pa_stop(&pt, 0.0f, bodyL); pa_stop(&pt, 0.45f, body); pa_stop(&pt, 1.0f, bodyD);
-    pa_round_rect_paint(c, f.x - k * 0.64f, ty - u * 1.42f, k * 1.24f, u * 1.32f, k * 0.42f, &pt);
+    pa_round_rect(c, f.x - k * 0.64f, ty - u * 1.42f, k * 1.24f, u * 1.32f, k * 0.42f, bodyD);
+    pa_round_rect(c, f.x - k * 0.64f, ty - u * 1.42f, k * 1.08f, u * 1.22f, k * 0.40f, body);
+    pa_fill_ellipse(c, f.x - k * 0.22f, ty - u * 1.0f, k * 0.36f, u * 0.38f, pa_mix(body, bodyL, 0.55f));
     pa_fill_circle(c, f.x - k * 0.58f, ty - u * 1.18f, k * 0.3f, body);
     pa_fill_circle(c, f.x + k * 0.52f, ty - u * 1.18f, k * 0.3f, pa_mix(body, bodyD, 0.5f));
     pa_fill_ellipse(c, f.x - k * 0.34f, ty - u * 1.22f, k * 0.16f, k * 0.08f, PA_RGBA(255, 255, 255, 150));
@@ -1875,11 +2132,11 @@ static void draw_brute(PA_Canvas *c, const Brute *b, int enemy) {
     }
     /* HP: the boss gets a broad bar, 0.3 of the screen, over its head */
     char buf[12]; snprintf(buf, sizeof(buf), "%d", (int)ceilf(b->hp));
-    float ts = b->boss ? 30.0f * g_u : fmaxf(16.0f * g_u, fminf(28.0f * g_u, k * 0.42f));
+    float ts = b->boss ? 36.0f * g_u : fmaxf(16.0f * g_u, fminf(28.0f * g_u, k * 0.42f));
     float hy = ty - u * 1.95f - ts * 0.4f;
-    if (hy < 96.0f * g_u) hy = 96.0f * g_u;
-    float bw = b->boss ? g_w * 0.30f : fmaxf(46.0f * g_u, fminf(120.0f * g_u, k * 1.3f));
-    float bh = b->boss ? 14.0f * g_u : fmaxf(6.0f, fminf(10.0f * g_u, k * 0.1f));
+    if (hy < (b->boss ? 128.0f : 96.0f) * g_u) hy = (b->boss ? 128.0f : 96.0f) * g_u;
+    float bw = b->boss ? g_w * 0.50f : fmaxf(46.0f * g_u, fminf(120.0f * g_u, k * 1.3f));
+    float bh = b->boss ? 18.0f * g_u : fmaxf(6.0f, fminf(10.0f * g_u, k * 0.1f));
     float by = hy + ts * 0.62f;
     pa_round_rect(c, f.x - bw * 0.5f - 3.0f, by - 3.0f, bw + 6.0f, bh + 6.0f, bh, C_INK);
     pa_round_rect(c, f.x - bw * 0.5f, by, bw, bh, bh * 0.5f, PA_RGB(255, 255, 255));
@@ -1889,56 +2146,98 @@ static void draw_brute(PA_Canvas *c, const Brute *b, int enemy) {
 }
 
 /* ---- the cannon ---- */
-static void draw_cannon(PA_Canvas *c) {
-    float z = CANNON_Z, x = G.cannon_x;
-    float k = ss(z) * 1.3f;
+static void draw_cannon_body(PA_Canvas *c, float x, float z, float rec, int lead) {
+    float k = ss(z) * 1.0f;
     PA_Vec2 f = proj(x, 0, z);
-    float rec = G.recoil;
-    /* green aim ring */
-    pa_stroke_circle(c, f.x, f.y, 1.0f, 1.0f, PA_RGBA(0, 0, 0, 0));
-    {
-        PA_Vec2 pts[40];
-        for (int i = 0; i < 40; i++) {
-            float a = PA_TAU * (float)i / 40.0f;
-            pts[i].x = f.x + cosf(a) * k * 1.15f; pts[i].y = f.y + sinf(a) * k * 0.42f;
-        }
-        pa_stroke_poly(c, pts, 40, 1, fmaxf(3.0f, k * 0.12f), PA_RGBA(80, 236, 90, 220));
-    }
-    pa_shadow(c, f.x, f.y, k * 1.0f, k * 0.34f, 0.6f);
+    pa_shadow(c, f.x + k * 0.1f, f.y, k * 0.85f, k * 0.3f, 0.7f);
     /* wheels */
     for (int s = -1; s <= 1; s += 2) {
         for (int r = 0; r < 2; r++) {
-            float wx = f.x + (float)s * k * 0.62f, wy = f.y - k * 0.12f - (float)r * k * 0.36f;
+            float wx = f.x + (float)s * k * 0.56f, wy = f.y - k * 0.12f - (float)r * k * 0.34f;
             pa_round_rect(c, wx - k * 0.14f, wy - k * 0.22f, k * 0.28f, k * 0.36f, k * 0.1f, PA_RGB(36, 36, 46));
             pa_round_rect(c, wx - k * 0.07f, wy - k * 0.12f, k * 0.14f, k * 0.16f, k * 0.05f, PA_RGB(150, 152, 168));
         }
     }
     /* chassis */
-    pa_round_rect(c, f.x - k * 0.55f, f.y - k * 0.62f, k * 1.1f, k * 0.42f, k * 0.12f, PA_RGB(60, 64, 84));
-    pa_round_rect(c, f.x - k * 0.55f, f.y - k * 0.66f, k * 1.1f, k * 0.14f, k * 0.07f, PA_RGB(96, 100, 124));
-    /* barrel: a fat capsule tipped toward the track */
-    float by = f.y - k * 0.55f + rec * k * 0.12f;
-    float bl = k * (1.25f - rec * 0.12f), bw = k * (0.78f + rec * 0.06f);
-    PA_Color b0 = PA_RGB(120, 200, 255), b1 = PA_RGB(44, 140, 255), b2 = PA_RGB(20, 82, 210);
+    pa_round_rect(c, f.x - k * 0.5f, f.y - k * 0.6f, k * 1.0f, k * 0.42f, k * 0.12f, PA_RGB(60, 64, 84));
+    pa_round_rect(c, f.x - k * 0.5f, f.y - k * 0.64f, k * 1.0f, k * 0.14f, k * 0.07f, PA_RGB(104, 108, 132));
+    /* barrel: a fat glossy capsule tipped toward the track */
+    float by = f.y - k * 0.52f + rec * k * 0.12f;
+    float bl = k * (1.15f - rec * 0.12f), bw = k * (0.72f + rec * 0.06f);
+    PA_Color b0 = PA_RGB(150, 214, 255), b1 = PA_RGB(44, 140, 255), b2 = PA_RGB(18, 76, 200);
     if (G.cannon_flash > 0.0f) { b0 = pa_mix(b0, PA_RGB(255, 80, 80), G.cannon_flash); b1 = pa_mix(b1, PA_RGB(255, 60, 60), G.cannon_flash); }
+    pa_round_rect(c, f.x - bw * 0.46f, by - bl - k * 0.02f, bw, bl, bw * 0.48f, PA_RGB(191, 230, 255));
     PA_Paint pb = pa_linear(f.x - bw * 0.5f, 0, f.x + bw * 0.5f, 0);
-    pa_stop(&pb, 0.0f, b0); pa_stop(&pb, 0.45f, b1); pa_stop(&pb, 1.0f, b2);
+    pa_stop(&pb, 0.0f, b0); pa_stop(&pb, 0.4f, b1); pa_stop(&pb, 1.0f, b2);
     pa_round_rect_paint(c, f.x - bw * 0.5f, by - bl, bw, bl, bw * 0.48f, &pb);
-    pa_round_rect(c, f.x - bw * 0.52f, by - bl * 0.45f, bw * 1.04f, k * 0.12f, k * 0.05f, PA_RGB(20, 70, 180));
-    /* muzzle, seen end-on */
+    pa_round_rect(c, f.x - bw * 0.52f, by - bl * 0.45f, bw * 1.04f, k * 0.12f, k * 0.05f, lead ? PA_RGB(255, 196, 40) : PA_RGB(20, 70, 180));
     float mx = f.x, my = by - bl + bw * 0.28f;
     pa_fill_ellipse(c, mx, my, bw * 0.46f, bw * 0.26f, b2);
     pa_fill_ellipse(c, mx, my + 1.0f, bw * 0.32f, bw * 0.17f, PA_RGB(14, 30, 80));
-    pa_fill_ellipse(c, f.x - bw * 0.22f, by - bl * 0.62f, bw * 0.08f, bl * 0.18f, PA_RGBA(255, 255, 255, 120));
+    pa_fill_ellipse(c, f.x - bw * 0.22f, by - bl * 0.62f, bw * 0.08f, bl * 0.2f, PA_RGBA(255, 255, 255, 150));
     if (rec > 0.5f && G.firing) {
         float r = bw * 0.55f * rec;
-        pa_fill_circle(c, mx, my - r * 0.4f, r, PA_RGBA(255, 255, 220, 200));
-        pa_fill_circle(c, mx, my - r * 0.4f, r * 0.55f, PA_RGBA(255, 255, 255, 255));
+        disc(c, mx, my - r * 0.4f, r, PA_RGB(255, 236, 160), 0.8f);
+        disc(c, mx, my - r * 0.4f, r * 0.55f, PA_RGB(255, 255, 255), 1.0f);
     }
-    /* charge meter: a vertical capsule beside the cannon */
-    float mh = k * 1.9f, mw = k * 0.42f;
-    float gx = f.x - k * 1.55f, gy = f.y - mh - k * 0.1f;
-    if (gx < 10.0f) gx = f.x + k * 1.55f - mw;
+}
+
+typedef struct { float z, rec; int lead; } CanCap;
+static void cap_cannon(PA_Canvas *c, const void *arg) {
+    const CanCap *cc = (const CanCap *)arg;
+    int fs = G.firing; G.firing = 1;
+    float cf = G.cannon_flash; G.cannon_flash = 0.0f;
+    draw_cannon_body(c, 0.0f, cc->z, cc->rec, cc->lead);
+    G.firing = fs; G.cannon_flash = cf;
+}
+static Spr g_can_spr[2][2][2];     /* row, recoiled, lead */
+static float g_can_k = -1.0f, g_can_h = -1.0f;
+static void cannon_body(PA_Canvas *c, float x, float z, float rec, int lead, int row) {
+    if (G.cannon_flash > 0.0f) { draw_cannon_body(c, x, z, rec, lead); return; }
+    if (g_can_k != g_k || g_can_h != g_h) {
+        g_can_k = g_k; g_can_h = g_h;
+        for (int r = 0; r < 2; r++) for (int v = 0; v < 2; v++) for (int l = 0; l < 2; l++) {
+            float cz = CANNON_Z + (r ? -1.15f : 0.0f), k = ss(cz);
+            CanCap cc = { cz, v ? 1.0f : 0.0f, l };
+            PA_Vec2 f = proj(0.0f, 0.0f, cz);
+            capture(&g_can_spr[r][v][l], f.x - k * 1.2f, f.y - k * 2.2f, f.x + k * 1.2f, f.y + k * 0.6f, f.x, f.y, cap_cannon, &cc);
+        }
+    }
+    const Spr *sp = &g_can_spr[row][(rec > 0.5f && G.firing) ? 1 : 0][lead];
+    if (!sp->a) { draw_cannon_body(c, x, z, rec, lead); return; }
+    if (g_zoom != 1.0f) { PA_Vec2 a = proj1(x, 0.0f, z); blit_zoomed(c, sp, a.x, a.y); return; }
+    PA_Vec2 f = proj(x, 0.0f, z);
+    blit(c, sp, (int)f.x, (int)f.y);
+}
+
+/* The cannon fleet: one gun at the start, up to seven as fire rate is bought. */
+static void draw_cannon(PA_Canvas *c) {
+    int n = fleet_size(G.up_fire), front = n < 4 ? n : 4;
+    float z = CANNON_Z, k = ss(z);
+    PA_Vec2 f = proj(G.cannon_x, 0, z);
+    float half = (float)(front - 1) * 0.62f + 0.9f;
+    /* green aim ring round the whole squad */
+    {
+        PA_Vec2 pts[48];
+        float rz = n > 4 ? 0.75f : 0.45f;
+        PA_Vec2 cc = proj(G.cannon_x, 0, z - (n > 4 ? 0.55f : 0.0f));
+        for (int i = 0; i < 48; i++) {
+            float a = PA_TAU * (float)i / 48.0f;
+            pts[i].x = cc.x + cosf(a) * k * (half + 0.2f); pts[i].y = cc.y + sinf(a) * k * rz;
+        }
+        pa_stroke_poly(c, pts, 48, 1, fmaxf(3.0f, k * 0.1f), PA_RGBA(80, 236, 90, 220));
+    }
+    /* far row first */
+    for (int pass = 0; pass < 2; pass++) for (int i = 0; i < n; i++) {
+        float cx, cz; fleet_slot(n, i, &cx, &cz);
+        if ((cz < 0.0f) != (pass == 1)) continue;
+        cannon_body(c, G.cannon_x + cx, z + cz, G.crecoil[i], i == 0, cz < 0.0f);
+    }
+    /* charge meter: a vertical capsule beside the fleet */
+    float kk = k * 1.1f;
+    float mh = kk * 1.7f, mw = kk * 0.38f;
+    float gx = sx(G.cannon_x - half - 0.3f, z) - mw, gy = f.y - mh;
+    if (gx < 8.0f) gx = sx(G.cannon_x + half + 0.3f, z);
     pa_round_rect(c, gx - 3.0f, gy - 3.0f, mw + 6.0f, mh + 6.0f, (mw + 6.0f) * 0.5f, C_INK);
     pa_round_rect(c, gx, gy, mw, mh, mw * 0.5f, PA_RGB(236, 240, 252));
     float fr = pa_clamp01(G.charge / G.charge_max);
@@ -1949,15 +2248,14 @@ static void draw_cannon(PA_Canvas *c) {
         pa_round_rect_paint(c, gx, gy + mh - fh, mw, fh, mw * 0.5f, &pm);
     }
     if (G.charge_flash > 0.0f) pa_round_rect(c, gx, gy, mw, mh, mw * 0.5f, PA_RGBA(255, 240, 120, (int)(220.0f * G.charge_flash)));
-    /* bolt */
     float bx = gx + mw * 0.5f, bty = gy + mh - mw * 0.9f;
     PA_Vec2 bolt[6] = { { bx + mw * 0.10f, bty - mw * 0.45f }, { bx - mw * 0.22f, bty + mw * 0.05f }, { bx - mw * 0.02f, bty + mw * 0.05f },
                         { bx - mw * 0.12f, bty + mw * 0.45f }, { bx + mw * 0.22f, bty - mw * 0.06f }, { bx + mw * 0.02f, bty - mw * 0.06f } };
     pa_fill_poly(c, bolt, 6, PA_RGB(255, 255, 255));
-    /* defence health under the cannon */
+    /* defence health under the squad */
     if (G.cannon_hp < G.cannon_max || G.state == S_PLAY) {
-        float hw = k * 1.6f, hh = fmaxf(7.0f, k * 0.16f);
-        float hx = f.x - hw * 0.5f, hy = f.y + k * 0.52f;
+        float hw = k * 1.6f, hh = fmaxf(7.0f, k * 0.15f);
+        float hx = f.x - hw * 0.5f, hy = sy(z - (n > 4 ? 1.15f : 0.0f)) + k * 0.4f;
         pa_round_rect(c, hx - 2.0f, hy - 2.0f, hw + 4.0f, hh + 4.0f, hh, C_INK);
         pa_round_rect(c, hx, hy, hw, hh, hh * 0.5f, PA_RGB(90, 40, 60));
         float hf = pa_clamp01((float)G.cannon_hp / (float)G.cannon_max);
@@ -1976,18 +2274,16 @@ static void draw_parts(PA_Canvas *c) {
         switch (p->kind) {
         case PK_PUFF: {
             float r = p->size * k * (1.6f - t * 0.8f);
-            pa_fill_circle(c, s.x, s.y, r, pa_alpha(p->col, 0.85f * t));
-            pa_fill_circle(c, s.x - r * 0.2f, s.y - r * 0.2f, r * 0.5f, pa_alpha(PA_RGB(255, 255, 255), 0.6f * t));
+            disc(c, s.x, s.y, r, p->col, 0.85f * t);
+            disc(c, s.x - r * 0.2f, s.y - r * 0.2f, r * 0.5f, PA_RGB(255, 255, 255), 0.6f * t);
             break; }
         case PK_BIT: {
-            /* a tumbling chunk: lit top half, shaded bottom half */
+            /* a tumbling chunk: lit top face over a shaded side, squashing as it spins */
             float r = p->size * k, a = p->life * 9.0f + (float)i;
-            float ca = cosf(a) * r * 0.5f, sa = sinf(a) * r * 0.5f;
-            PA_Vec2 q[4] = { { s.x - ca + sa, s.y - sa - ca }, { s.x + ca + sa, s.y + sa - ca }, { s.x + ca - sa, s.y + sa + ca }, { s.x - ca - sa, s.y - sa + ca } };
+            float wv = r * (0.55f + 0.45f * fabsf(cosf(a))), hv = r * (0.55f + 0.45f * fabsf(sinf(a)));
             float al = fminf(1.0f, t * 2.5f);
-            pa_fill_poly(c, q, 4, pa_alpha(pa_shade(p->col, -0.25f), al));
-            PA_Vec2 h[3] = { q[0], q[1], { s.x, s.y } };
-            pa_fill_poly(c, h, 3, pa_alpha(pa_shade(p->col, 0.25f), al));
+            frect(c, s.x - wv * 0.5f, s.y - hv * 0.5f, wv, hv, pa_shade(p->col, -0.25f), al);
+            frect(c, s.x - wv * 0.5f, s.y - hv * 0.5f, wv, hv * 0.45f, pa_shade(p->col, 0.3f), al);
             break; }
         case PK_RING: {
             float e = 1.0f - t;
@@ -2001,17 +2297,25 @@ static void draw_parts(PA_Canvas *c) {
         case PK_FLASH: {
             /* screen-space white ring, out to p->size pixels */
             float e = 1.0f - t, r = p->size * g_u * (0.25f + 0.75f * pa_smooth(e));
-            if (e < 0.25f) pa_fill_circle(c, s.x, s.y, r * 0.8f, PA_RGBA(255, 255, 255, (int)(200.0f * (1.0f - e * 4.0f))));
+            if (e < 0.5f) {
+                /* white-hot core going gold, 0.25 of the screen across */
+                float cr = 0.125f * g_w * (0.5f + e), ca = 1.0f - e * 2.0f;
+                PA_Paint cp = pa_radial(s.x, s.y, 0.0f, cr);
+                pa_stop(&cp, 0.0f, PA_RGBA(255, 255, 255, (int)(255.0f * ca)));
+                pa_stop(&cp, 0.45f, pa_alpha(pa_hex(0xFFD23F), 0.85f * ca));
+                pa_stop(&cp, 1.0f, PA_RGBA(255, 210, 63, 0));
+                pa_fill_ellipse_paint(c, s.x, s.y, cr, cr, &cp);
+            }
             pa_stroke_circle(c, s.x, s.y, r, fmaxf(2.0f, 9.0f * g_u * t), pa_alpha(PA_RGB(255, 255, 255), t));
             break; }
         case PK_DUST: {
             float e = 1.0f - t, r = p->size * k * (0.6f + 0.9f * e);
-            pa_fill_circle(c, s.x, s.y, r, pa_alpha(p->col, 0.75f * t));
-            pa_fill_circle(c, s.x - r * 0.25f, s.y - r * 0.3f, r * 0.55f, pa_alpha(pa_shade(p->col, 0.3f), 0.6f * t));
+            disc(c, s.x, s.y, r, p->col, 0.75f * t);
+            disc(c, s.x - r * 0.25f, s.y - r * 0.3f, r * 0.55f, pa_shade(p->col, 0.3f), 0.6f * t);
             break; }
         default: {
             float r = fmaxf(1.5f, p->size * k);
-            pa_fill_circle(c, s.x, s.y, r, pa_alpha(p->col, t));
+            disc(c, s.x, s.y, r, p->col, t);
             break; }
         }
     }
@@ -2027,7 +2331,7 @@ static void draw_floats(PA_Canvas *c) {
         if (f->t > 0.8f) pop *= 1.0f - (f->t - 0.8f) / 0.3f;
         if (pop < 0.2f) continue;
         PA_Vec2 s = proj(f->x, f->y + f->t * 1.2f, f->z);
-        float size = fminf(fmaxf(18.0f * g_u, ss(f->z) * 0.75f), 34.0f * g_u) * f->size * pop;
+        float size = fminf(fmaxf(18.0f * g_u, ss(f->z) * 0.75f), 36.0f * g_u) * f->size * pop;
         pa_text_bold(c, f->text, s.x, s.y - size * 0.5f, size, f->col, C_INK, PA_ALIGN_CENTER, size * 0.05f, 1.5f);
     }
 }
@@ -2374,13 +2678,28 @@ static void draw_shop(PA_Canvas *c) {
 static void s_render(PA_Canvas *c) {
     layout((float)c->w, (float)c->h);
     if (g_spr_k != g_k) spr_build();
+    mask_build();
+    g_zoom = 1.0f;
     if (G.state == S_SHOP) { draw_shop(c); pa_hub_hide_pause(); return; }
+    caches_refresh();
+    /* Boss levels open with the camera pushing in on the beast, then easing back. */
+    for (int i = 0; i < g_nbrute; i++) if (g_brute[i].boss && G.state == S_PLAY) {
+        float t = G.t;
+        float bump = pa_smooth(pa_clamp01(t / 0.7f)) * (1.0f - pa_smooth(pa_clamp01((t - 2.0f) / 1.0f)));
+        if (bump > 0.001f) {
+            const Brute *b = &g_brute[i];
+            g_zpx = sx(b->x, b->z); g_zpy = sy(b->z) - ss(b->z) * b->size * 1.0f;
+            g_zoom = 1.0f + 0.32f * bump;
+        }
+        break;
+    }
     /* screen shake on the world only */
     float sh = G.shake * g_u;
     g_shx = sh * sinf(G.clock * 53.0f);
     g_shy = sh * 0.6f * cosf(G.clock * 41.0f);
     draw_world(c);
     g_shx = g_shy = 0.0f;
+    g_zoom = 1.0f;
     draw_hud(c);
     if (G.state == S_READY) draw_ready(c);
     else if (G.state == S_WIN && G.st > 0.15f) {
