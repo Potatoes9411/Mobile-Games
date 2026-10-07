@@ -13,7 +13,8 @@
   "Helix Drop round 1: OURS WINS the blind comparison (slight). Confirmation round queued after the font upgrade.",
   "Roller Splat round 1: reference wins clearly (was overwhelming). Builder resumed on round 2.",
   "Typography upgrade merged into every game. Mob Clash native port merged; round 1 blind review started. Hub builder started.",
-  "Mob Clash round 1: reference wins overwhelmingly (crowd mass, lighting, camera). Builder resumed on round 2."
+  "Mob Clash round 1: reference wins overwhelmingly (crowd mass, lighting, camera). Builder resumed on round 2.",
+  "Block Storm round 2: OURS WINS the blind comparison by a clear margin."
  ],
  "engine": [
   {
@@ -51,10 +52,10 @@
    "id": "blockstorm",
    "name": "Block Storm",
    "ref": "Block Blast",
-   "phase": "fixing",
-   "round": 1,
-   "verdict": "Reference wins, slight",
-   "gap": "Font (kerning, doubled outlines), tray pieces overflow slots, combo banner covers the board, red/orange too close. Ours already wins on juice."
+   "phase": "won",
+   "round": 2,
+   "verdict": "Ours wins, clear",
+   "gap": "Won on effects, HUD and polish. Polishing tray edge fit and collectible feedback; confirmation round with different reference shots next."
   },
   {
    "id": "helix",
