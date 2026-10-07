@@ -38,13 +38,13 @@
 #define GRID_W        64
 #define GRID_H        80
 
-#define OUTLINE_COL   0xFF16131Cu
+#define OUTLINE_COL   0xFF1A1A2Eu
 
 enum { PH_TITLE, PH_PLAY, PH_DRAFT, PH_CHEST, PH_DYING, PH_OVER };
 
 /* Weapons and their partner items share an index: item i evolves weapon i. */
-enum { W_KUNAI, W_GUARD, W_DRONE, W_BOLT, W_BRICK, W_BALL, W_FIRE, W_COUNT };
-enum { P_POWER, P_BRACER, P_FUEL, P_CUBE, P_BOOK, P_SHOES, P_OIL, P_COUNT };
+enum { W_KUNAI, W_GUARD, W_DRONE, W_BOLT, W_BRICK, W_BALL, W_FIRE, W_FIELD, W_COUNT };
+enum { P_POWER, P_BRACER, P_FUEL, P_CUBE, P_BOOK, P_SHOES, P_OIL, P_RAGE, P_COUNT };
 #define MAX_LV 5
 #define SLOTS  6
 
@@ -55,13 +55,13 @@ enum { P_POWER, P_BRACER, P_FUEL, P_CUBE, P_BOOK, P_SHOES, P_OIL, P_COUNT };
 #define IC_COINS   (IC_MEAT + 1)
 
 static const char *W_NAME[W_COUNT] = {
-    "KUNAI", "GUARDIAN", "DRONE", "LIGHTNING", "BRICK", "SOCCER BALL", "MOLOTOV"
+    "KUNAI", "GUARDIAN", "DRONE", "LIGHTNING", "BRICK", "SOCCER BALL", "MOLOTOV", "FORCEFIELD"
 };
 static const char *EVO_NAME[W_COUNT] = {
-    "SHADOW KUNAI", "DEFENDER", "DESTROYER", "THUNDERSTORM", "DUMBBELL", "QUANTUM BALL", "NAPALM"
+    "SHADOW KUNAI", "DEFENDER", "DESTROYER", "THUNDERSTORM", "DUMBBELL", "QUANTUM BALL", "NAPALM", "INFERNO RING"
 };
 static const char *P_NAME[P_COUNT] = {
-    "POWER ROUND", "EXO BRACER", "HE FUEL", "ENERGY CUBE", "FITNESS GUIDE", "SPORT SHOES", "OIL BONDS"
+    "POWER ROUND", "EXO BRACER", "HE FUEL", "ENERGY CUBE", "FITNESS GUIDE", "SPORT SHOES", "OIL BONDS", "RAGE TONIC"
 };
 static const char *W_DESC[W_COUNT][MAX_LV] = {
     { "THROWS A KUNAI AT THE NEAREST ENEMY", "ADDS 1 KUNAI", "KUNAI DAMAGE UP", "ADDS 1 KUNAI", "ADDS 1 KUNAI, DAMAGE UP" },
@@ -70,7 +70,8 @@ static const char *W_DESC[W_COUNT][MAX_LV] = {
     { "LIGHTNING STRIKES A RANDOM FOE", "ADDS 1 STRIKE", "STRIKE DAMAGE UP", "ADDS 1 STRIKE", "ADDS 1 STRIKE, FASTER" },
     { "LOBS A HEAVY BRICK THAT PIERCES", "BRICK DAMAGE UP", "ADDS 1 BRICK", "BRICK DAMAGE UP", "ADDS 1 BRICK" },
     { "A BALL THAT BOUNCES OFF THE SCREEN", "BALL DAMAGE UP", "ADDS 1 BALL", "BALLS LAST LONGER", "ADDS 1 BALL" },
-    { "SETS THE GROUND ABLAZE", "BURN DAMAGE UP", "ADDS 1 BOTTLE", "BIGGER FIRES", "ADDS 1 BOTTLE" }
+    { "SETS THE GROUND ABLAZE", "BURN DAMAGE UP", "ADDS 1 BOTTLE", "BIGGER FIRES", "ADDS 1 BOTTLE" },
+    { "A BURNING RING SCORCHES ALL NEAR YOU", "FIELD DAMAGE UP", "BIGGER FIELD", "BURNS FASTER", "BIGGER FIELD, DAMAGE UP" }
 };
 static const char *EVO_DESC[W_COUNT] = {
     "A STORM OF PIERCING BLADES",
@@ -79,7 +80,8 @@ static const char *EVO_DESC[W_COUNT] = {
     "A STORM OF CHAINED STRIKES",
     "CRUSHING DUMBBELLS RAIN DOWN",
     "GLOWING BALLS THAT NEVER TIRE",
-    "A SEA OF FIRE"
+    "A SEA OF FIRE",
+    "A HUGE RING OF HELLFIRE"
 };
 static const char *P_DESC[P_COUNT] = {
     "+10% DAMAGE",
@@ -88,11 +90,12 @@ static const char *P_DESC[P_COUNT] = {
     "-7% COOLDOWN",
     "+20 MAX HP AND HEALS",
     "+8% MOVE SPEED",
-    "+0.6 HP REGEN EVERY SECOND"
+    "+0.6 HP REGEN EVERY SECOND",
+    "+6% CRITICAL HIT CHANCE"
 };
 
 /* ---------------------------------------------------------------- enemies -- */
-enum { E_ZOMBIE, E_BEETLE, E_FLY, E_BRUTE, E_SPITTER, E_BLUEBUG, E_ELITE, E_BOSS, E_KING, E_TYPES };
+enum { E_ZOMBIE, E_BEETLE, E_FLY, E_BRUTE, E_SPITTER, E_BLUEBUG, E_DOG, E_ELITE, E_BOSS, E_KING, E_TYPES };
 
 typedef struct {
     float hp, speed, dmg, r;
@@ -102,15 +105,16 @@ typedef struct {
 
 static const EnemyDef EDEF[E_TYPES] = {
     /* hp     speed  dmg   r      xp ranged */
-    {  11.f,  44.f,  6.f, 11.f,  1, 0 },   /* zombie */
-    {   9.f,  52.f,  5.f, 11.f,  1, 0 },   /* orange shell bug */
-    {   6.f,  78.f,  4.f, 10.f,  1, 0 },   /* fly */
-    {  48.f,  36.f, 12.f, 15.f,  3, 0 },   /* hard hat brute */
-    {  20.f,  38.f,  8.f, 13.f,  3, 1 },   /* flower spitter */
-    {  20.f,  56.f,  7.f, 11.f,  2, 0 },   /* blue shell bug */
-    { 420.f,  40.f, 18.f, 26.f, 25, 0 },   /* elite */
-    {4400.f,  44.f, 15.f, 42.f, 60, 0 },   /* boss */
-    {15000.f, 48.f, 20.f, 48.f, 90, 0 },   /* final boss */
+    {  11.f,  44.f,  6.f, 12.5f, 1, 0 },   /* zombie */
+    {   9.f,  52.f,  5.f, 12.5f, 1, 0 },   /* orange shell bug */
+    {   6.f,  78.f,  4.f, 11.5f, 1, 0 },   /* fly */
+    {  48.f,  36.f, 12.f, 17.f,  3, 0 },   /* hard hat brute */
+    {  20.f,  38.f,  8.f, 15.f,  3, 1 },   /* flower spitter */
+    {  20.f,  56.f,  7.f, 12.5f, 2, 0 },   /* blue shell bug */
+    {   8.f,  80.f,  5.f, 12.f,  1, 0 },   /* zombie dog, the runner */
+    { 420.f,  40.f, 18.f, 28.f, 25, 0 },   /* elite */
+    {4400.f,  44.f, 15.f, 56.f, 60, 0 },   /* boss */
+    {15000.f, 48.f, 20.f, 62.f, 90, 0 },   /* final boss */
 };
 
 typedef struct {
@@ -162,11 +166,17 @@ typedef struct { float x, y, vx, vy, life, r; int alive; } EBullet;
 typedef struct { int w, h; float ox, oy; uint32_t *px; } Sprite;
 
 #define ANIM_FRAMES 4
-enum { SPR_HERO, SPR_ZOMBIE, SPR_BEETLE, SPR_FLY, SPR_BRUTE, SPR_SPITTER, SPR_BLUEBUG,
+enum { SPR_HERO, SPR_ZOMBIE, SPR_BEETLE, SPR_FLY, SPR_BRUTE, SPR_SPITTER, SPR_BLUEBUG, SPR_DOG,
        SPR_ELITE, SPR_BOSS, SPR_KING, SPR_SETS };
 
 static Sprite g_spr[SPR_SETS][ANIM_FRAMES];
 static Sprite g_gem_spr[G_KINDS];
+static Sprite g_flame[ANIM_FRAMES];
+static Sprite g_spark;
+/* Additive glow falloff, sampled at any radius. Cheaper than a radial paint
+   and it lights rather than paints over. */
+#define GLOW_N 64
+static uint8_t g_glow_lut[GLOW_N * GLOW_N];
 static float  g_baked_scale = -1.0f;
 
 /* ------------------------------------------------------------------ state -- */
@@ -233,6 +243,7 @@ typedef struct {
 
     /* bot */
     float  bot_wander, bot_pick;
+    float  field_pulse, muzzle, muzzle_ang;
 
     /* sfx throttles */
     float  sfx_hit, sfx_gem, sfx_throw;
@@ -263,6 +274,8 @@ static int   g_best, g_best_kills, g_bank, g_meta_atk, g_meta_hp, g_runs, g_load
 static struct { int w, h; float s; } L = { 540, 1170, 1.0f };
 
 static void begin_run(void);
+static void gc_reset(void);
+static const Sprite *ball_sprite(int evo, float r, float ang);
 static void open_draft(void);
 static void open_chest(void);
 static void finish(int won);
@@ -399,24 +412,31 @@ static float g_ow;
 
 static PA_Color OUTC(void) { return OUTLINE_COL; }
 
+/* Pass -1 (the hero only) lays a white rim outside the black outline so the
+   player reads against the swarm. */
+static float g_wo;
+static float P_grow(void) { return g_pass < 0 ? g_ow + g_wo : g_ow; }
+static PA_Color P_edge(void) { return g_pass < 0 ? PA_RGB(255, 255, 255) : OUTC(); }
+
 static void P_circle(PA_Canvas *c, float x, float y, float r, PA_Color col) {
-    if (g_pass == 0) pa_fill_circle(c, x, y, r + g_ow, OUTC());
+    if (g_pass <= 0) pa_fill_circle(c, x, y, r + P_grow(), P_edge());
     else pa_fill_circle(c, x, y, r, col);
 }
 static void P_ellipse(PA_Canvas *c, float x, float y, float rx, float ry, PA_Color col) {
-    if (g_pass == 0) pa_fill_ellipse(c, x, y, rx + g_ow, ry + g_ow, OUTC());
+    if (g_pass <= 0) pa_fill_ellipse(c, x, y, rx + P_grow(), ry + P_grow(), P_edge());
     else pa_fill_ellipse(c, x, y, rx, ry, col);
 }
 static void P_rrect(PA_Canvas *c, float x, float y, float w, float h, float r, PA_Color col) {
-    if (g_pass == 0) pa_round_rect(c, x - g_ow, y - g_ow, w + g_ow * 2.0f, h + g_ow * 2.0f, r + g_ow, OUTC());
+    float g = P_grow();
+    if (g_pass <= 0) pa_round_rect(c, x - g, y - g, w + g * 2.0f, h + g * 2.0f, r + g, P_edge());
     else pa_round_rect(c, x, y, w, h, r, col);
 }
 static void P_poly(PA_Canvas *c, const PA_Vec2 *p, int n, PA_Color col) {
-    if (g_pass == 0) { pa_fill_poly(c, p, n, OUTC()); pa_stroke_poly(c, p, n, 1, g_ow * 2.0f, OUTC()); }
+    if (g_pass <= 0) { pa_fill_poly(c, p, n, P_edge()); pa_stroke_poly(c, p, n, 1, P_grow() * 2.0f, P_edge()); }
     else pa_fill_poly(c, p, n, col);
 }
 static void P_line(PA_Canvas *c, float x0, float y0, float x1, float y1, float w, PA_Color col) {
-    if (g_pass == 0) pa_line(c, x0, y0, x1, y1, w + g_ow * 2.0f, OUTC());
+    if (g_pass <= 0) pa_line(c, x0, y0, x1, y1, w + P_grow() * 2.0f, P_edge());
     else pa_line(c, x0, y0, x1, y1, w, col);
 }
 
@@ -456,7 +476,8 @@ static void art_hero(PA_Canvas *c, float x, float y, float k, int f) {
     float by = y - bob;
     soft_shadow(c, x, y, 15.0f * k, 5.0f * k);
     g_ow = 2.3f * k;
-    for (g_pass = 0; g_pass < 2; g_pass++) {
+    g_wo = 2.6f * k;
+    for (g_pass = -1; g_pass < 2; g_pass++) {
         P_rrect(c, x - 9.0f * k + step, y - 12.0f * k, 8.0f * k, 12.0f * k, 3.5f * k, pa_hex(0x30323F));
         P_rrect(c, x + 1.0f * k - step, y - 12.0f * k, 8.0f * k, 12.0f * k, 3.5f * k, pa_hex(0x30323F));
         /* scarf tail streaming behind */
@@ -491,7 +512,7 @@ static void zombie_core(PA_Canvas *c, float x, float y, float k, int f, uint32_t
     float step = sinf(ph) * 3.0f * k;
     float by = y - bob;
     soft_shadow(c, x, y, 13.0f * k, 4.5f * k);
-    g_ow = (big ? 2.4f : 1.9f) * k;
+    g_ow = (big ? 2.4f : 2.5f) * k;
     for (g_pass = 0; g_pass < 2; g_pass++) {
         P_rrect(c, x - 7.0f * k + step, y - 10.0f * k, 6.0f * k, 10.0f * k, 2.5f * k, pa_hex(0x2B3552));
         P_rrect(c, x + 1.0f * k - step, y - 10.0f * k, 6.0f * k, 10.0f * k, 2.5f * k, pa_hex(0x2B3552));
@@ -531,7 +552,7 @@ static void shell_core(PA_Canvas *c, float x, float y, float k, int f, uint32_t 
     float ph = (float)f * PA_TAU / (float)ANIM_FRAMES;
     float wob = sinf(ph) * 1.5f * k;
     soft_shadow(c, x, y, 13.0f * k, 4.5f * k);
-    g_ow = 1.8f * k;
+    g_ow = 2.4f * k;
     for (g_pass = 0; g_pass < 2; g_pass++) {
         for (int i = 0; i < 3; i++) {
             float lx = x - 5.0f * k + (float)i * 6.0f * k;
@@ -565,7 +586,7 @@ static void art_fly(PA_Canvas *c, float x, float y, float k, int f) {
     float flap = (f & 1) ? 0.55f : 1.0f;
     float cy = y - 19.0f * k - hov;
     soft_shadow(c, x, y, 10.0f * k, 3.5f * k);
-    g_ow = 1.8f * k;
+    g_ow = 2.4f * k;
     for (g_pass = 0; g_pass < 2; g_pass++) {
         P_ellipse(c, x - 4.0f * k, cy - 12.0f * k, 4.5f * k, 8.0f * k * flap, PA_RGB(250, 250, 255));
         P_ellipse(c, x + 2.0f * k, cy - 13.0f * k, 4.5f * k, 8.5f * k * flap, PA_RGB(250, 250, 255));
@@ -587,7 +608,7 @@ static void art_brute(PA_Canvas *c, float x, float y, float k, int f) {
     float step = sinf(ph) * 3.5f * k;
     float by = y - bob;
     soft_shadow(c, x, y, 16.0f * k, 5.0f * k);
-    g_ow = 2.1f * k;
+    g_ow = 2.6f * k;
     for (g_pass = 0; g_pass < 2; g_pass++) {
         P_rrect(c, x - 9.0f * k + step, y - 12.0f * k, 8.0f * k, 12.0f * k, 3.0f * k, pa_hex(0x2C3350));
         P_rrect(c, x + 1.0f * k - step, y - 12.0f * k, 8.0f * k, 12.0f * k, 3.0f * k, pa_hex(0x2C3350));
@@ -610,7 +631,7 @@ static void art_spitter(PA_Canvas *c, float x, float y, float k, int f) {
     float pulse = 1.0f + sinf(ph) * 0.08f;
     float hx = x + 1.0f * k, hy = y - 28.0f * k;
     soft_shadow(c, x, y, 13.0f * k, 4.5f * k);
-    g_ow = 2.0f * k;
+    g_ow = 2.5f * k;
     for (g_pass = 0; g_pass < 2; g_pass++) {
         P_ellipse(c, x, y - 10.0f * k, 10.0f * k, 10.0f * k, pa_hex(0x76B045));
         P_ellipse(c, x - 9.0f * k, y - 9.0f * k, 6.0f * k, 3.5f * k, pa_hex(0x5E9A38));
@@ -692,6 +713,68 @@ static void boss_core(PA_Canvas *c, float x, float y, float k, int f, int king) 
 }
 static void art_boss(PA_Canvas *c, float x, float y, float k, int f) { boss_core(c, x, y, k, f, 0); }
 static void art_king(PA_Canvas *c, float x, float y, float k, int f) { boss_core(c, x, y, k, f, 1); }
+
+static void art_dog(PA_Canvas *c, float x, float y, float k, int f) {
+    float ph = (float)f * PA_TAU / (float)ANIM_FRAMES;
+    float run = sinf(ph) * 3.5f * k, bob = fabsf(cosf(ph)) * 1.5f * k;
+    PA_Color fur = pa_hex(0x8E8EA2), dark = pa_hex(0x666678);
+    soft_shadow(c, x, y, 14.0f * k, 4.5f * k);
+    g_ow = 2.4f * k;
+    for (g_pass = 0; g_pass < 2; g_pass++) {
+        P_line(c, x - 9.0f * k, y - 10.0f * k, x - 9.0f * k - run, y - 1.0f * k, 3.4f * k, dark);
+        P_line(c, x + 7.0f * k, y - 10.0f * k, x + 7.0f * k + run, y - 1.0f * k, 3.4f * k, dark);
+        P_line(c, x - 11.0f * k, y - 16.0f * k - bob, x - 18.0f * k, y - 22.0f * k + run * 0.4f, 3.0f * k, fur);
+        P_line(c, x - 5.0f * k, y - 10.0f * k, x - 5.0f * k + run, y - 1.0f * k, 3.4f * k, fur);
+        P_line(c, x + 3.0f * k, y - 10.0f * k, x + 3.0f * k - run, y - 1.0f * k, 3.4f * k, fur);
+        P_ellipse(c, x - 1.0f * k, y - 13.5f * k - bob, 12.5f * k, 7.0f * k, fur);
+        PA_Vec2 ear[3] = { { x + 6.0f * k, y - 23.0f * k - bob }, { x + 8.0f * k, y - 31.0f * k - bob },
+                           { x + 12.0f * k, y - 24.0f * k - bob } };
+        P_poly(c, ear, 3, dark);
+        P_circle(c, x + 10.0f * k, y - 19.0f * k - bob, 7.0f * k, fur);
+        P_ellipse(c, x + 16.0f * k, y - 16.5f * k - bob, 5.0f * k, 3.6f * k, pa_hex(0xA4A4B6));
+    }
+    pa_fill_ellipse(c, x - 4.0f * k, y - 15.0f * k - bob, 5.0f * k, 3.5f * k, dark);
+    pa_line(c, x + 5.0f * k, y - 14.0f * k - bob, x + 8.0f * k, y - 22.0f * k - bob, 2.2f * k, pa_hex(0xE8303A));
+    pa_fill_circle(c, x + 11.5f * k, y - 21.0f * k - bob, 2.6f * k, PA_RGB(250, 250, 246));
+    pa_fill_circle(c, x + 12.2f * k, y - 21.0f * k - bob, 1.3f * k, pa_hex(0xD8202E));
+    pa_fill_circle(c, x + 20.5f * k, y - 17.5f * k - bob, 1.6f * k, OUTC());
+    pa_line(c, x + 13.0f * k, y - 14.0f * k - bob, x + 19.0f * k, y - 14.5f * k - bob, 1.3f * k, OUTC());
+}
+
+/* Flame tongue: red rim, orange body, #FFB347 core. Four frames of flicker. */
+static void flame_poly(PA_Canvas *c, float x, float y, float w, float h, float lean, PA_Color col) {
+    PA_Vec2 p[13];
+    for (int i = 0; i < 9; i++) {
+        float a = (float)i / 8.0f * PA_PI;
+        p[i].x = x + cosf(a) * w; p[i].y = y + sinf(a) * w * 0.75f;
+    }
+    p[9].x = x - w * 0.85f; p[9].y = y - h * 0.32f;
+    p[10].x = x - w * 0.3f + lean * 0.5f; p[10].y = y - h * 0.72f;
+    p[11].x = x + lean; p[11].y = y - h;
+    p[12].x = x + w * 0.8f + lean * 0.3f; p[12].y = y - h * 0.38f;
+    pa_fill_poly(c, p, 13, col);
+}
+static void art_flame(PA_Canvas *c, float x, float y, float k, int f) {
+    float lean = sinf((float)f * 1.7f) * 3.0f * k;
+    float h = (28.0f + (float)((f * 5) % 4)) * k;
+    flame_poly(c, x, y, 9.0f * k, h, lean, pa_hex(0xE2401C));
+    flame_poly(c, x, y + 0.5f * k, 6.6f * k, h * 0.74f, lean * 0.8f, pa_hex(0xFF8A1E));
+    flame_poly(c, x, y + 1.0f * k, 4.2f * k, h * 0.46f, lean * 0.6f, pa_hex(0xFFB347));
+    pa_fill_ellipse(c, x, y + 1.0f * k, 2.4f * k, 1.8f * k, pa_hex(0xFFF0B0));
+}
+
+/* White four-point impact star. */
+static void art_spark(PA_Canvas *c, float x, float y, float k, int f) {
+    (void)f;
+    pa_fill_circle(c, x, y, 7.0f * k, PA_RGBA(255, 255, 255, 90));
+    PA_Vec2 p[8];
+    for (int i = 0; i < 8; i++) {
+        float a = (float)i * PA_PI / 4.0f;
+        float r = (i & 1) ? 3.0f * k : 11.0f * k;
+        p[i].x = x + cosf(a) * r; p[i].y = y + sinf(a) * r;
+    }
+    pa_fill_poly(c, p, 8, PA_RGB(255, 255, 255));
+}
 
 /* Pickups. `kind` arrives in the frame slot. */
 static void art_pickup(PA_Canvas *c, float x, float y, float k, int kind) {
@@ -794,16 +877,17 @@ typedef struct { DrawFn fn; float w, h, ox, oy, k; } SprSpec;
 
 static void bake_all(float s) {
     static const SprSpec specs[SPR_SETS] = {
-        { art_hero,     60,  72, 30,  64, 1.0f },
-        { art_zombie,   44,  52, 20,  48, 1.0f },
-        { art_beetle,   42,  40, 19,  36, 1.0f },
-        { art_fly,      46,  52, 21,  48, 1.0f },
-        { art_brute,    50,  66, 23,  62, 1.0f },
-        { art_spitter,  52,  58, 26,  54, 1.0f },
-        { art_bluebug,  42,  40, 19,  36, 1.0f },
-        { art_elite,    96, 112, 42, 104, 2.0f },
-        { art_boss,    180, 166, 84, 158, 1.1f },
-        { art_king,    196, 184, 92, 174, 1.18f },
+        { art_hero,     84,  98, 42,  86, 1.25f },
+        { art_zombie,   54,  64, 24,  58, 1.2f },
+        { art_beetle,   52,  50, 23,  44, 1.2f },
+        { art_fly,      56,  64, 25,  58, 1.2f },
+        { art_brute,    62,  80, 28,  75, 1.2f },
+        { art_spitter,  64,  72, 32,  66, 1.2f },
+        { art_bluebug,  52,  50, 23,  44, 1.2f },
+        { art_dog,      60,  54, 26,  46, 1.2f },
+        { art_elite,   108, 126, 47, 116, 2.2f },
+        { art_boss,    250, 230, 116, 218, 1.5f },
+        { art_king,    270, 254, 126, 238, 1.6f },
     };
     for (int i = 0; i < SPR_SETS; i++) {
         const SprSpec *p = &specs[i];
@@ -820,6 +904,20 @@ static void bake_all(float s) {
             float size = DIGIT_SIZE(st) * s;
             int w = (int)ceilf(size * 1.5f), h = (int)ceilf(size * 1.8f);
             spr_bake(&g_digit[st][d], w, h, (float)w * 0.5f, size * 0.38f, s, d + st * NUM_GLYPHS, art_digit);
+        }
+    for (int f = 0; f < ANIM_FRAMES; f++) {
+        int fw = (int)ceilf(24.0f * s), fh = (int)ceilf(40.0f * s);
+        spr_bake(&g_flame[f], fw, fh, (float)fw * 0.5f, 33.0f * s, s, f, art_flame);
+    }
+    {
+        int sz = (int)ceilf(26.0f * s);
+        spr_bake(&g_spark, sz, sz, (float)sz * 0.5f, (float)sz * 0.5f, s, 0, art_spark);
+    }
+    for (int yy = 0; yy < GLOW_N; yy++)
+        for (int xx = 0; xx < GLOW_N; xx++) {
+            float dx = ((float)xx + 0.5f) / (float)GLOW_N * 2.0f - 1.0f, dy = ((float)yy + 0.5f) / (float)GLOW_N * 2.0f - 1.0f;
+            float d = 1.0f - sqrtf(dx * dx + dy * dy);
+            g_glow_lut[yy * GLOW_N + xx] = (uint8_t)(d > 0.0f ? d * d * 255.0f : 0.0f);
         }
     g_baked_scale = s;
 }
@@ -842,7 +940,7 @@ static int xp_need(int lv) { return 3 + lv * 3 + lv * lv / 4; }
 
 static float hp_mul(float t) {
     float q = t / 240.0f;
-    return 1.0f + t / 60.0f * 0.7f + q * q * 1.8f;
+    return 1.0f + t / 60.0f * 0.7f + q * q * 2.3f;
 }
 
 /* ---------------------------------------------------------------- audio -- */
@@ -866,7 +964,7 @@ static void sfx_gem(void) {
 }
 
 /* ------------------------------------------------------------ particles -- */
-enum { PT_SPARK, PT_SMOKE, PT_FLAME, PT_BLOOD, PT_STAR };
+enum { PT_SPARK, PT_SMOKE, PT_FLAME, PT_BLOOD, PT_STAR, PT_HIT };
 
 static void part(float x, float y, float vx, float vy, float life, float size, uint32_t col, int kind) {
     Part *p = &g_pt[g_pt_next];
@@ -1000,9 +1098,11 @@ static void offscreen_point(float *x, float *y, float margin) {
 static int pick_type(void) {
     float t = S.t;
     float w[E_ELITE] = { 0 };
+    /* Four silhouettes from the first wave: walker, shell bug, runner, flyer. */
     w[E_ZOMBIE]  = t < 240.0f ? 1.0f : 0.5f;
-    w[E_BEETLE]  = t > 12.0f ? 0.9f : 0.0f;
-    w[E_FLY]     = t > 70.0f ? 0.8f : 0.0f;
+    w[E_BEETLE]  = 0.9f;
+    w[E_DOG]     = t > 6.0f ? 0.55f : 0.0f;
+    w[E_FLY]     = t > 16.0f ? (t > 70.0f ? 0.8f : 0.4f) : 0.0f;
     w[E_BRUTE]   = t > 110.0f ? 0.22f + t / 2400.0f : 0.0f;
     w[E_SPITTER] = t > 150.0f ? 0.14f : 0.0f;
     w[E_BLUEBUG] = t > 210.0f ? 0.9f : 0.0f;
@@ -1051,7 +1151,7 @@ static void spawn_boss(int king) {
     if (b >= 0 && king && pa_demo_mode() == 6) g_en[b].hp = g_en[b].maxhp * 0.08f;
     S.boss_idx = b;
     S.boss_kind = king ? E_KING : E_BOSS;
-    if (b >= 0) { g_en[b].bstate = 0; g_en[b].bt = 1.6f; }
+    if (b >= 0) { g_en[b].bstate = 4; g_en[b].bt = 0.9f; }
     S.shake = 0.6f;
     pa_tone(140.0f, 50.0f, 0.9f, 3, 0.14f);
     pa_noise(0.5f, 0.12f);
@@ -1096,7 +1196,7 @@ static void run_events(void) {
 }
 
 static void spawner(float dt) {
-    float target = 34.0f + S.t * 0.9f;
+    float target = 44.0f + S.t * 0.9f;
     if (target > 400.0f) target = 400.0f;
     if (S.cage) target *= 0.45f;
     float rate = 6.0f + S.t * 0.09f;
@@ -1213,10 +1313,11 @@ static void kill_enemy(int i) {
 static void hurt_enemy(int i, float dmg, float kx, float ky, int wid) {
     Enemy *e = &g_en[i];
     if (!e->alive) return;
-    int crit = wid >= 0 && frand() < 0.08f;
+    int crit = wid >= 0 && frand() < 0.08f + 0.06f * (float)S.plv[P_RAGE];
     if (crit) dmg *= 2.0f;
     e->hp -= dmg;
     e->flash = 0.12f;
+    if (frand() < 0.5f) part(e->x + frange(-6, 6), e->y - e->r * 1.3f, 0, 0, 0.12f, 1.0f, 0xFFFFFFFF, PT_HIT);
     float kb = e->type >= E_BOSS ? 0.0f : e->type == E_ELITE ? 0.25f : e->type == E_BRUTE ? 0.6f : 1.0f;
     e->kx += kx * kb; e->ky += ky * kb;
     if (wid >= 0 || e->type >= E_ELITE)
@@ -1263,6 +1364,12 @@ static int guardians_active(void) {
     return S.guard_cycle < 4.0f * dur_mul();
 }
 
+static float field_radius(void) {
+    static const float r[MAX_LV] = { 104, 104, 122, 122, 140 };
+    if (!S.wlv[W_FIELD]) return 0.0f;
+    return (S.evo[W_FIELD] ? 165.0f : r[S.wlv[W_FIELD] - 1]) * area_mul();
+}
+
 static int drone_count(void) {
     if (!S.wlv[W_DRONE]) return 0;
     return (S.evo[W_DRONE] || S.wlv[W_DRONE] >= 3) ? 2 : 1;
@@ -1299,6 +1406,8 @@ static void fire_weapons(float dt) {
             }
             S.cd[W_KUNAI] = (ev ? 0.34f : 0.80f) * cdm;
             S.face = g_en[t].x >= S.px ? 1 : -1;
+            S.muzzle = 0.08f;
+            S.muzzle_ang = base;
             sfx_throw();
         } else S.cd[W_KUNAI] = 0.1f;
     }
@@ -1352,7 +1461,7 @@ static void fire_weapons(float dt) {
                     float a = atan2f(g_en[t].y - dy, g_en[t].x - dx) + frange(-0.9f, 0.9f);
                     p->x = dx; p->y = dy; p->vx = cosf(a) * 200.0f; p->vy = sinf(a) * 200.0f;
                     p->life = 2.0f; p->dmg = (ev ? 58.0f : dmg[lv - 1]) * dm;
-                    p->r = (ev ? 60.0f : (lv >= 5 ? 46.0f : 38.0f)) * am;
+                    p->r = (ev ? 84.0f : (lv >= 5 ? 58.0f : 48.0f)) * am;
                     p->evo = ev; p->pierce = t;
                     fired = 1;
                 }
@@ -1379,7 +1488,7 @@ static void fire_weapons(float dt) {
             }
             if (pick < 0) break;
             float x = g_en[pick].x, y = g_en[pick].y;
-            float r = (ev ? 52.0f : 34.0f) * am;
+            float r = (ev ? 64.0f : 42.0f) * am;
             zone(Z_BOLT, x, y, r, 0.32f, 0.0f, ev);
             blast(x, y - 8.0f, r, (ev ? 82.0f : dmg[lv - 1]) * dm, W_BOLT);
             burst(x, y - 6.0f, 6, 160.0f, 0.3f, 3.0f, 0xFFB8F0FF, PT_SPARK);
@@ -1428,6 +1537,25 @@ static void fire_weapons(float dt) {
         }
         S.cd[W_BALL] = 2.7f * cdm;
         pa_tone(220.0f, 330.0f, 0.06f, 0, 0.05f);
+    }
+
+    /* Forcefield: a ring of fire round the hero that scorches everything in it. */
+    lv = S.wlv[W_FIELD];
+    if (S.field_pulse > 0.0f) S.field_pulse -= dt * 3.0f;
+    if (lv && S.cd[W_FIELD] <= 0.0f) {
+        static const float dmg[MAX_LV] = { 7, 9, 10, 13, 16 };
+        int ev = S.evo[W_FIELD];
+        float r = field_radius();
+        int hits[320];
+        int n = query(S.px, S.py - 10.0f, r, hits, 320);
+        for (int k = 0; k < n; k++) {
+            Enemy *e = &g_en[hits[k]];
+            float dx = e->x - S.px, dy = e->y - S.py, dl = sqrtf(dx * dx + dy * dy) + 0.01f;
+            hurt_enemy(hits[k], (ev ? 34.0f : dmg[lv - 1]) * dm, dx / dl * 60.0f, dy / dl * 60.0f, W_FIELD);
+            if (k < 10) part(e->x, e->y - 12.0f, frange(-30, 30), -60.0f, 0.45f, 6.0f, 0xFFFF8A1E, PT_FLAME);
+        }
+        S.cd[W_FIELD] = (ev ? 0.38f : (lv >= 4 ? 0.5f : 0.65f)) * cdm;
+        S.field_pulse = 1.0f;
     }
 
     /* Molotovs: arcing bottles that leave fire on the ground. */
@@ -1610,6 +1738,20 @@ static void boss_think(Enemy *e, float dt, float *mx, float *my) {
         if (((int)(e->bt * 60.0f) & 1)) part(e->x, e->y, 0, 0, 0.35f, 10.0f, 0xFFB8B4C8, PT_SMOKE);
         if (e->bt <= 0.0f) { e->bstate = 0; e->bt = king ? 1.6f : 2.2f; }
         break;
+    case 4: /* dropping in from above; lands with a quake */
+        *mx = *my = 0.0f;
+        if (e->bt <= 0.0f) {
+            zone(Z_SLAM, e->x, e->y, 280.0f, 0.7f, 0.0f, 1);
+            zone(Z_RING, e->x, e->y - 30.0f, 200.0f, 0.5f, 0.0f, 1);
+            burst(e->x, e->y, 26, 300.0f, 0.9f, 12.0f, 0xFFB8B4C8, PT_SMOKE);
+            burst(e->x, e->y, 18, 260.0f, 0.6f, 5.0f, 0xFF8A8A9A, PT_SPARK);
+            S.shake = 1.0f;
+            S.flash = 0.35f; S.flash_col = 0xFFFFFFFF;
+            pa_sfx("boom");
+            pa_tone(90.0f, 40.0f, 0.6f, 3, 0.14f);
+            e->bstate = 0; e->bt = 1.4f;
+        }
+        break;
     case 3: /* slam */
         *mx = *my = 0.0f;
         if (e->bt <= 0.0f) {
@@ -1686,7 +1828,7 @@ static void update_enemies(float dt) {
         float reach = e->r + 12.0f;
         if (fabsf(dx) < reach && fabsf(dy + 6.0f) < reach) {
             e->atk -= dt;
-            if (e->atk <= 0.0f && e->type != E_SPITTER) {
+            if (e->atk <= 0.0f && e->type != E_SPITTER && !(e->type >= E_BOSS && e->bstate == 4)) {
                 e->atk = 0.9f;
                 hurt_player(e->dmg);
             }
@@ -2218,10 +2360,10 @@ static void sim_play(float dt, const PA_Input *in) {
 
 static void demo_preload(int mode) {
     begin_run();
-    static const int kit2[W_COUNT] = { 4, 3, 2, 3, 0, 2, 0 };
-    static const int itm2[P_COUNT] = { 2, 1, 1, 2, 0, 1, 0 };
-    static const int kit3[W_COUNT] = { 5, 4, 3, 3, 2, 0, 2 };
-    static const int itm3[P_COUNT] = { 2, 2, 1, 2, 1, 0, 0 };
+    static const int kit2[W_COUNT] = { 4, 3, 2, 3, 0, 2, 0, 3 };
+    static const int itm2[P_COUNT] = { 2, 1, 1, 2, 0, 1, 0, 0 };
+    static const int kit3[W_COUNT] = { 5, 4, 3, 3, 0, 0, 2, 4 };
+    static const int itm3[P_COUNT] = { 2, 2, 1, 2, 1, 0, 0, 1 };
     const int *kit = mode == 3 || mode == 6 ? kit3 : kit2;
     const int *itm = mode == 3 || mode == 6 ? itm3 : itm2;
     float t = mode == 2 ? 140.0f : mode == 3 ? 228.0f : mode == 4 ? 300.0f : mode == 5 ? 100.0f : 470.0f;
@@ -2230,7 +2372,10 @@ static void demo_preload(int mode) {
     for (int w = 0; w < W_COUNT; w++) for (int l = (w == W_KUNAI); l < kit[w]; l++) add_weapon(w);
     for (int p = 0; p < P_COUNT; p++) for (int l = 0; l < itm[p]; l++) add_item(p);
     if (mode == 3 || mode == 6) S.evo[W_KUNAI] = 1;
-    if (mode == 6) { S.evo[W_GUARD] = 1; for (int l = S.wlv[W_GUARD]; l < MAX_LV; l++) add_weapon(W_GUARD); }
+    if (mode == 6) {
+        S.evo[W_GUARD] = 1; for (int l = S.wlv[W_GUARD]; l < MAX_LV; l++) add_weapon(W_GUARD);
+        S.evo[W_FIELD] = 1; for (int l = S.wlv[W_FIELD]; l < MAX_LV; l++) add_weapon(W_FIELD);
+    }
     S.hp = S.maxhp;
     S.t = t;
     S.level = level; S.xpneed = xp_need(level); S.xp = S.xpneed * 3 / 5;
@@ -2271,6 +2416,7 @@ static void s_stop(void) {
     for (int g = 0; g < G_KINDS; g++) spr_free(&g_gem_spr[g]);
     for (int st = 0; st < NUM_STYLES; st++) for (int d = 0; d < NUM_GLYPHS; d++) spr_free(&g_digit[st][d]);
     g_baked_scale = -1.0f;
+    gc_reset();
 }
 
 static void s_update(float dt, const PA_Input *in) {
@@ -2336,8 +2482,15 @@ static void s_update(float dt, const PA_Input *in) {
 /* ============================================================= drawing ==== */
 static float g_shx, g_shy;
 
-static float SX(float x) { return (x - S.cam_x) * L.s + (float)L.w * 0.5f + g_shx; }
-static float SY(float y) { return (y - S.cam_y) * L.s + (float)L.h * 0.5f + g_shy; }
+/* World to screen. The view is set once per frame; the ground cache points it
+   at a block while it paints one. */
+static float g_vx, g_vy, g_vcx, g_vcy;
+static float SX(float x) { return (x - g_vx) * L.s + g_vcx; }
+static float SY(float y) { return (y - g_vy) * L.s + g_vcy; }
+static void set_view(void) {
+    g_vx = S.cam_x; g_vy = S.cam_y;
+    g_vcx = (float)L.w * 0.5f + g_shx; g_vcy = (float)L.h * 0.5f + g_shy;
+}
 
 static void time_str(char *buf, size_t n, float t) {
     int s = (int)t;
@@ -2493,6 +2646,20 @@ static void icon_ball(PA_Canvas *c, float x, float y, float r, float t, int evo)
     }
 }
 
+static void icon_field(PA_Canvas *c, float x, float y, float s, int evo, float t) {
+    float r = s * (evo ? 0.36f : 0.32f);
+    pa_fill_circle(c, x, y, r, PA_RGBA(255, 59, 47, 110));
+    pa_stroke_circle(c, x, y, r, s * 0.1f, OUTC());
+    pa_stroke_circle(c, x, y, r, s * 0.06f, evo ? pa_hex(0xFFC21C) : pa_hex(0xFF7A3D));
+    for (int i = 0; i < 8; i++) {
+        float a = (float)i / 8.0f * PA_TAU + t * 0.5f;
+        float fx = x + cosf(a) * r, fy = y + sinf(a) * r;
+        PA_Vec2 f[3] = { { fx - s * 0.05f, fy }, { fx + s * 0.01f, fy - s * 0.15f }, { fx + s * 0.05f, fy } };
+        pa_fill_poly(c, f, 3, evo ? pa_hex(0xFFE27A) : pa_hex(0xFF9A2E));
+    }
+    o_circle(c, x, y, s * 0.1f, evo ? pa_hex(0xFFC21C) : pa_hex(0xE8303A), s * 0.035f);
+}
+
 static void icon_bottle(PA_Canvas *c, float x, float y, float s, int evo) {
     float ow = s * 0.04f;
     if (evo) {
@@ -2533,6 +2700,7 @@ static void draw_icon(PA_Canvas *c, int id, float x, float y, float s, float t) 
         case W_BRICK: icon_brick(c, x, y, s, 1); break;
         case W_BALL: icon_ball(c, x, y, s * 0.3f, t, 1); break;
         case W_FIRE: icon_bottle(c, x, y, s, 1); break;
+        case W_FIELD: icon_field(c, x, y, s, 1, t); break;
         }
         return;
     }
@@ -2545,6 +2713,7 @@ static void draw_icon(PA_Canvas *c, int id, float x, float y, float s, float t) 
         case W_BRICK: icon_brick(c, x, y, s, 0); break;
         case W_BALL: icon_ball(c, x, y, s * 0.3f, t, 0); break;
         case W_FIRE: icon_bottle(c, x, y, s, 0); break;
+        case W_FIELD: icon_field(c, x, y, s, 0, t); break;
         }
         return;
     }
@@ -2599,6 +2768,12 @@ static void draw_icon(PA_Canvas *c, int id, float x, float y, float s, float t) 
             pa_line(c, x - s * 0.18f, y - s * 0.08f, x - s * 0.02f, y - s * 0.02f, s * 0.04f, PA_RGB(250, 250, 250));
             break;
         }
+        case P_RAGE:
+            o_rrect(c, x - s * 0.06f, y - s * 0.36f, s * 0.12f, s * 0.16f, s * 0.03f, pa_hex(0xA86A3A), ow);
+            o_circle(c, x, y + s * 0.06f, s * 0.24f, pa_hex(0xE8303A), ow);
+            pa_fill_ellipse(c, x, y + s * 0.1f, s * 0.2f, s * 0.14f, pa_hex(0xB81E28));
+            pa_fill_circle(c, x - s * 0.08f, y - s * 0.03f, s * 0.06f, pa_hex(0xFFB0B0));
+            break;
         case P_OIL:
             o_rrect(c, x - s * 0.22f, y - s * 0.28f, s * 0.44f, s * 0.58f, s * 0.08f, pa_hex(0x2E7A5A), ow);
             pa_fill_rect(c, x - s * 0.22f, y - s * 0.14f, s * 0.44f, s * 0.05f, pa_hex(0x1C4A38));
@@ -2630,6 +2805,147 @@ static int pick_icon(const Pick *p) {
 }
 
 /* --------------------------------------------------------------- ground -- */
+/* ------------------------------------------------------------ street props */
+/* Props are drawn once into the cached ground blocks, so a busy street costs
+   nothing per frame. Everything is world units mapped through SX/SY. */
+static void prop_shadow(PA_Canvas *c, float x, float y, float w, float h, float r) {
+    pa_round_rect(c, SX(x + 5.0f), SY(y + 6.0f), w * L.s, h * L.s, r * L.s, PA_RGBA(14, 12, 28, 120));
+}
+
+/** Axis-aligned rect in a car's local frame: x along its length. */
+static void car_rect(PA_Canvas *c, float cx, float cy, int vert, float lx, float ly, float lw, float lh, float r,
+                     PA_Color col, float ow) {
+    float x = vert ? cx + ly : cx + lx, y = vert ? cy + lx : cy + ly;
+    float w = vert ? lh : lw, h = vert ? lw : lh;
+    if (ow > 0.0f) o_rrect(c, SX(x), SY(y), w * L.s, h * L.s, r * L.s, col, ow * L.s);
+    else pa_round_rect(c, SX(x), SY(y), w * L.s, h * L.s, r * L.s, col);
+}
+
+static void prop_car(PA_Canvas *c, float cx, float cy, int vert, uint32_t paint, int burnt, int flip) {
+    float L2 = 48.0f, W2 = 23.0f;
+    float sgn = flip ? -1.0f : 1.0f;
+    PA_Color body = burnt ? pa_hex(0x4A4448) : pa_hex(paint);
+    PA_Color glass = burnt ? pa_hex(0x1E1C22) : pa_hex(0x3A4C70);
+    if (vert) prop_shadow(c, cx - W2, cy - L2, W2 * 2.0f, L2 * 2.0f, 10.0f);
+    else prop_shadow(c, cx - L2, cy - W2, L2 * 2.0f, W2 * 2.0f, 10.0f);
+    /* wheels peeking out */
+    for (int i = 0; i < 4; i++) {
+        float lx = (i & 1) ? 22.0f : -36.0f, ly = (i & 2) ? W2 - 3.0f : -W2 - 4.0f;
+        car_rect(c, cx, cy, vert, lx, ly, 15.0f, 7.0f, 2.0f, pa_hex(0x22222A), 0.0f);
+    }
+    car_rect(c, cx, cy, vert, -L2, -W2, L2 * 2.0f, W2 * 2.0f, 11.0f, body, 3.0f);
+    car_rect(c, cx, cy, vert, -L2 + 4.0f, -W2 + 3.0f, L2 * 2.0f - 8.0f, 5.0f, 3.0f, pa_shade(body, 0.25f), 0.0f);
+    /* glass and roof */
+    car_rect(c, cx, cy, vert, sgn > 0 ? 6.0f : -26.0f, -W2 + 5.0f, 20.0f, W2 * 2.0f - 10.0f, 5.0f, glass, 1.5f);
+    car_rect(c, cx, cy, vert, sgn > 0 ? -30.0f : 16.0f, -W2 + 6.0f, 14.0f, W2 * 2.0f - 12.0f, 4.0f, glass, 1.5f);
+    car_rect(c, cx, cy, vert, -14.0f, -W2 + 5.0f, 20.0f, W2 * 2.0f - 10.0f, 4.0f, pa_shade(body, burnt ? 0.1f : 0.18f), 0.0f);
+    if (!burnt) {
+        car_rect(c, cx, cy, vert, sgn > 0 ? 6.0f : -26.0f, -W2 + 7.0f, 4.0f, W2 * 2.0f - 14.0f, 2.0f, pa_hex(0x8FB0E0), 0.0f);
+        float fx = sgn > 0 ? L2 - 6.0f : -L2 + 1.0f, bx = sgn > 0 ? -L2 + 1.0f : L2 - 6.0f;
+        car_rect(c, cx, cy, vert, fx, -W2 + 3.0f, 5.0f, 8.0f, 2.0f, pa_hex(0xFFF2A0), 0.0f);
+        car_rect(c, cx, cy, vert, fx, W2 - 11.0f, 5.0f, 8.0f, 2.0f, pa_hex(0xFFF2A0), 0.0f);
+        car_rect(c, cx, cy, vert, bx, -W2 + 3.0f, 5.0f, 7.0f, 2.0f, pa_hex(0xE8303A), 0.0f);
+        car_rect(c, cx, cy, vert, bx, W2 - 10.0f, 5.0f, 7.0f, 2.0f, pa_hex(0xE8303A), 0.0f);
+        if (paint == 0xF6C340) car_rect(c, cx, cy, vert, -12.0f, -5.0f, 12.0f, 10.0f, 2.0f, pa_hex(0x22222A), 0.0f);
+    } else {
+        for (int i = 0; i < 4; i++) {
+            float lx = -30.0f + (float)i * 17.0f, ly = (float)((i * 7) % 11) - 8.0f;
+            car_rect(c, cx, cy, vert, lx, ly, 9.0f, 6.0f, 3.0f, pa_hex(0x2A2628), 0.0f);
+        }
+        car_rect(c, cx, cy, vert, 8.0f, -3.0f, 5.0f, 5.0f, 2.5f, pa_hex(0xFF8A1E), 0.0f);
+    }
+}
+
+static void prop_barrier(PA_Canvas *c, float x, float y) {
+    prop_shadow(c, x, y, 72.0f, 16.0f, 4.0f);
+    o_rrect(c, SX(x), SY(y), 72.0f * L.s, 16.0f * L.s, 4.0f * L.s, pa_hex(0xF2F2F2), 2.6f * L.s);
+    for (int i = 0; i < 4; i++) {
+        float sx = x + 4.0f + (float)i * 18.0f;
+        PA_Vec2 st[4] = { { SX(sx), SY(y + 16.0f) }, { SX(sx + 7.0f), SY(y) }, { SX(sx + 15.0f), SY(y) }, { SX(sx + 8.0f), SY(y + 16.0f) } };
+        pa_fill_poly(c, st, 4, pa_hex(0xE8303A));
+    }
+    pa_fill_rect(c, SX(x + 2.0f), SY(y + 2.0f), 68.0f * L.s, 2.5f * L.s, PA_RGBA(255, 255, 255, 120));
+}
+
+static void prop_dumpster(PA_Canvas *c, float x, float y) {
+    prop_shadow(c, x, y, 54.0f, 34.0f, 5.0f);
+    o_rrect(c, SX(x), SY(y), 54.0f * L.s, 34.0f * L.s, 5.0f * L.s, pa_hex(0x3E8A4E), 3.0f * L.s);
+    pa_round_rect(c, SX(x + 3.0f), SY(y + 3.0f), 48.0f * L.s, 12.0f * L.s, 3.0f * L.s, pa_hex(0x56A866));
+    pa_fill_rect(c, SX(x), SY(y + 16.0f), 54.0f * L.s, 2.5f * L.s, OUTC());
+    pa_fill_rect(c, SX(x + 24.0f), SY(y + 20.0f), 8.0f * L.s, 9.0f * L.s, pa_hex(0x2C6A3A));
+}
+
+static void prop_cone(PA_Canvas *c, float x, float y) {
+    pa_fill_ellipse(c, SX(x + 4.0f), SY(y + 5.0f), 9.0f * L.s, 8.0f * L.s, PA_RGBA(14, 12, 28, 110));
+    o_rrect(c, SX(x - 8.0f), SY(y - 8.0f), 16.0f * L.s, 16.0f * L.s, 3.0f * L.s, pa_hex(0xC8501A), 2.0f * L.s);
+    o_circle(c, SX(x), SY(y), 6.0f * L.s, pa_hex(0xFF7A26), 1.6f * L.s);
+    pa_stroke_circle(c, SX(x), SY(y), 3.6f * L.s, 1.8f * L.s, PA_RGB(250, 250, 250));
+    pa_fill_circle(c, SX(x), SY(y), 1.6f * L.s, pa_hex(0xFF9A4A));
+}
+
+static void prop_tires(PA_Canvas *c, float x, float y, int n) {
+    for (int i = 0; i < n; i++) {
+        float tx = x + (float)i * 15.0f, ty = y + (float)((i & 1) * 8);
+        pa_fill_circle(c, SX(tx + 4.0f), SY(ty + 5.0f), 12.0f * L.s, PA_RGBA(14, 12, 28, 110));
+        o_circle(c, SX(tx), SY(ty), 11.0f * L.s, pa_hex(0x2C2C36), 2.0f * L.s);
+        pa_stroke_circle(c, SX(tx), SY(ty), 7.5f * L.s, 1.5f * L.s, pa_hex(0x45454F));
+        pa_fill_circle(c, SX(tx), SY(ty), 4.5f * L.s, pa_hex(0x5E5E70));
+    }
+}
+
+static void prop_crate(PA_Canvas *c, float x, float y, float sz) {
+    prop_shadow(c, x, y, sz, sz, 3.0f);
+    o_rrect(c, SX(x), SY(y), sz * L.s, sz * L.s, 3.0f * L.s, pa_hex(0xB8803E), 2.6f * L.s);
+    pa_stroke_rect(c, SX(x + 4.0f), SY(y + 4.0f), (sz - 8.0f) * L.s, (sz - 8.0f) * L.s, 2.0f * L.s, pa_hex(0x8A5A28));
+    pa_line(c, SX(x + 4.0f), SY(y + 4.0f), SX(x + sz - 4.0f), SY(y + sz - 4.0f), 2.4f * L.s, pa_hex(0x8A5A28));
+    pa_fill_rect(c, SX(x + 2.0f), SY(y + 2.0f), (sz - 4.0f) * L.s, 2.0f * L.s, pa_hex(0xD8A060));
+}
+
+static void prop_rubble(PA_Canvas *c, float x, float y, uint32_t h) {
+    for (int i = 0; i < 4; i++) {
+        float rx = x + (float)((h >> (i * 4)) & 15) * 2.2f - 16.0f, ry = y + (float)((h >> (i * 4 + 2)) & 15) * 1.6f - 12.0f;
+        float r = 5.0f + (float)((h >> (i * 3)) & 3) * 2.0f;
+        PA_Vec2 p[5];
+        for (int k = 0; k < 5; k++) {
+            float a = (float)k * PA_TAU / 5.0f + (float)i;
+            float rr = r * (0.7f + 0.3f * (float)((h >> (k + i)) & 1));
+            p[k].x = SX(rx + cosf(a) * rr); p[k].y = SY(ry + sinf(a) * rr * 0.8f);
+        }
+        o_poly(c, p, 5, (i & 1) ? pa_hex(0x8A8A9A) : pa_hex(0x6A6A7C), 1.6f * L.s);
+    }
+}
+
+static void prop_hydrant(PA_Canvas *c, float x, float y) {
+    pa_fill_circle(c, SX(x + 4.0f), SY(y + 5.0f), 9.0f * L.s, PA_RGBA(14, 12, 28, 110));
+    o_rrect(c, SX(x - 11.0f), SY(y - 3.0f), 22.0f * L.s, 6.0f * L.s, 3.0f * L.s, pa_hex(0xC42A2A), 1.8f * L.s);
+    o_circle(c, SX(x), SY(y), 7.5f * L.s, pa_hex(0xE8383A), 1.8f * L.s);
+    pa_fill_circle(c, SX(x), SY(y), 3.5f * L.s, pa_hex(0xFF8A80));
+}
+
+static void prop_bags(PA_Canvas *c, float x, float y) {
+    for (int i = 0; i < 3; i++) {
+        float bx = x + (float)i * 12.0f, by = y + (float)((i * 5) % 9);
+        pa_fill_ellipse(c, SX(bx + 4.0f), SY(by + 5.0f), 10.0f * L.s, 8.0f * L.s, PA_RGBA(14, 12, 28, 110));
+        pa_fill_ellipse(c, SX(bx), SY(by), 11.5f * L.s, 9.5f * L.s, OUTC());
+        pa_fill_ellipse(c, SX(bx), SY(by), 9.5f * L.s, 7.5f * L.s, pa_hex(0x34343F));
+        pa_fill_ellipse(c, SX(bx - 3.0f), SY(by - 3.0f), 3.5f * L.s, 2.5f * L.s, pa_hex(0x5A5A6A));
+    }
+}
+
+static void crack(PA_Canvas *c, float x, float y, uint32_t h, int alpha) {
+    PA_Vec2 p[6];
+    float a = (float)(h & 255) / 255.0f * PA_TAU;
+    p[0].x = SX(x); p[0].y = SY(y);
+    for (int i = 1; i < 6; i++) {
+        a += ((float)((h >> (i * 3)) & 7) - 3.5f) * 0.25f;
+        x += cosf(a) * 12.0f; y += sinf(a) * 12.0f;
+        p[i].x = SX(x); p[i].y = SY(y);
+    }
+    pa_stroke_poly(c, p, 6, 0, 2.0f * L.s, PA_RGBA(20, 18, 34, alpha));
+    pa_line(c, p[2].x, p[2].y, p[2].x + 8.0f * L.s, p[2].y - 6.0f * L.s, 1.4f * L.s, PA_RGBA(20, 18, 34, alpha));
+}
+
+/* ------------------------------------------------------------ ground ----- */
 #define BLOCK 640.0f
 #define ROAD  150.0f
 #define TILE  64.0f
@@ -2644,76 +2960,226 @@ static void wrect(PA_Canvas *c, float x, float y, float w, float h, PA_Color col
     fast_rect(c, SX(x), SY(y), w * L.s, h * L.s, col, 255);
 }
 
-static void draw_ground(PA_Canvas *c) {
-    pa_clear(c, pa_hex(0x5D5C77));
-    float hw = view_hw() + 40.0f, hh = view_hh() + 40.0f;
-    float x0 = S.cam_x - hw, x1 = S.cam_x + hw, y0 = S.cam_y - hh, y1 = S.cam_y + hh;
-    int bx0 = (int)floorf(x0 / BLOCK), bx1 = (int)floorf(x1 / BLOCK);
-    int by0 = (int)floorf(y0 / BLOCK), by1 = (int)floorf(y1 / BLOCK);
-    PA_Color pave = pa_hex(0x83829A), seam = pa_hex(0x6F6E86), curb = pa_hex(0xAAA9BE), curb_d = pa_hex(0x4A4964);
-    PA_Color paint = pa_hex(0xC9C8DA), dark_tile = pa_hex(0x7C7B93);
-    for (int by = by0; by <= by1; by++)
-        for (int bx = bx0; bx <= bx1; bx++) {
-            float ox = (float)bx * BLOCK, oy = (float)by * BLOCK;
-            uint32_t h = hash2(bx, by);
-            float px0 = ox + ROAD, py0 = oy + ROAD, ps = BLOCK - ROAD;
-            /* curb then pavement */
-            wrect(c, px0 - 8.0f, py0 - 8.0f, ps + 16.0f, ps + 16.0f, curb_d);
-            wrect(c, px0 - 6.0f, py0 - 6.0f, ps + 12.0f, ps + 12.0f, curb);
-            wrect(c, px0, py0, ps, ps, pave);
-            /* tiles: a few darker ones, then seams */
-            for (int ty = 0; ty < (int)(ps / TILE) + 1; ty++)
-                for (int tx = 0; tx < (int)(ps / TILE) + 1; tx++) {
-                    uint32_t th = hash2(bx * 31 + tx, by * 17 + ty);
-                    if ((th & 7) == 0) {
-                        float tw = TILE, tht = TILE;
-                        if (px0 + (float)tx * TILE + tw > px0 + ps) tw = px0 + ps - (px0 + (float)tx * TILE);
-                        if (py0 + (float)ty * TILE + tht > py0 + ps) tht = py0 + ps - (py0 + (float)ty * TILE);
-                        if (tw > 0.0f && tht > 0.0f) wrect(c, px0 + (float)tx * TILE, py0 + (float)ty * TILE, tw, tht, dark_tile);
-                    }
-                }
-            for (float t = TILE; t < ps; t += TILE) {
-                wrect(c, px0 + t - 1.0f, py0, 2.5f, ps, seam);
-                wrect(c, px0, py0 + t - 1.0f, ps, 2.5f, seam);
-            }
-            /* a painted court or a planter on some blocks */
-            if ((h & 3) == 1) {
-                float cx = px0 + ps * 0.5f, cy = py0 + ps * 0.5f, r = ps * 0.3f;
-                pa_stroke_circle(c, SX(cx), SY(cy), r * L.s, 5.0f * L.s, paint);
-                wrect(c, cx - r, cy - 2.5f, r * 2.0f, 5.0f, paint);
-            } else if ((h & 3) == 2) {
-                float cx = px0 + 40.0f + (float)((h >> 4) % 200), cy = py0 + 60.0f + (float)((h >> 12) % 220);
-                pa_round_rect(c, SX(cx) - 2.0f * L.s, SY(cy) - 2.0f * L.s, 124.0f * L.s, 64.0f * L.s, 10.0f * L.s, curb_d);
-                pa_round_rect(c, SX(cx), SY(cy), 120.0f * L.s, 60.0f * L.s, 9.0f * L.s, pa_hex(0x9C9BB2));
-                pa_round_rect(c, SX(cx) + 7.0f * L.s, SY(cy) + 7.0f * L.s, 106.0f * L.s, 46.0f * L.s, 6.0f * L.s, pa_hex(0x5E8A4E));
-                for (int k = 0; k < 3; k++) {
-                    float bxp = SX(cx + 24.0f + (float)k * 36.0f), byp = SY(cy + 30.0f);
-                    pa_fill_circle(c, bxp, byp + 3.0f * L.s, 15.0f * L.s, OUTC());
-                    pa_fill_circle(c, bxp, byp, 15.0f * L.s, pa_hex(0x6FB04A));
-                    pa_fill_circle(c, bxp - 4.0f * L.s, byp - 5.0f * L.s, 6.0f * L.s, pa_hex(0x8FD060));
-                }
-            }
-            /* manhole */
-            {
-                float mx = ox + ROAD * 0.5f + 160.0f + (float)(h % 200), my = oy + ROAD * 0.5f;
-                pa_fill_circle(c, SX(mx), SY(my), 15.0f * L.s, pa_hex(0x48475E));
-                pa_stroke_circle(c, SX(mx), SY(my), 11.0f * L.s, 2.0f * L.s, pa_hex(0x6A6984));
-                wrect(c, mx - 9.0f, my - 1.0f, 18.0f, 2.0f, pa_hex(0x6A6984));
-            }
-            /* lane dashes along both roads */
-            for (float t = 0.0f; t < BLOCK; t += 64.0f) {
-                if (t > ROAD + 30.0f && t < BLOCK - 20.0f) {
-                    wrect(c, ox + t, oy + ROAD * 0.5f - 2.5f, 34.0f, 5.0f, paint);
-                    wrect(c, ox + ROAD * 0.5f - 2.5f, oy + t, 5.0f, 34.0f, paint);
-                }
-            }
-            /* crosswalks at the intersection */
-            for (int k = 0; k < 7; k++) {
-                float s0 = 12.0f + (float)k * 19.0f;
-                wrect(c, ox + ROAD + 8.0f, oy + s0, 46.0f, 10.0f, paint);
-                wrect(c, ox + s0, oy + ROAD + 8.0f, 10.0f, 46.0f, paint);
+static uint32_t g_lcg;
+static float lrand(void) { g_lcg = g_lcg * 1664525u + 1013904223u; return (float)(g_lcg >> 8) / 16777216.0f; }
+
+/** One 640-unit city block: crossing roads on its top and left, a raised
+    pavement square, paint, props, grime. Drawn once into the cache. */
+static void draw_block(PA_Canvas *c, int bx, int by) {
+    float ox = (float)bx * BLOCK, oy = (float)by * BLOCK;
+    uint32_t h = hash2(bx, by);
+    g_lcg = hash2(bx * 7 + 3, by * 13 + 5) | 1u;
+    PA_Color asphalt = pa_hex(0x4A4A5C), pave = pa_hex(0x8A8AA0), seam = pa_hex(0x76768C), dark_tile = pa_hex(0x828298);
+    PA_Color curb = pa_hex(0xB0AFC4), curb_d = pa_hex(0x34344A), paint = PA_RGBA(214, 212, 228, 225);
+    pa_clear(c, asphalt);
+    float px0 = ox + ROAD, py0 = oy + ROAD, ps = BLOCK - ROAD;
+    /* oil and grime on the road */
+    for (int i = 0; i < 4; i++) {
+        float sx = ox + lrand() * BLOCK, sy = oy + lrand() * ROAD;
+        if (i & 1) { sx = ox + lrand() * ROAD; sy = oy + lrand() * BLOCK; }
+        pa_fill_ellipse(c, SX(sx), SY(sy), (14.0f + lrand() * 22.0f) * L.s, (9.0f + lrand() * 12.0f) * L.s, PA_RGBA(26, 24, 40, 70));
+    }
+    /* curb shadow, curb, pavement */
+    wrect(c, px0 - 6.0f, py0 - 6.0f, ps + 18.0f, ps + 18.0f, pa_hex(0x2C2C3E));
+    wrect(c, px0 - 8.0f, py0 - 8.0f, ps + 12.0f, ps + 12.0f, curb_d);
+    wrect(c, px0 - 6.0f, py0 - 6.0f, ps + 8.0f, ps + 8.0f, curb);
+    wrect(c, px0 - 6.0f, py0 + ps - 1.0f, ps + 8.0f, 3.0f, pa_hex(0x8C8BA2));
+    wrect(c, px0, py0, ps - 4.0f, ps - 4.0f, pave);
+    for (int ty = 0; ty < (int)(ps / TILE) + 1; ty++)
+        for (int tx = 0; tx < (int)(ps / TILE) + 1; tx++) {
+            uint32_t th = hash2(bx * 31 + tx, by * 17 + ty);
+            if ((th & 7) == 0) {
+                float tw = TILE, tht = TILE;
+                if (px0 + (float)tx * TILE + tw > px0 + ps - 4.0f) tw = px0 + ps - 4.0f - (px0 + (float)tx * TILE);
+                if (py0 + (float)ty * TILE + tht > py0 + ps - 4.0f) tht = py0 + ps - 4.0f - (py0 + (float)ty * TILE);
+                if (tw > 0.0f && tht > 0.0f) wrect(c, px0 + (float)tx * TILE, py0 + (float)ty * TILE, tw, tht, dark_tile);
             }
         }
+    for (float t = TILE; t < ps - 4.0f; t += TILE) {
+        wrect(c, px0 + t - 1.0f, py0, 2.5f, ps - 4.0f, seam);
+        wrect(c, px0, py0 + t - 1.0f, ps - 4.0f, 2.5f, seam);
+    }
+    if ((h & 3) == 1) {
+        float cx = px0 + ps * 0.5f, cy = py0 + ps * 0.5f, r = ps * 0.3f;
+        pa_stroke_circle(c, SX(cx), SY(cy), r * L.s, 4.0f * L.s, PA_RGBA(214, 212, 228, 160));
+        pa_fill_rect(c, SX(cx - r), SY(cy - 2.0f), r * 2.0f * L.s, 4.0f * L.s, PA_RGBA(214, 212, 228, 160));
+    } else if ((h & 3) == 2) {
+        float cx = px0 + 120.0f + (float)((h >> 4) % 160), cy = py0 + 140.0f + (float)((h >> 12) % 160);
+        pa_round_rect(c, SX(cx + 5.0f), SY(cy + 7.0f), 124.0f * L.s, 64.0f * L.s, 10.0f * L.s, PA_RGBA(14, 12, 28, 110));
+        o_rrect(c, SX(cx), SY(cy), 120.0f * L.s, 60.0f * L.s, 9.0f * L.s, pa_hex(0xA4A3B8), 2.6f * L.s);
+        pa_round_rect(c, SX(cx) + 7.0f * L.s, SY(cy) + 7.0f * L.s, 106.0f * L.s, 46.0f * L.s, 6.0f * L.s, pa_hex(0x5E8A4E));
+        for (int k = 0; k < 3; k++) {
+            float bxp = SX(cx + 24.0f + (float)k * 36.0f), byp = SY(cy + 30.0f);
+            pa_fill_circle(c, bxp, byp + 3.0f * L.s, 15.0f * L.s, OUTC());
+            pa_fill_circle(c, bxp, byp, 15.0f * L.s, pa_hex(0x6FB04A));
+            pa_fill_circle(c, bxp - 4.0f * L.s, byp - 5.0f * L.s, 6.0f * L.s, pa_hex(0x8FD060));
+        }
+    }
+    /* cracks on both surfaces, about 15% ink */
+    for (int i = 0; i < 6; i++) {
+        float cx = ox + lrand() * BLOCK, cy = oy + lrand() * BLOCK;
+        crack(c, cx, cy, hash2(bx * 5 + i, by * 3 - i), 40);
+    }
+    {
+        float mx = ox + ROAD + 200.0f + (float)(h % 200), my = oy + ROAD * 0.5f;
+        pa_fill_circle(c, SX(mx), SY(my), 16.0f * L.s, pa_hex(0x34344A));
+        pa_fill_circle(c, SX(mx), SY(my), 14.0f * L.s, pa_hex(0x56566C));
+        pa_stroke_circle(c, SX(mx), SY(my), 10.0f * L.s, 2.0f * L.s, pa_hex(0x3E3E52));
+        wrect(c, mx - 9.0f, my - 1.0f, 18.0f, 2.0f, pa_hex(0x3E3E52));
+    }
+    for (float t = 0.0f; t < BLOCK; t += 64.0f) {
+        if (t > ROAD + 64.0f && t < BLOCK - 20.0f) {
+            pa_fill_rect(c, SX(ox + t), SY(oy + ROAD * 0.5f - 2.5f), 34.0f * L.s, 5.0f * L.s, paint);
+            pa_fill_rect(c, SX(ox + ROAD * 0.5f - 2.5f), SY(oy + t), 5.0f * L.s, 34.0f * L.s, paint);
+        }
+    }
+    for (int k = 0; k < 7; k++) {
+        float s0 = 12.0f + (float)k * 19.0f;
+        pa_fill_rect(c, SX(ox + ROAD + 8.0f), SY(oy + s0), 46.0f * L.s, 10.0f * L.s, paint);
+        pa_fill_rect(c, SX(ox + s0), SY(oy + ROAD + 8.0f), 10.0f * L.s, 46.0f * L.s, paint);
+    }
+
+    /* props: parked and wrecked cars, barriers, then kerbside clutter */
+    static const uint32_t paints[5] = { 0xE8303A, 0x3E7FF0, 0xF6C340, 0xF1F2F7, 0x3EA860 };
+    int ncar = 1 + (lrand() < 0.6f);
+    for (int i = 0; i < ncar; i++) {
+        float cx = ox + 270.0f + (float)i * 190.0f + lrand() * 90.0f;
+        float cy = oy + (lrand() < 0.5f ? 34.0f : 116.0f);
+        prop_car(c, cx, cy, 0, paints[(int)(lrand() * 5.0f) % 5], lrand() < 0.28f, cy > oy + 75.0f);
+    }
+    if (lrand() < 0.85f) {
+        float cy = oy + 270.0f + lrand() * 300.0f, cx = ox + (lrand() < 0.5f ? 34.0f : 116.0f);
+        prop_car(c, cx, cy, 1, paints[(int)(lrand() * 5.0f) % 5], lrand() < 0.28f, cx > ox + 75.0f);
+    }
+    if (lrand() < 0.7f) prop_barrier(c, ox + 40.0f + lrand() * 40.0f, oy + 230.0f + lrand() * 40.0f);
+    if (lrand() < 0.5f) prop_rubble(c, ox + 300.0f + lrand() * 250.0f, oy + 70.0f, hash2(bx, by * 9));
+    for (int i = 0; i < 6; i++) {
+        float along = 30.0f + lrand() * (ps - 90.0f);
+        int top = lrand() < 0.5f;
+        float x = top ? px0 + along : px0 + 18.0f;
+        float y = top ? py0 + 18.0f : py0 + along;
+        float pick = lrand();
+        if (pick < 0.16f) prop_dumpster(c, x, y);
+        else if (pick < 0.34f) { prop_cone(c, x + 6.0f, y + 6.0f); prop_cone(c, x + 30.0f, y + 10.0f); if (pick < 0.25f) prop_cone(c, x + 16.0f, y + 26.0f); }
+        else if (pick < 0.46f) prop_tires(c, x + 10.0f, y + 10.0f, 2 + (pick < 0.40f));
+        else if (pick < 0.60f) { prop_crate(c, x, y, 28.0f); if (pick < 0.53f) prop_crate(c, x + 30.0f, y + 6.0f, 22.0f); }
+        else if (pick < 0.72f) prop_rubble(c, x + 16.0f, y + 12.0f, hash2(bx * 11 + i, by));
+        else if (pick < 0.82f) prop_hydrant(c, x + 6.0f, y + 6.0f);
+        else if (pick < 0.92f) prop_bags(c, x + 10.0f, y + 10.0f);
+        else icon_ball(c, SX(x + 10.0f), SY(y + 10.0f), 8.0f * L.s, 0.4f, 0);
+    }
+
+    /* grain: per-pixel jitter and sparse specks, so no surface reads flat */
+    for (int yy = 0; yy < c->h; yy++) {
+        uint32_t *row = c->px + (size_t)yy * (size_t)c->w;
+        for (int xx = 0; xx < c->w; xx++) {
+            uint32_t hv = ((uint32_t)(xx + bx * 4096) * 73856093u) ^ ((uint32_t)(yy + by * 4096) * 19349663u);
+            hv *= 2654435761u;
+            int n = (int)((hv >> 24) & 7) - 4;
+            if (((hv >> 8) & 63) == 0) n -= 12;
+            else if (((hv >> 8) & 127) == 1) n += 9;
+            uint32_t p = row[xx];
+            int r = (int)((p >> 16) & 255) + n, g = (int)((p >> 8) & 255) + n, b = (int)(p & 255) + n;
+            r = r < 0 ? 0 : r > 255 ? 255 : r;
+            g = g < 0 ? 0 : g > 255 ? 255 : g;
+            b = b < 0 ? 0 : b > 255 ? 255 : b;
+            row[xx] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+        }
+    }
+}
+
+/* Ground blocks are rendered once and kept: the street costs one copy per
+   frame however much is painted on it. */
+#define GC_N 9
+typedef struct { int bx, by, valid; unsigned stamp; PA_Canvas cv; } GBlock;
+static GBlock g_gc[GC_N];
+static unsigned g_gc_clock;
+static float g_gc_scale = -1.0f;
+
+static void gc_reset(void) {
+    for (int i = 0; i < GC_N; i++) {
+        if (g_gc[i].cv.px) pa_canvas_free(&g_gc[i].cv);
+        g_gc[i].valid = 0;
+    }
+    g_gc_scale = L.s;
+}
+
+static GBlock *gc_get(int bx, int by) {
+    int lru = -1;
+    for (int i = 0; i < GC_N; i++)
+        if (g_gc[i].valid && g_gc[i].bx == bx && g_gc[i].by == by) { g_gc[i].stamp = ++g_gc_clock; return &g_gc[i]; }
+    for (int i = 0; i < GC_N && lru < 0; i++) if (!g_gc[i].valid) lru = i;
+    if (lru < 0) { lru = 0; for (int i = 1; i < GC_N; i++) if (g_gc[i].stamp < g_gc[lru].stamp) lru = i; }
+    GBlock *b = &g_gc[lru];
+    int sz = (int)ceilf(BLOCK * L.s) + 2;
+    if (!b->cv.px) { if (!pa_canvas_init(&b->cv, sz, sz)) return NULL; }
+    else if (b->cv.w != sz) { if (!pa_canvas_resize(&b->cv, sz, sz)) return NULL; }
+    float sv[4] = { g_vx, g_vy, g_vcx, g_vcy };
+    g_vx = (float)bx * BLOCK; g_vy = (float)by * BLOCK; g_vcx = 0.0f; g_vcy = 0.0f;
+    pa_clip_reset(&b->cv);
+    draw_block(&b->cv, bx, by);
+    g_vx = sv[0]; g_vy = sv[1]; g_vcx = sv[2]; g_vcy = sv[3];
+    b->bx = bx; b->by = by; b->valid = 1; b->stamp = ++g_gc_clock;
+    return b;
+}
+
+static void draw_ground(PA_Canvas *c) {
+    if (fabsf(g_gc_scale - L.s) > 0.001f) gc_reset();
+    float hw = (float)L.w * 0.5f / L.s + 40.0f, hh = (float)L.h * 0.5f / L.s + 40.0f;
+    float x0 = g_vx - hw, x1 = g_vx + hw, y0 = g_vy - hh, y1 = g_vy + hh;
+    int bx0 = (int)floorf(x0 / BLOCK), bx1 = (int)floorf(x1 / BLOCK);
+    int by0 = (int)floorf(y0 / BLOCK), by1 = (int)floorf(y1 / BLOCK);
+    for (int by = by0; by <= by1; by++)
+        for (int bx = bx0; bx <= bx1; bx++) {
+            GBlock *b = gc_get(bx, by);
+            if (!b) continue;
+            int sx0 = (int)floorf(SX((float)bx * BLOCK)), sy0 = (int)floorf(SY((float)by * BLOCK));
+            int sx1 = (int)floorf(SX((float)(bx + 1) * BLOCK)), sy1 = (int)floorf(SY((float)(by + 1) * BLOCK));
+            int cx0 = sx0 < c->clip_x0 ? c->clip_x0 : sx0, cx1 = sx1 > c->clip_x1 ? c->clip_x1 : sx1;
+            int cy0 = sy0 < c->clip_y0 ? c->clip_y0 : sy0, cy1 = sy1 > c->clip_y1 ? c->clip_y1 : sy1;
+            if (cx1 - cx0 > b->cv.w - (cx0 - sx0)) cx1 = cx0 + b->cv.w - (cx0 - sx0);
+            if (cx0 >= cx1) continue;
+            for (int y = cy0; y < cy1; y++) {
+                int ly = y - sy0;
+                if (ly >= b->cv.h) break;
+                memcpy(c->px + (size_t)y * (size_t)c->w + cx0, b->cv.px + (size_t)ly * (size_t)b->cv.w + (cx0 - sx0),
+                       (size_t)(cx1 - cx0) * 4u);
+            }
+        }
+}
+
+/* Additive light from the cached falloff. */
+static void glow(PA_Canvas *c, float cx, float cy, float rx, float ry, uint32_t rgb, float k) {
+    if (rx < 1.0f || ry < 1.0f || k <= 0.0f) return;
+    int x0 = (int)floorf(cx - rx), x1 = (int)ceilf(cx + rx), y0 = (int)floorf(cy - ry), y1 = (int)ceilf(cy + ry);
+    if (x0 < c->clip_x0) x0 = c->clip_x0;
+    if (y0 < c->clip_y0) y0 = c->clip_y0;
+    if (x1 > c->clip_x1) x1 = c->clip_x1;
+    if (y1 > c->clip_y1) y1 = c->clip_y1;
+    if (x0 >= x1 || y0 >= y1) return;
+    static int lx[4096];
+    if (x1 - x0 > 4096) x1 = x0 + 4096;
+    float sx = (float)GLOW_N / (rx * 2.0f), sy = (float)GLOW_N / (ry * 2.0f);
+    for (int x = x0; x < x1; x++) {
+        int v = (int)(((float)x + 0.5f - (cx - rx)) * sx);
+        lx[x - x0] = v < 0 ? 0 : v >= GLOW_N ? GLOW_N - 1 : v;
+    }
+    int kr = (int)((float)((rgb >> 16) & 255) * k), kg = (int)((float)((rgb >> 8) & 255) * k), kb = (int)((float)(rgb & 255) * k);
+    for (int y = y0; y < y1; y++) {
+        int ly = (int)(((float)y + 0.5f - (cy - ry)) * sy);
+        ly = ly < 0 ? 0 : ly >= GLOW_N ? GLOW_N - 1 : ly;
+        const uint8_t *row = g_glow_lut + ly * GLOW_N;
+        uint32_t *d = c->px + (size_t)y * (size_t)c->w;
+        for (int x = x0; x < x1; x++) {
+            int v = row[lx[x - x0]];
+            if (!v) continue;
+            uint32_t p = d[x];
+            int r = (int)((p >> 16) & 255) + ((kr * v) >> 8);
+            int g = (int)((p >> 8) & 255) + ((kg * v) >> 8);
+            int b = (int)(p & 255) + ((kb * v) >> 8);
+            d[x] = ((uint32_t)(r > 255 ? 255 : r) << 16) | ((uint32_t)(g > 255 ? 255 : g) << 8) | (uint32_t)(b > 255 ? 255 : b);
+        }
+    }
 }
 
 /* ------------------------------------------------------------ world fx --- */
@@ -2819,9 +3285,24 @@ static void draw_gems(PA_Canvas *c) {
 
 static const Sprite *enemy_sprite(const Enemy *e) {
     static const int map[E_TYPES] = { SPR_ZOMBIE, SPR_BEETLE, SPR_FLY, SPR_BRUTE, SPR_SPITTER, SPR_BLUEBUG,
-                                      SPR_ELITE, SPR_BOSS, SPR_KING };
+                                      SPR_DOG, SPR_ELITE, SPR_BOSS, SPR_KING };
     int f = ((int)e->anim) & (ANIM_FRAMES - 1);
     return &g_spr[map[e->type]][f];
+}
+
+static void ring_ellipse(PA_Canvas *c, float x, float y, float rx, float ry, float w, PA_Color col) {
+    PA_Vec2 p[32];
+    for (int i = 0; i < 32; i++) {
+        float a = (float)i / 32.0f * PA_TAU;
+        p[i].x = x + cosf(a) * rx; p[i].y = y + sinf(a) * ry;
+    }
+    pa_stroke_poly(c, p, 32, 1, w, col);
+}
+
+static void draw_hero_ring(PA_Canvas *c) {
+    float x = SX(S.px), y = SY(S.py), s = L.s;
+    pa_fill_ellipse(c, x, y, 27.0f * s, 11.0f * s, PA_RGBA(255, 77, 77, 50));
+    ring_ellipse(c, x, y, 27.0f * s, 11.0f * s, 3.0f * s, PA_RGBA(255, 77, 77, 153));
 }
 
 static void draw_hero(PA_Canvas *c) {
@@ -2837,21 +3318,96 @@ static void draw_hero(PA_Canvas *c) {
     spr_blit(c, &g_spr[SPR_HERO][f], x, y, S.face < 0, tc, tint, 255);
 }
 
+static void draw_muzzle(PA_Canvas *c) {
+    if (S.muzzle <= 0.0f || S.phase != PH_PLAY) return;
+    float s = L.s, k = S.muzzle / 0.08f;
+    float ca = cosf(S.muzzle_ang), sa = sinf(S.muzzle_ang);
+    float x = SX(S.px) + ca * 26.0f * s, y = SY(S.py) - 26.0f * s + sa * 20.0f * s;
+    glow(c, x, y, 34.0f * s, 34.0f * s, 0xFFC860, 0.9f * k);
+    PA_Vec2 st[8];
+    for (int i = 0; i < 8; i++) {
+        float a = S.muzzle_ang + (float)i * PA_PI / 4.0f;
+        float r = (i & 1) ? 5.0f * s : (i == 0 ? 20.0f : 12.0f) * s * (0.6f + 0.4f * k);
+        st[i].x = x + cosf(a) * r; st[i].y = y + sinf(a) * r;
+    }
+    pa_fill_poly(c, st, 8, pa_hex(0xFFE27A));
+    pa_fill_circle(c, x, y, 5.0f * s * k, PA_RGB(255, 255, 255));
+}
+
 static void draw_enemy(PA_Canvas *c, const Enemy *e) {
-    float x = SX(e->x), y = SY(e->y);
-    if (e->type == E_ELITE || e->type >= E_BOSS) {
-        float rr = (e->type == E_ELITE ? 30.0f : 52.0f) * L.s;
-        pa_stroke_circle(c, x, y, rr, 3.0f * L.s, PA_RGBA(255, 50, 50, 170));
+    float x = SX(e->x), y = SY(e->y), s = L.s;
+    int boss = e->type >= E_BOSS;
+    float lift = 0.0f;
+    if (boss) {
+        float land = e->bstate == 4 ? 1.0f - pa_clamp01(e->bt / 0.9f) : 1.0f;
+        if (e->bstate == 4) lift = (1.0f - land) * (1.0f - land) * 420.0f * s;
+        /* ground shadow 0.25 sw at 40%, then the pulsing red telegraph ring */
+        pa_fill_ellipse(c, x, y, 68.0f * s * (0.4f + 0.6f * land), 24.0f * s * (0.4f + 0.6f * land), PA_RGBA(10, 8, 22, 102));
+        float pulse = 0.5f + 0.5f * sinf(S.clock * 8.0f);
+        float rr = (e->type == E_KING ? 84.0f : 76.0f) * s;
+        int hot = e->bstate == 1 || e->bstate == 3;
+        glow(c, x, y, rr * 1.2f, rr * 0.55f, 0xFF3020, (hot ? 0.55f : 0.25f) + 0.2f * pulse);
+        ring_ellipse(c, x, y, rr * (0.92f + 0.08f * pulse), rr * 0.4f * (0.92f + 0.08f * pulse), (hot ? 5.0f : 3.0f) * s,
+                     PA_RGBA(255, 59, 47, (int)(150 + 90 * pulse)));
+    } else if (e->type == E_ELITE) {
+        float rr = 32.0f * s;
+        ring_ellipse(c, x, y, rr, rr * 0.4f, 3.0f * s, PA_RGBA(255, 50, 50, 190));
         pa_fill_ellipse(c, x, y, rr, rr * 0.4f, PA_RGBA(255, 40, 40, 60));
     }
-    /* Big bodies take hits every frame; a full white flash would bleach them. */
-    int amt = e->flash > 0.0f ? (e->type >= E_ELITE ? (e->flash > 0.08f ? 110 : 0) : 210) : 0;
-    spr_blit(c, enemy_sprite(e), x, y, e->face, 0xFFFFFF, amt, 255);
+    /* Two frames of pure white on every hit; big bodies get a softer flash. */
+    int amt = 0;
+    if (e->flash > 0.07f) amt = e->type >= E_ELITE ? 150 : 255;
+    else if (e->flash > 0.0f && e->type < E_ELITE) amt = 90;
+    spr_blit(c, enemy_sprite(e), x, y - lift, e->face, 0xFFFFFF, amt, 255);
     if (e->type == E_ELITE) {
-        float w = 54.0f * L.s, bx = x - w * 0.5f, by = y - 112.0f * L.s;
-        pa_round_rect(c, bx - 2.0f * L.s, by - 2.0f * L.s, w + 4.0f * L.s, 10.0f * L.s, 4.0f * L.s, OUTC());
-        pa_round_rect(c, bx, by, w * pa_clamp01(e->hp / e->maxhp), 6.0f * L.s, 3.0f * L.s, pa_hex(0xFF3A3A));
+        float w = 58.0f * s, bx = x - w * 0.5f, by = y - 128.0f * s;
+        pa_round_rect(c, bx - 2.0f * s, by - 2.0f * s, w + 4.0f * s, 10.0f * s, 4.0f * s, OUTC());
+        pa_round_rect(c, bx, by, w * pa_clamp01(e->hp / e->maxhp), 6.0f * s, 3.0f * s, pa_hex(0xFF3A3A));
     }
+}
+
+/* Directional projectiles baked at 32 headings: kind 0 kunai, 1 rocket,
+   2 enemy spit (heading ignored). */
+#define DIRS 32
+static Sprite g_dir[3][2][DIRS];
+static float  g_dir_s = -1.0f;
+static void art_dir(PA_Canvas *c, float x, float y, float s, int f) {
+    int kind = f / (2 * DIRS), evo = (f / DIRS) & 1;
+    float a = (float)(f % DIRS) / (float)DIRS * PA_TAU, ca = cosf(a), sa = sinf(a);
+    if (kind == 0) {
+        float len = (evo ? 22.0f : 17.0f) * s, wid = (evo ? 6.0f : 4.5f) * s;
+        PA_Vec2 b[4] = { { x + ca * len * 0.6f, y + sa * len * 0.6f }, { x - sa * wid, y + ca * wid },
+                         { x - ca * len * 0.15f, y - sa * len * 0.15f }, { x + sa * wid, y - ca * wid } };
+        pa_line(c, x - ca * len * 0.15f, y - sa * len * 0.15f, x - ca * len * 0.55f, y - sa * len * 0.55f, 4.5f * s, OUTC());
+        pa_line(c, x - ca * len * 0.15f, y - sa * len * 0.15f, x - ca * len * 0.5f, y - sa * len * 0.5f, 2.2f * s,
+                evo ? pa_hex(0x3A1E70) : pa_hex(0xD8342E));
+        o_poly(c, b, 4, evo ? pa_hex(0xA67CFF) : pa_hex(0xD8DCE6), 1.4f * s);
+    } else if (kind == 1) {
+        float len = (evo ? 13.0f : 10.0f) * s;
+        pa_line(c, x - ca * len, y - sa * len, x + ca * len, y + sa * len, (evo ? 9.0f : 7.0f) * s, OUTC());
+        pa_line(c, x - ca * len * 0.8f, y - sa * len * 0.8f, x + ca * len * 0.6f, y + sa * len * 0.6f,
+                (evo ? 5.5f : 4.0f) * s, PA_RGB(246, 246, 250));
+        pa_fill_circle(c, x + ca * len * 0.7f, y + sa * len * 0.7f, 2.4f * s, pa_hex(0xE8303A));
+        pa_fill_circle(c, x - ca * len * 1.1f, y - sa * len * 1.1f, 3.0f * s, pa_hex(0xFFB21E));
+    } else {
+        o_circle(c, x, y, 7.5f * s, pa_hex(0xC04AE0), 1.6f * s);
+        pa_fill_circle(c, x - 2.0f * s, y - 2.0f * s, 2.6f * s, pa_hex(0xF0B0FF));
+    }
+}
+static const Sprite *dir_sprite(int kind, int evo, float ang) {
+    if (fabsf(g_dir_s - L.s) > 0.001f) {
+        int sz = (int)ceilf(40.0f * L.s);
+        for (int k = 0; k < 3; k++)
+            for (int e = 0; e < 2; e++)
+                for (int d = 0; d < DIRS; d++) {
+                    if (k == 2 && (e || d)) continue;
+                    spr_bake(&g_dir[k][e][d], sz, sz, (float)sz * 0.5f, (float)sz * 0.5f, L.s, k * 2 * DIRS + e * DIRS + d, art_dir);
+                }
+        g_dir_s = L.s;
+    }
+    if (kind == 2) return &g_dir[2][0][0];
+    int d = (int)floorf(pa_wrapf(ang, PA_TAU) / PA_TAU * (float)DIRS + 0.5f) % DIRS;
+    return &g_dir[kind][evo][d];
 }
 
 static void draw_projectiles(PA_Canvas *c) {
@@ -2861,26 +3417,15 @@ static void draw_projectiles(PA_Canvas *c) {
         float x = SX(p->x), y = SY(p->y), s = L.s;
         switch (p->kind) {
         case PJ_KUNAI: {
-            float a = atan2f(p->vy, p->vx), ca = cosf(a), sa = sinf(a);
-            float len = (p->evo ? 22.0f : 17.0f) * s, wid = (p->evo ? 6.0f : 4.5f) * s;
-            PA_Vec2 b[4] = { { x + ca * len * 0.6f, y + sa * len * 0.6f }, { x - sa * wid, y + ca * wid },
-                             { x - ca * len * 0.15f, y - sa * len * 0.15f }, { x + sa * wid, y - ca * wid } };
-            pa_line(c, x - ca * len * 0.15f, y - sa * len * 0.15f, x - ca * len * 0.55f, y - sa * len * 0.55f, 4.5f * s, OUTC());
-            pa_line(c, x - ca * len * 0.15f, y - sa * len * 0.15f, x - ca * len * 0.5f, y - sa * len * 0.5f, 2.2f * s,
-                    p->evo ? pa_hex(0x3A1E70) : pa_hex(0xD8342E));
-            o_poly(c, b, 4, p->evo ? pa_hex(0xA67CFF) : pa_hex(0xD8DCE6), 1.4f * s);
+            pa_line(c, x - p->vx * 0.05f * s, y - p->vy * 0.05f * s, x, y, (p->evo ? 6.0f : 3.5f) * s,
+                    p->evo ? PA_RGBA(170, 120, 255, 120) : PA_RGBA(255, 255, 255, 110));
+            spr_blit(c, dir_sprite(0, p->evo, atan2f(p->vy, p->vx)), x, y, 0, 0, 0, 255);
             break;
         }
-        case PJ_ROCKET: {
-            float a = atan2f(p->vy, p->vx), ca = cosf(a), sa = sinf(a);
-            float len = (p->evo ? 13.0f : 10.0f) * s;
-            pa_line(c, x - ca * len, y - sa * len, x + ca * len, y + sa * len, (p->evo ? 9.0f : 7.0f) * s, OUTC());
-            pa_line(c, x - ca * len * 0.8f, y - sa * len * 0.8f, x + ca * len * 0.6f, y + sa * len * 0.6f,
-                    (p->evo ? 5.5f : 4.0f) * s, PA_RGB(246, 246, 250));
-            pa_fill_circle(c, x + ca * len * 0.7f, y + sa * len * 0.7f, 2.4f * s, pa_hex(0xE8303A));
-            pa_fill_circle(c, x - ca * len * 1.1f, y - sa * len * 1.1f, 3.0f * s, pa_hex(0xFFB21E));
+        case PJ_ROCKET:
+            glow(c, x - p->vx * 0.03f * s, y - p->vy * 0.03f * s, 9.0f * s, 9.0f * s, 0xFFA030, 0.8f);
+            spr_blit(c, dir_sprite(1, p->evo, atan2f(p->vy, p->vx)), x, y, 0, 0, 0, 255);
             break;
-        }
         case PJ_BRICK:
             pa_fill_ellipse(c, x, y + 26.0f * s, 10.0f * s, 3.5f * s, PA_RGBA(20, 16, 40, 60));
             {
@@ -2907,7 +3452,7 @@ static void draw_projectiles(PA_Canvas *c) {
                 pa_stop(&g, 1.0f, PA_RGBA(120, 220, 255, 0));
                 pa_fill_ellipse_paint(c, x, y, p->r * 2.0f * s, p->r * 2.0f * s, &g);
             }
-            icon_ball(c, x, y, p->r * s, p->ang, p->evo);
+            spr_blit(c, ball_sprite(p->evo, p->r * s, p->ang), x, y, 0, 0, 0, 255);
             break;
         case PJ_BOTTLE: {
             float k = pa_clamp01(p->age / 0.6f);
@@ -2924,9 +3469,55 @@ static void draw_projectiles(PA_Canvas *c) {
         const EBullet *q = &g_eb[b];
         if (!q->alive) continue;
         float x = SX(q->x), y = SY(q->y);
-        o_circle(c, x, y, q->r * L.s, pa_hex(0xC04AE0), 1.6f * L.s);
-        pa_fill_circle(c, x - 2.0f * L.s, y - 2.0f * L.s, q->r * 0.35f * L.s, pa_hex(0xF0B0FF));
+        spr_blit(c, dir_sprite(2, 0, 0.0f), x, y, 0, 0, 0, 255);
     }
+}
+
+/* Spinning weapons as cached frames: guardians and balls rebake only when
+   their radius changes (an EXO BRACER pick), never per frame. */
+#define SPIN_FRAMES 6
+static Sprite g_saw[2][SPIN_FRAMES], g_ball_spr[2][SPIN_FRAMES], g_drone_spr[2];
+static float  g_saw_r[2] = { -1.0f, -1.0f }, g_ball_r[2] = { -1.0f, -1.0f }, g_drone_k = -1.0f;
+
+static void art_saw(PA_Canvas *c, float x, float y, float r, int f) {
+    int evo = f >= SPIN_FRAMES;
+    float t = (float)(f % SPIN_FRAMES) / (float)SPIN_FRAMES * (PA_TAU / 12.0f);
+    if (evo) icon_saw(c, x, y, r, pa_hex(0xFFC21C), pa_hex(0x9A5A10), t);
+    else icon_saw(c, x, y, r, pa_hex(0xE8303A), pa_hex(0x2A2A34), t);
+}
+static void art_ballspr(PA_Canvas *c, float x, float y, float r, int f) {
+    int evo = f >= SPIN_FRAMES;
+    icon_ball(c, x, y, r, (float)(f % SPIN_FRAMES) / (float)SPIN_FRAMES * (PA_TAU / 5.0f), evo);
+}
+static void art_dronespr(PA_Canvas *c, float x, float y, float k, int f) { icon_drone(c, x, y, k, f); }
+
+static const Sprite *saw_sprite(int evo, float r, float t) {
+    if (fabsf(g_saw_r[evo] - r) > 0.25f) {
+        int sz = (int)ceilf(r * 2.4f) + 4;
+        for (int f = 0; f < SPIN_FRAMES; f++)
+            spr_bake(&g_saw[evo][f], sz, sz, (float)sz * 0.5f, (float)sz * 0.5f, r, f + evo * SPIN_FRAMES, art_saw);
+        g_saw_r[evo] = r;
+    }
+    return &g_saw[evo][((int)(t * 30.0f)) % SPIN_FRAMES];
+}
+static const Sprite *ball_sprite(int evo, float r, float ang) {
+    if (fabsf(g_ball_r[evo] - r) > 0.25f) {
+        int sz = (int)ceilf(r * 2.4f) + 4;
+        for (int f = 0; f < SPIN_FRAMES; f++)
+            spr_bake(&g_ball_spr[evo][f], sz, sz, (float)sz * 0.5f, (float)sz * 0.5f, r, f + evo * SPIN_FRAMES, art_ballspr);
+        g_ball_r[evo] = r;
+    }
+    int f = (int)(pa_wrapf(ang, PA_TAU / 5.0f) / (PA_TAU / 5.0f) * (float)SPIN_FRAMES) % SPIN_FRAMES;
+    return &g_ball_spr[evo][f];
+}
+static const Sprite *drone_sprite(int evo) {
+    float k = 40.0f * L.s;
+    if (fabsf(g_drone_k - k) > 0.25f) {
+        int sz = (int)ceilf(k * 1.1f);
+        for (int e = 0; e < 2; e++) spr_bake(&g_drone_spr[e], sz, sz, (float)sz * 0.5f, (float)sz * 0.5f, k, e, art_dronespr);
+        g_drone_k = k;
+    }
+    return &g_drone_spr[evo];
 }
 
 static void draw_orbitals(PA_Canvas *c) {
@@ -2938,8 +3529,7 @@ static void draw_orbitals(PA_Canvas *c) {
             guardian_pos(i, n, &gx, &gy);
             float x = SX(gx), y = SY(gy);
             pa_fill_ellipse(c, x, y + 18.0f * L.s, r * 0.8f, r * 0.3f, PA_RGBA(20, 16, 40, 50));
-            if (S.evo[W_GUARD]) icon_saw(c, x, y, r, pa_hex(0xFFC21C), pa_hex(0x9A5A10), S.clock * 12.0f);
-            else icon_saw(c, x, y, r, pa_hex(0xE8303A), pa_hex(0x2A2A34), S.clock * 12.0f);
+            spr_blit(c, saw_sprite(S.evo[W_GUARD], r, S.clock), x, y, 0, 0, 0, 255);
         }
     }
     for (int d = 0; d < drone_count(); d++) {
@@ -2947,7 +3537,7 @@ static void draw_orbitals(PA_Canvas *c) {
         drone_pos(d, &dx, &dy);
         float x = SX(dx), y = SY(dy) + sinf(S.clock * 5.0f + (float)d) * 3.0f * L.s;
         pa_fill_ellipse(c, x, SY(S.py + 4.0f), 10.0f * L.s, 3.5f * L.s, PA_RGBA(20, 16, 40, 50));
-        icon_drone(c, x, y, 40.0f * L.s, S.evo[W_DRONE]);
+        spr_blit(c, drone_sprite(S.evo[W_DRONE]), x, y, 0, 0, 0, 255);
     }
 }
 
@@ -2955,47 +3545,75 @@ static void draw_zones_over(PA_Canvas *c) {
     for (int i = 0; i < MAX_ZONES; i++) {
         const Zone *z = &g_zn[i];
         if (!z->alive) continue;
-        float x = SX(z->x), y = SY(z->y), r = z->r * L.s;
+        float x = SX(z->x), y = SY(z->y), r = z->r * L.s, s = L.s;
         float k = 1.0f - z->life / z->max;
+        float a = 1.0f - k;
         if (z->kind == Z_BOLT) {
-            /* A jagged bolt from the top of the screen, outlined like the art. */
+            /* A jagged bolt from the top of the screen with a blown-out strike. */
             PA_Vec2 pts[9];
             uint32_t h = (uint32_t)(i * 7919 + (int)(z->x * 3.0f));
-            float top = y - 420.0f * L.s;
+            float top = y - 520.0f * s;
             for (int k2 = 0; k2 < 9; k2++) {
                 float f = (float)k2 / 8.0f;
-                float jx = k2 == 0 || k2 == 8 ? 0.0f : ((float)((h >> (k2 * 3)) & 15) - 7.5f) * 3.2f * L.s;
-                pts[k2].x = x + jx; pts[k2].y = top + (y - 10.0f * L.s - top) * f;
+                float jx = k2 == 0 || k2 == 8 ? 0.0f : ((float)((h >> (k2 * 3)) & 15) - 7.5f) * 4.0f * s;
+                pts[k2].x = x + jx; pts[k2].y = top + (y - 10.0f * s - top) * f;
             }
-            float a = 1.0f - k;
-            pa_stroke_poly(c, pts, 9, 0, (z->evo ? 14.0f : 10.0f) * L.s, PA_RGBA(40, 120, 255, (int)(a * 160)));
-            pa_stroke_poly(c, pts, 9, 0, (z->evo ? 6.0f : 4.0f) * L.s, PA_RGBA(230, 250, 255, (int)(a * 255)));
-            pa_fill_ellipse(c, x, y, r * (0.6f + k * 0.5f), r * (0.45f + k * 0.4f), PA_RGBA(160, 230, 255, (int)(a * 150)));
-            pa_stroke_circle(c, x, y, r * (0.5f + k), 3.0f * L.s, PA_RGBA(255, 255, 255, (int)(a * 220)));
+            glow(c, x, y - 6.0f * s, r * 2.0f, r * 1.4f, 0x5AB8FF, 1.1f * a);
+            pa_stroke_poly(c, pts, 9, 0, (z->evo ? 16.0f : 11.0f) * s, PA_RGBA(50, 130, 255, (int)(a * 170)));
+            pa_stroke_poly(c, pts, 9, 0, (z->evo ? 7.0f : 4.5f) * s, PA_RGBA(235, 250, 255, (int)(a * 255)));
+            pa_fill_ellipse(c, x, y, r * (0.6f + k * 0.6f), r * (0.45f + k * 0.45f), PA_RGBA(170, 235, 255, (int)(a * 160)));
+            pa_stroke_circle(c, x, y, r * (0.5f + k * 1.1f), 3.5f * s, PA_RGBA(255, 255, 255, (int)(a * 230)));
         } else if (z->kind == Z_BLAST) {
-            float a = 1.0f - k;
-            pa_fill_circle(c, x, y, r * (0.5f + 0.6f * k), PA_RGBA(255, 190, 60, (int)(a * 200)));
-            pa_fill_circle(c, x, y, r * (0.3f + 0.4f * k), PA_RGBA(255, 250, 210, (int)(a * 230)));
-            pa_stroke_circle(c, x, y, r * (0.6f + 0.5f * k), 3.0f * L.s, PA_RGBA(40, 20, 20, (int)(a * 200)));
+            float rr = r * (0.55f + 0.75f * k);
+            glow(c, x, y, r * 1.8f, r * 1.6f, 0xFF8A2A, 1.0f * a);
+            pa_fill_circle(c, x, y, rr, PA_RGBA(255, 120, 40, (int)(a * 200)));
+            pa_fill_circle(c, x, y, rr * 0.62f, PA_RGBA(255, 210, 100, (int)(a * 230)));
+            pa_fill_circle(c, x, y, rr * 0.3f, PA_RGBA(255, 255, 230, (int)(a * 255)));
+            pa_stroke_circle(c, x, y, r * (0.8f + 0.9f * k), 4.0f * s * a + 1.0f, PA_RGBA(255, 240, 200, (int)(a * 220)));
+            if (k < 0.7f) for (int f = 0; f < 5; f++) {
+                float fa = (float)f * 1.2566f + (float)i;
+                spr_blit(c, &g_flame[(f + (int)(S.clock * 14.0f)) & 3], x + cosf(fa) * rr * 0.7f, y + sinf(fa) * rr * 0.55f + 10.0f * s,
+                         0, 0, 0, (int)(255 * a));
+            }
         } else if (z->kind == Z_RING) {
-            float a = 1.0f - k;
-            pa_stroke_circle(c, x, y, r * k, 8.0f * L.s * a + 1.0f, PA_RGBA(255, 240, 160, (int)(a * 230)));
+            glow(c, x, y, r * k * 1.15f, r * k * 1.15f, 0xFFE07A, 0.35f * a);
+            pa_stroke_circle(c, x, y, r * k, 9.0f * s * a + 1.0f, PA_RGBA(255, 240, 160, (int)(a * 230)));
+        } else if (z->kind == Z_SLAM) {
+            float rr = r * k;
+            glow(c, x, y, rr * 1.1f + 1.0f, rr * 0.8f + 1.0f, 0xFF4A2A, 0.45f * a);
+            pa_stroke_circle(c, x, y, rr, 14.0f * s * a + 2.0f, PA_RGBA(255, 90, 50, (int)(200 * a)));
+            pa_stroke_circle(c, x, y, rr, 5.0f * s, PA_RGBA(255, 235, 200, (int)(240 * a)));
         } else if (z->kind == Z_FIRE) {
-            /* flame tongues */
-            int n = (int)(z->r / 9.0f) + 3;
             float fade = pa_clamp01(z->life * 2.0f) * pa_clamp01((z->max - z->life) * 6.0f);
+            glow(c, x, y, r * 1.25f, r * 1.0f, 0xFF6A1A, 0.6f * fade);
+            int n = (int)(z->r / 8.0f) + 4;
             for (int f = 0; f < n; f++) {
-                float a = (float)f * 2.39996f;
-                float rr = sqrtf((float)f / (float)n) * r * 0.75f;
-                float fx = x + cosf(a) * rr, fy = y + sinf(a) * rr * 0.75f;
-                float hgt = (12.0f + 6.0f * sinf(S.clock * 9.0f + (float)f)) * L.s * fade * (z->evo ? 1.4f : 1.0f);
-                float w = 6.0f * L.s * fade * (z->evo ? 1.3f : 1.0f);
-                PA_Vec2 fl[3] = { { fx - w, fy }, { fx + sinf(S.clock * 7.0f + (float)f) * 3.0f * L.s, fy - hgt }, { fx + w, fy } };
-                pa_fill_poly(c, fl, 3, PA_RGBA(255, 120, 30, 210));
-                PA_Vec2 fi[3] = { { fx - w * 0.5f, fy }, { fx, fy - hgt * 0.55f }, { fx + w * 0.5f, fy } };
-                pa_fill_poly(c, fi, 3, PA_RGBA(255, 230, 120, 230));
+                float fa = (float)f * 2.39996f;
+                float rr2 = sqrtf(((float)f + 0.5f) / (float)n) * r * 0.85f;
+                float fx = x + cosf(fa) * rr2, fy = y + sinf(fa) * rr2 * 0.75f + 10.0f * s;
+                spr_blit(c, &g_flame[(f + (int)(S.clock * 12.0f)) & 3], fx, fy, f & 1, 0, 0, (int)(255 * fade));
             }
         }
+    }
+}
+
+/* The forcefield: a ring of hellfire round the hero, the screen-scale AoE of
+   the reference. #FF3B2F at 35% inside, a 4px #FF7A3D rim, additive glow and
+   flames riding the rim. */
+static void draw_field(PA_Canvas *c) {
+    if (!S.wlv[W_FIELD] || S.phase == PH_TITLE) return;
+    float s = L.s, r = field_radius() * s;
+    float x = SX(S.px), y = SY(S.py - 10.0f);
+    float pulse = pa_clamp01(S.field_pulse);
+    fast_disc(c, x, y, r, 0xFF3B2F, 89);
+    glow(c, x, y, r * 1.18f, r * 1.18f, 0xFF4A1A, 0.32f + 0.22f * pulse);
+    pa_stroke_circle(c, x, y, r, 4.0f * s, pa_hex(0xFF7A3D));
+    pa_stroke_circle(c, x, y, r * (1.0f - 0.35f * pulse), 3.0f * s, PA_RGBA(255, 210, 140, (int)(200 * pulse)));
+    int n = S.evo[W_FIELD] ? 22 : 15;
+    for (int i = 0; i < n; i++) {
+        float a = (float)i / (float)n * PA_TAU + S.clock * 0.7f;
+        float fx = x + cosf(a) * r, fy = y + sinf(a) * r + 8.0f * s;
+        spr_blit(c, &g_flame[(i + (int)(S.clock * 12.0f)) & 3], fx, fy, i & 1, 0, 0, 235);
     }
 }
 
@@ -3016,6 +3634,7 @@ static void draw_particles(PA_Canvas *c) {
                       (int)(230 * k));
             break;
         case PT_STAR: star(c, x, y, s * (0.6f + k * 0.6f), PA_RGBA(r, g, b, 255), 1.0f * L.s); break;
+        case PT_HIT: spr_blit(c, &g_spark, x, y, 0, 0, 0, (int)(255 * k)); break;
         }
     }
 }
@@ -3253,10 +3872,15 @@ static void draw_card(PA_Canvas *c, int i, float appear) {
         else y += pa_clamp01(S.pick_t / 0.32f) * 30.0f * s;
     }
     int is_new = (p->kind == 0 && !S.wlv[p->id]) || (p->kind == 1 && !S.plv[p->id]);
-    PA_Color head = p->kind == 2 ? pa_hex(0xFF6A1E) : (is_new && p->kind == 0) ? pa_hex(0xF23C78) : pa_hex(0xFFC21C);
-    if (p->kind == 2) {
-        float pulse = 0.5f + 0.5f * sinf(S.clock * 6.0f);
-        pa_round_rect(c, x - 8.0f * s, y - 8.0f * s, w + 16.0f * s, h + 16.0f * s, 16.0f * s, PA_RGBA(255, 200, 60, (int)(80 + 80 * pulse)));
+    /* rarity: evolution red-orange, new weapon pink, weapon gold, item blue */
+    PA_Color head = p->kind == 2 ? pa_hex(0xFF5A1E) : (is_new && p->kind == 0) ? pa_hex(0xF23C78)
+                  : p->kind == 1 ? pa_hex(0x3AA8F0) : p->kind >= 3 ? pa_hex(0x5ACB4A) : pa_hex(0xFFC21C);
+    float pulse = 0.5f + 0.5f * sinf(S.clock * 6.0f);
+    if (p->kind == 2 || is_new) {
+        /* a pulsing gold halo, added rather than painted */
+        glow(c, x + w * 0.5f, y + h * 0.5f, w * 0.8f, h * 0.66f, p->kind == 2 ? 0xFF8A2A : 0xFFC21C, 0.35f + 0.3f * pulse);
+        pa_round_rect(c, x - 5.0f * s, y - 5.0f * s, w + 10.0f * s, h + 10.0f * s, 14.0f * s,
+                      PA_RGBA(255, 200, 60, (int)(90 + 110 * pulse)));
     }
     if (S.chosen == i) pa_round_rect(c, x - 6.0f * s, y - 6.0f * s, w + 12.0f * s, h + 12.0f * s, 14.0f * s, PA_RGBA(255, 255, 255, 200));
     o_rrect(c, x, y, w, h, 10.0f * s, pa_hex(0x3D4357), 3.0f * s);
@@ -3265,18 +3889,32 @@ static void draw_card(PA_Canvas *c, int i, float appear) {
     pa_fill_rect(c, x, y + hh - 10.0f * s, w, 10.0f * s, head);
     pa_fill_rect(c, x + 6.0f * s, y + 5.0f * s, w - 12.0f * s, 4.0f * s, pa_shade(head, 0.35f));
     pa_fill_rect(c, x, y + hh, w, 3.0f * s, OUTC());
+    /* 2px inner bevel: lit top and left, shaded bottom and right */
+    pa_fill_rect(c, x + 3.0f * s, y + hh + 3.0f * s, w - 6.0f * s, 2.0f * s, pa_hex(0x5A6280));
+    pa_fill_rect(c, x + 3.0f * s, y + hh + 3.0f * s, 2.0f * s, h - hh - 10.0f * s, pa_hex(0x535A76));
+    pa_fill_rect(c, x + w - 5.0f * s, y + hh + 3.0f * s, 2.0f * s, h - hh - 10.0f * s, pa_hex(0x2A2E40));
+    pa_fill_rect(c, x + 3.0f * s, y + h - 5.0f * s, w - 6.0f * s, 2.0f * s, pa_hex(0x262A3A));
     const char *name = p->kind == 0 ? W_NAME[p->id] : p->kind == 1 ? P_NAME[p->id] : p->kind == 2 ? EVO_NAME[p->id]
                      : p->kind == 3 ? "MEAT" : "GOLD";
     float ns = fit_size(name, w - 16.0f * s, 16.0f * s, 1.0f * s);
     pa_text_bold(c, name, x + w * 0.5f, y + hh * 0.5f - ns * 0.5f, ns, PA_RGB(255, 255, 255), OUTC(), PA_ALIGN_CENTER, 1.0f * s, 1.1f);
-    if (is_new) pa_text_bold(c, "NEW!", x + w - 6.0f * s, y - 22.0f * s, 15.0f * s, pa_hex(0x6CF04A), OUTC(), PA_ALIGN_RIGHT, 1.0f * s, 1.2f);
+    if (is_new) pa_text_bold(c, "NEW!", x + w - 6.0f * s, y - 24.0f * s, 15.0f * s * (1.0f + 0.08f * pulse), pa_hex(0xFFD23A), OUTC(),
+                             PA_ALIGN_RIGHT, 1.0f * s, 1.2f);
     if (p->kind == 2) pa_text_bold(c, "EVOLVE!", x + w * 0.5f, y - 22.0f * s, 15.0f * s, pa_hex(0xFFD23A), OUTC(), PA_ALIGN_CENTER, 1.0f * s, 1.2f);
     /* icon over a faint crosshair */
     float icy = y + hh + (h - hh) * 0.23f;
-    pa_stroke_circle(c, x + w * 0.5f, icy, w * 0.3f, 2.0f * s, pa_hex(0x474E64));
-    pa_line(c, x + w * 0.12f, icy, x + w * 0.88f, icy, 2.0f * s, pa_hex(0x474E64));
-    pa_line(c, x + w * 0.5f, icy - w * 0.38f, x + w * 0.5f, icy + w * 0.38f, 2.0f * s, pa_hex(0x474E64));
-    draw_icon(c, pick_icon(p), x + w * 0.5f, icy, w * 0.66f, S.clock * 2.0f);
+    {
+        float pr = w * 0.36f, cx = x + w * 0.5f;
+        PA_Paint plate = pa_radial(cx, icy - pr * 0.25f, pr * 0.1f, pr * 1.1f);
+        pa_stop(&plate, 0.0f, pa_hex(0x4A5070));
+        pa_stop(&plate, 0.45f, pa_hex(0x3A3F5C));
+        pa_stop(&plate, 1.0f, pa_hex(0x1E2236));
+        pa_fill_circle(c, cx, icy, pr + 2.5f * s, OUTC());
+        pa_fill_ellipse_paint(c, cx, icy, pr, pr, &plate);
+        pa_stroke_circle(c, cx, icy, pr - 2.0f * s, 2.0f * s, pa_hex(0x5A6284));
+        glow(c, cx, icy, pr * 0.9f, pr * 0.9f, head & 0xFFFFFFu, 0.32f);
+    }
+    draw_icon(c, pick_icon(p), x + w * 0.5f, icy, w * 0.62f, S.clock * 2.0f);
     /* description */
     float dy = y + hh + (h - hh) * 0.50f, dh = (h - hh) * 0.30f;
     pa_round_rect(c, x + 8.0f * s, dy, w - 16.0f * s, dh, 8.0f * s, pa_hex(0x2C3142));
@@ -3512,11 +4150,12 @@ static void draw_title(PA_Canvas *c) {
     S.cam_x = S.clock * 18.0f;
     S.cam_y = S.clock * 8.0f;
     g_shx = g_shy = 0.0f;
+    set_view();
     draw_ground(c);
     /* ambient horde walking across the lower half */
     for (int i = 0; i < 26; i++) {
         uint32_t h = hash2(i, 77);
-        int set = SPR_ZOMBIE + (int)(h % 6);
+        int set = SPR_ZOMBIE + (int)(h % 7);
         float lane = (float)L.h * (0.60f + 0.34f * (float)((h >> 8) & 255) / 255.0f);
         float x = pa_wrapf((float)((h >> 16) & 1023) + S.clock * (24.0f + (float)(h % 20)), (float)L.w + 120.0f) - 60.0f;
         int f = ((int)(S.clock * 6.0f + (float)i)) & 3;
@@ -3573,7 +4212,7 @@ static void draw_title(PA_Canvas *c) {
     float floor_y = cy + ch - 18.0f * s;
     for (int i = 0; i < 7; i++) {
         uint32_t h = hash2(i, 9);
-        int set = SPR_ZOMBIE + (int)(h % 6);
+        int set = SPR_ZOMBIE + (int)(h % 7);
         float zx = cx + cw * (0.08f + 0.14f * (float)i);
         float zy = floor_y - 26.0f * s - (float)(h % 3) * 8.0f * s;
         spr_blit(c, &g_spr[set][((int)(S.clock * 6.0f) + i) & 3], zx, zy, zx > cx + cw * 0.5f, 0, 0, 255);
@@ -3634,17 +4273,21 @@ static void s_render(PA_Canvas *c) {
         g_shx = sinf(S.clock * 93.0f) * S.shake * 9.0f * L.s;
         g_shy = cosf(S.clock * 71.0f) * S.shake * 7.0f * L.s;
     }
+    set_view();
     draw_ground(c);
     draw_decals(c);
     draw_zones_under(c);
+    draw_field(c);
     draw_cage(c, 0);
     draw_gems(c);
+    if (S.phase != PH_TITLE) draw_hero_ring(c);
     draw_actors(c);
     draw_cage(c, 1);
     draw_zones_over(c);
     draw_orbitals(c);
     draw_projectiles(c);
     draw_particles(c);
+    draw_muzzle(c);
     draw_numbers(c);
     if (S.phase == PH_PLAY || S.phase == PH_DYING) draw_hero_hp(c);
     draw_joystick(c);

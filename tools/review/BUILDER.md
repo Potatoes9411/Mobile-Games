@@ -23,6 +23,9 @@ your code or your report. So nothing counts unless it is visible in the frames.
   `pa_hub_pause_anchor(cx, cy, r)` from render to put it where the reference
   HUD would have its pause/settings button, or `pa_hub_hide_pause()` while a
   results card or modal is up. The Android back button pauses for free.
+- Meta: when a run or level ends, call `pa_meta_report(id, &report)` (see the
+  Shell section of `pa.h`: score, coins, won, level, stars). The hub turns it
+  into account XP, gems, missions and per-game stats on the home screen.
 - Save keys must be namespaced: `"<id>.best"`, `"<id>.coins"` ...
 - Audio: `pa_tone`, `pa_noise`, `pa_sfx`. Give the game its own sound palette
   through tones; silence is a defect.
