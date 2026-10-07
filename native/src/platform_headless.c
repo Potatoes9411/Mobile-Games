@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #define FIXED_STEP (1.0 / 120.0)
 
@@ -99,7 +100,7 @@ int pa_demo_mode(void) { return g_demo; }
 
 int main(int argc, char **argv) {
     const char *game = "hub", *script = NULL, *shots = NULL, *out = "shot";
-    int w = 540, h = 1170, autoplay = 0;
+    int w = 540, h = 1170, autoplay = 0, bench = 0;
     double seconds = 0.0, hz = 60.0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
@@ -111,6 +112,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shots") && i + 1 < argc) shots = argv[++i];
         else if (!strcmp(argv[i], "--out") && i + 1 < argc) out = argv[++i];
         else if (!strcmp(argv[i], "--demo") && i + 1 < argc) g_demo = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--bench")) bench = 1;
     }
 
     double shot_t[256];
@@ -145,7 +147,11 @@ int main(int argc, char **argv) {
     float press_x = 0, press_y = 0, prev_x = 0, prev_y = 0;
     int pend_press = 0, pend_release = 0, pend_tap = 0, pend_swipe = 0;
 
+    double bench_total = 0.0, bench_max = 0.0;
+    int bench_frames = 0;
+    struct timespec t0, t1;
     while (shot_i < nshots) {
+        if (bench) clock_gettime(CLOCK_MONOTONIC, &t0);
         /* Frame-level input, same classification the real platforms do. */
         acc += frame_dt;
         while (acc >= FIXED_STEP) {
@@ -200,6 +206,12 @@ int main(int argc, char **argv) {
             in.wheel = 0;
             for (int k = 0; k < PA_KEY_COUNT; k++) in.key_pressed[k] = 0;
         }
+        if (bench) {
+            pa_app_render(&g_canvas);
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            double ms = (double)(t1.tv_sec - t0.tv_sec) * 1000.0 + (double)(t1.tv_nsec - t0.tv_nsec) / 1e6;
+            if (sim > 1.0) { bench_total += ms; bench_frames++; if (ms > bench_max) bench_max = ms; }
+        }
         if (sim + 1e-9 >= shot_t[shot_i]) {
             pa_app_render(&g_canvas);
             char path[1024];
@@ -209,6 +221,9 @@ int main(int argc, char **argv) {
             shot_i++;
         }
     }
+    if (bench && bench_frames)
+        fprintf(stderr, "BENCH %s %dx%d frames=%d avg=%.2fms max=%.2fms\n", game, w, h, bench_frames,
+                bench_total / bench_frames, bench_max);
     pa_app_shutdown();
     pa_canvas_free(&g_canvas);
     return 0;

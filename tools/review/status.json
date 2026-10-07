@@ -17,7 +17,8 @@
   "Block Storm round 2: OURS WINS the blind comparison by a clear margin.",
   "Roller Splat round 2: OURS WINS the blind comparison (slight).",
   "Pin Rescue port merged; round 1 lost clearly (flat 2D tubes and hairline pins). Road Hopper re-pass, Horde Arena and Rooftop Run ports merged and sent blind; Helix and Block Storm confirmation rounds started.",
-  "Helix Drop CONFIRMED: second blind win (clear) against different reference shots. Block Storm lost its confirmation round narrowly. Road Hopper, Rooftop Run and Horde Arena lost round 1 clearly; all back with builders."
+  "Helix Drop CONFIRMED: second blind win (clear) against different reference shots. Block Storm lost its confirmation round narrowly. Road Hopper, Rooftop Run and Horde Arena lost round 1 clearly; all back with builders.",
+  "All 12 games now native (Avian Artillery port landed). Benchmarks show 26-91 ms per frame; performance builder started. Paper Territory lost round 1; Roller Splat lost its confirmation round. Five blind reviews running."
  ],
  "engine": [
   {
@@ -38,7 +39,12 @@
   {
    "name": "Android APK",
    "state": "partial",
-   "note": "Builds and installs; logical-resolution fix and back button pending a device build."
+   "note": "Builds and installs; 540-wide logical canvas, back button, stable signing key. Every game measures 26-91 ms per frame, too slow for phones."
+  },
+  {
+   "name": "Rasterizer performance",
+   "state": "building",
+   "note": "Profiling and speeding up the shared fill, blend and text paths; target under 16 ms per frame on a phone."
   }
  ],
  "games": [
@@ -55,10 +61,10 @@
    "id": "blockstorm",
    "name": "Block Storm",
    "ref": "Block Blast",
-   "phase": "fixing",
+   "phase": "review",
    "round": 3,
    "verdict": "Reference wins, slight (after a clear win in round 2)",
-   "gap": "Confirmation round lost narrowly on layering: confetti over the HUD, praise text too wide, mushy line clear, tray scale, dragged piece past the board."
+   "gap": "Layering fixes landed (confetti behind HUD, tighter praise text, sharp beams, consistent tray). Re-running against the set it lost to."
   },
   {
    "id": "helix",
@@ -73,10 +79,10 @@
    "id": "splat",
    "name": "Roller Splat",
    "ref": "Roller Splat!",
-   "phase": "won",
-   "round": 2,
-   "verdict": "Ours wins, slight",
-   "gap": "Won on HUD, palette, readability and polish. Reference still has deeper wall extrusion and stronger camera tilt; depth pass under way."
+   "phase": "fixing",
+   "round": 3,
+   "verdict": "Reference wins, clear (after a slight win in round 2)",
+   "gap": "Confirmation round lost: board shrank to ~35% of the screen after the depth pass; flat lighting, sticker props, small ball."
   },
   {
    "id": "voidmuncher",
@@ -91,37 +97,37 @@
    "id": "chromerush",
    "name": "Chrome Rush",
    "ref": "Dashy Crashy GO!",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "Reference wins, overwhelming",
-   "gap": "Static crash, single daytime biome, empty lower screen, primitive cars."
+   "gap": "Re-pass landed: crash KO sequence, night/sunset/day biomes, 20 car models, near-miss bubbles, garage. Round 1 blind review running."
   },
   {
    "id": "mobclash",
    "name": "Mob Clash: Gate Siege",
    "ref": "Mob Control",
-   "phase": "fixing",
+   "phase": "review",
    "round": 1,
    "verdict": "Reference wins, overwhelming",
-   "gap": "Crowd is a thin trickle, not a mass; flat unlit scene; weak boss; camera too high; thin gates; tiny impact effects."
+   "gap": "Round 2 landed: low chase camera, glossy crowds, lit road, three environments, 3D gates, boss. Blind review running."
   },
   {
    "id": "paper",
    "name": "Paper Territory",
    "ref": "Paper.io 2",
-   "phase": "building",
-   "round": 0,
-   "verdict": "",
-   "gap": "Native port in progress (was web-only)."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, clear",
+   "gap": "Plain cube characters, unlit territories, bare capture/kill feedback, empty mint ground, flat game-over. Ours wins readability."
   },
   {
    "id": "pins",
    "name": "Pin Rescue",
    "ref": "Pull the Pin",
-   "phase": "fixing",
+   "phase": "review",
    "round": 1,
    "verdict": "Reference wins, clear",
-   "gap": "Containers and pins are hairline 2D outlines; balls tiny; playfield small; bombs invisible until they blow. Ours wins on the win celebration."
+   "gap": "Round 2 landed: thick glass tubes, chunky pins, bigger shaded balls, visible bombs. Blind review running."
   },
   {
    "id": "runner",
@@ -145,10 +151,10 @@
    "id": "avian",
    "name": "Avian Artillery",
    "ref": "Angry Birds 2",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "",
-   "gap": "Native port in progress (was web-only); landscape."
+   "gap": "Native port landed: rigid-body physics, five bird powers, wood/ice/stone, 20 levels in 4 worlds, stars. Round 1 blind review running."
   }
  ]
 }
