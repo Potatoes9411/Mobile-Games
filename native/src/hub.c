@@ -15,6 +15,12 @@ extern const PA_Game PA_GAME_VOIDMUNCHER;
 extern const PA_Game PA_GAME_CHROMERUSH;
 extern const PA_Game PA_GAME_BLOCKSTORM;
 extern const PA_Game PA_GAME_HELIX;
+extern const PA_Game PA_GAME_MOBCLASH;
+extern const PA_Game PA_GAME_PAPER;
+extern const PA_Game PA_GAME_PINS;
+extern const PA_Game PA_GAME_RUNNER;
+extern const PA_Game PA_GAME_HORDE;
+extern const PA_Game PA_GAME_AVIAN;
 
 static const PA_Game *const GAMES[] = {
     &PA_GAME_ROADHOPPER,
@@ -22,7 +28,13 @@ static const PA_Game *const GAMES[] = {
     &PA_GAME_CHROMERUSH,
     &PA_GAME_BLOCKSTORM,
     &PA_GAME_HELIX,
-    &PA_GAME_SPLAT
+    &PA_GAME_SPLAT,
+    &PA_GAME_MOBCLASH,
+    &PA_GAME_PAPER,
+    &PA_GAME_PINS,
+    &PA_GAME_RUNNER,
+    &PA_GAME_HORDE,
+    &PA_GAME_AVIAN
 };
 #define GAME_COUNT ((int)(sizeof(GAMES) / sizeof(GAMES[0])))
 
@@ -73,6 +85,11 @@ static void layout_cards(void) {
     }
 }
 
+int pa_app_debug_find(const char *id) {
+    for (int i = 0; i < GAME_COUNT; i++) if (!strcmp(GAMES[i]->id, id)) return i;
+    return -1;
+}
+
 /* Headless capture entry: launches a game straight from the command line so the
    build can be verified from CI, where nothing can click a card. */
 void pa_app_debug_launch(int index) {
@@ -105,6 +122,7 @@ void pa_app_shutdown(void) {
 }
 
 int pa_app_should_quit(void) { return g_quit; }
+int pa_app_in_game(void) { return g_screen != SCREEN_HOME; }
 
 static void launch(int index) {
     if (index < 0 || index >= GAME_COUNT) return;
@@ -117,6 +135,7 @@ static void launch(int index) {
 
 static void go_home(void) {
     if (g_active && g_active->stop) g_active->stop();
+    pa_set_landscape(0);
     g_active = NULL;
     g_screen = SCREEN_HOME;
     g_fade = 1.0f;
@@ -228,10 +247,64 @@ static void draw_home(PA_Canvas *c) {
 
 }
 
-/* ----------------------------------------------------------------- frame -- */
-/* Set when the MENU button is tapped; acted on at render time so the teardown
-   never happens midway through a batch of fixed update steps. */
+/* Set when HOME is chosen; acted on at render time so the teardown never
+   happens midway through a batch of fixed update steps. */
 static int g_pending_quit_home;
+
+/* ------------------------------------------------------------ pause ui -- */
+static float g_pause_x, g_pause_y, g_pause_r = 22.0f;
+static int   g_pause_hidden;
+static float g_pause_anim;        /* 0..1 slide-in of the pause sheet */
+
+void pa_hub_pause_anchor(float cx, float cy, float radius) {
+    g_pause_x = cx; g_pause_y = cy; g_pause_r = radius;
+}
+void pa_hub_hide_pause(void) { g_pause_hidden = 1; }
+void pa_hub_exit(void) { g_pending_quit_home = 1; }
+void pa_hub_pause(void) {
+    if (g_screen == SCREEN_GAME) { g_screen = SCREEN_PAUSE; g_pause_anim = 0.0f; pa_sfx("select"); }
+}
+
+static Rect pause_button(int which) {
+    float bw = (float)g_view_w * 0.62f, bh = 64.0f;
+    if (bw > 360.0f) bw = 360.0f;
+    Rect r = { ((float)g_view_w - bw) * 0.5f, (float)g_view_h * 0.50f + (float)which * 84.0f, bw, bh };
+    return r;
+}
+
+static int in_rect(Rect r, float x, float y) {
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+
+static void draw_pause_glyph(PA_Canvas *c) {
+    float x = g_pause_x, y = g_pause_y, r = g_pause_r;
+    pa_fill_circle(c, x, y + r * 0.10f, r, PA_RGBA(0, 0, 0, 70));
+    pa_fill_circle(c, x, y, r, PA_RGBA(255, 255, 255, 235));
+    float bw = r * 0.22f, bh = r * 0.80f;
+    pa_round_rect(c, x - r * 0.30f - bw * 0.5f, y - bh * 0.5f, bw, bh, bw * 0.4f, PA_RGB(40, 44, 66));
+    pa_round_rect(c, x + r * 0.30f - bw * 0.5f, y - bh * 0.5f, bw, bh, bw * 0.4f, PA_RGB(40, 44, 66));
+}
+
+static void draw_pause_sheet(PA_Canvas *c) {
+    float k = pa_smooth(pa_clamp01(g_pause_anim));
+    pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(8, 10, 30, (int)(170.0f * k)));
+    float off = (1.0f - k) * 60.0f;
+    pa_text_bold(c, "PAUSED", (float)c->w * 0.5f, (float)c->h * 0.38f + off, 46.0f,
+                 PA_RGB(255, 255, 255), PA_RGB(20, 22, 40), PA_ALIGN_CENTER, 3.0f, 2.2f);
+    const char *labels[2] = { "RESUME", "HOME" };
+    PA_Color cols[2] = { PA_RGB(76, 200, 92), PA_RGB(70, 120, 235) };
+    for (int i = 0; i < 2; i++) {
+        Rect r = pause_button(i);
+        r.y += off;
+        pa_round_rect(c, r.x, r.y + 6.0f, r.w, r.h, 20.0f, pa_shade(cols[i], -0.35f));
+        pa_round_rect(c, r.x, r.y, r.w, r.h, 20.0f, cols[i]);
+        pa_round_rect(c, r.x + 6.0f, r.y + 5.0f, r.w - 12.0f, r.h * 0.42f, 14.0f, PA_RGBA(255, 255, 255, 40));
+        pa_text_bold(c, labels[i], r.x + r.w * 0.5f, r.y + r.h * 0.5f + 9.0f, 26.0f,
+                     PA_RGB(255, 255, 255), PA_RGB(20, 22, 40), PA_ALIGN_CENTER, 2.0f, 1.6f);
+    }
+}
+
+/* ----------------------------------------------------------------- frame -- */
 
 void pa_app_update(float dt, const PA_Input *in) {
     g_time += dt;
@@ -310,10 +383,20 @@ void pa_app_update(float dt, const PA_Input *in) {
     }
 
     if (in->key_pressed[PA_KEY_ESC]) {
-        g_screen = (g_screen == SCREEN_PAUSE) ? SCREEN_GAME : SCREEN_PAUSE;
+        if (g_screen == SCREEN_PAUSE) g_screen = SCREEN_GAME; else pa_hub_pause();
         pa_sfx("select");
+        return;
     }
-    if (in->tapped && in->x < 96.0f && in->y < 56.0f) { g_pending_quit_home = 1; return; }
+    if (g_screen == SCREEN_PAUSE) {
+        g_pause_anim = pa_clamp01(g_pause_anim + dt * 6.0f);
+        if (in->tapped && in_rect(pause_button(0), in->x, in->y)) { g_screen = SCREEN_GAME; pa_sfx("select"); }
+        else if (in->tapped && in_rect(pause_button(1), in->x, in->y)) g_pending_quit_home = 1;
+        return;
+    }
+    if (!g_pause_hidden && in->pressed) {
+        float dx = in->x - g_pause_x, dy = in->y - g_pause_y, rr = g_pause_r + 12.0f;
+        if (dx * dx + dy * dy <= rr * rr) { pa_hub_pause(); return; }
+    }
 
     /* A paused game keeps painting but stops updating, so the overlay sits over
        a live scene rather than a frozen buffer. */
@@ -331,19 +414,11 @@ void pa_app_render(PA_Canvas *c) {
     if (g_screen == SCREEN_HOME) {
         draw_home(c);
     } else {
+        g_pause_x = (float)c->w - 36.0f; g_pause_y = 38.0f; g_pause_r = 22.0f;
+        g_pause_hidden = 0;
         if (g_active && g_active->render) g_active->render(c);
-
-        /* Menu button, top left, matching the browser build. */
-        pa_round_rect(c, 14.0f, 14.0f, 74.0f, 32.0f, 10.0f, PA_RGBA(14, 11, 30, 200));
-        pa_text(c, "MENU", 51.0f, 36.0f, 13.0f, PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 2.0f);
-
-        if (g_screen == SCREEN_PAUSE) {
-            pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(10, 8, 24, 220));
-            pa_text(c, "PAUSED", (float)c->w * 0.5f, (float)c->h * 0.42f, 40.0f,
-                    PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 8.0f);
-            pa_text(c, "ESC TO RESUME", (float)c->w * 0.5f, (float)c->h * 0.52f, 14.0f,
-                    PA_RGBA(255, 255, 255, 150), PA_ALIGN_CENTER, 5.0f);
-        }
+        if (g_screen == SCREEN_PAUSE) draw_pause_sheet(c);
+        else if (!g_pause_hidden) draw_pause_glyph(c);
     }
 
     if (g_fade > 0.0f) {

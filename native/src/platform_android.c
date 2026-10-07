@@ -80,6 +80,20 @@ static void begin_frame(void) {
 static int32_t on_input(struct android_app *app, AInputEvent *event) {
     (void)app;
     int32_t type = AInputEvent_getType(event);
+    if (type == AINPUT_EVENT_TYPE_KEY) {
+        /* The system back button pauses a game, and backs out of the pause
+           sheet; on the arcade grid it is left to the system. */
+        if (AKeyEvent_getKeyCode(event) == AKEYCODE_BACK) {
+            if (AKeyEvent_getAction(event) == AKEY_EVENT_ACTION_UP) {
+                g_input.keys[PA_KEY_ESC] = 0;
+                return pa_app_in_game();
+            }
+            if (!g_input.keys[PA_KEY_ESC]) g_input.key_pressed[PA_KEY_ESC] = 1;
+            g_input.keys[PA_KEY_ESC] = 1;
+            return pa_app_in_game();
+        }
+        return 0;
+    }
     if (type != AINPUT_EVENT_TYPE_MOTION) return 0;
 
     int32_t action = AMotionEvent_getAction(event) & AMOTION_EVENT_ACTION_MASK;
@@ -87,13 +101,9 @@ static int32_t on_input(struct android_app *app, AInputEvent *event) {
     float y = AMotionEvent_getY(event, 0);
 
     /* Scale touch coordinates to canvas space */
-    if (g_canvas.w > 0 && g_canvas.h > 0 && g_app && g_app->window) {
-        int ww = ANativeWindow_getWidth(g_app->window);
-        int wh = ANativeWindow_getHeight(g_app->window);
-        if (ww > 0 && wh > 0) {
-            x = x * (float)g_canvas.w / (float)ww;
-            y = y * (float)g_canvas.h / (float)wh;
-        }
+    if (g_canvas.w > 0 && g_phys_w > 0 && g_phys_h > 0) {
+        x = x * (float)g_canvas.w / (float)g_phys_w;
+        y = y * (float)g_canvas.h / (float)g_phys_h;
     }
 
     switch (action) {
@@ -124,45 +134,61 @@ static int32_t on_input(struct android_app *app, AInputEvent *event) {
 /* ------------------------------------------------ ANativeWindow blit ----- */
 static void present(void) {
     if (!g_app->window) return;
-
     ANativeWindow_Buffer buf;
     if (ANativeWindow_lock(g_app->window, &buf, NULL) != 0) return;
-
-    int dw = buf.width;
-    int dh = buf.height;
-    int sw = g_canvas.w;
-    int sh = g_canvas.h;
-
-    uint32_t *dst = (uint32_t *)buf.bits;
-    uint32_t *src = g_canvas.px;
-
-    if (dw == sw && dh == sh && buf.stride == dw) {
-        /* Fast path: dimensions match exactly */
-        memcpy(dst, src, (size_t)(sw * sh) * 4);
-    } else {
-        /* Scale blit: nearest-neighbour stretch */
-        for (int y = 0; y < dh; y++) {
-            int sy = y * sh / dh;
-            if (sy >= sh) sy = sh - 1;
-            uint32_t *srow = src + sy * sw;
-            uint32_t *drow = dst + y * buf.stride;
-            for (int x = 0; x < dw; x++) {
-                int sx = x * sw / dw;
-                if (sx >= sw) sx = sw - 1;
-                /* Convert 0x00RRGGBB → 0xFFRRGGBB (ABGR → set alpha, keep
-                   RGB since ANativeWindow format RGBA_8888 is actually ABGR
-                   in memory on little-endian). Actually Android's WINDOW_FORMAT
-                   _RGBA_8888 is R in low byte, so we need to swap R and B. */
-                uint32_t c = srow[sx];
-                uint32_t r = (c >> 16) & 0xFF;
-                uint32_t g = (c >> 8) & 0xFF;
-                uint32_t b = c & 0xFF;
-                drow[x] = 0xFF000000u | (b << 16) | (g << 8) | r;
-            }
+    int w = buf.width < g_canvas.w ? buf.width : g_canvas.w;
+    int h = buf.height < g_canvas.h ? buf.height : g_canvas.h;
+    for (int y = 0; y < h; y++) {
+        const uint32_t *srow = g_canvas.px + (size_t)y * g_canvas.w;
+        uint32_t *drow = (uint32_t *)buf.bits + (size_t)y * buf.stride;
+        /* Canvas is 0x00RRGGBB; RGBA_8888 is R,G,B,A in memory. */
+        for (int x = 0; x < w; x++) {
+            uint32_t c = srow[x];
+            drow[x] = 0xFF000000u | ((c & 0xFFu) << 16) | (c & 0xFF00u) | ((c >> 16) & 0xFFu);
         }
     }
-
     ANativeWindow_unlockAndPost(g_app->window);
+}
+
+/* The canvas runs at a logical size whose short side is LOGICAL_SHORT pixels,
+   the size every game is laid out and reviewed at. The window's buffer is set
+   to that size and the system compositor scales it to the panel on the GPU,
+   so a 1440p phone costs the software rasterizer the same as a 720p one and
+   UI measured in pixels is the same physical size everywhere. */
+#define LOGICAL_SHORT 540
+static int g_phys_w, g_phys_h;
+
+static void configure_window(ANativeWindow *win) {
+    ANativeWindow_setBuffersGeometry(win, 0, 0, WINDOW_FORMAT_RGBA_8888);
+    g_phys_w = ANativeWindow_getWidth(win);
+    g_phys_h = ANativeWindow_getHeight(win);
+    if (g_phys_w <= 0 || g_phys_h <= 0) return;
+    int lw, lh;
+    if (g_phys_w <= g_phys_h) { lw = LOGICAL_SHORT; lh = (int)((float)g_phys_h * LOGICAL_SHORT / (float)g_phys_w + 0.5f); }
+    else                      { lh = LOGICAL_SHORT; lw = (int)((float)g_phys_w * LOGICAL_SHORT / (float)g_phys_h + 0.5f); }
+    ANativeWindow_setBuffersGeometry(win, lw, lh, WINDOW_FORMAT_RGBA_8888);
+    if (g_canvas.px) pa_canvas_resize(&g_canvas, lw, lh);
+    else { pa_canvas_init(&g_canvas, lw, lh); pa_app_init(lw, lh); }
+    LOGI("Window %dx%d -> canvas %dx%d", g_phys_w, g_phys_h, lw, lh);
+}
+
+/* Ask the activity for a landscape or portrait lock through JNI; NativeActivity
+   has no native call for it. */
+int pa_demo_mode(void) { return 0; }
+
+void pa_set_landscape(int on) {
+    if (!g_app || !g_app->activity) return;
+    JavaVM *vm = g_app->activity->vm;
+    JNIEnv *env = NULL;
+    if ((*vm)->AttachCurrentThread(vm, &env, NULL) != JNI_OK || !env) return;
+    jobject act = g_app->activity->clazz;
+    jclass cls = (*env)->GetObjectClass(env, act);
+    jmethodID m = (*env)->GetMethodID(env, cls, "setRequestedOrientation", "(I)V");
+    /* SCREEN_ORIENTATION_SENSOR_LANDSCAPE = 6, SENSOR_PORTRAIT = 7 */
+    if (m) (*env)->CallVoidMethod(env, act, m, on ? 6 : 7);
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    (*env)->DeleteLocalRef(env, cls);
+    (*vm)->DetachCurrentThread(vm);
 }
 
 /* -------------------------------------------- lifecycle commands --------- */
@@ -170,20 +196,9 @@ static void on_cmd(struct android_app *app, int32_t cmd) {
     switch (cmd) {
         case APP_CMD_INIT_WINDOW:
             if (app->window) {
-                int w = ANativeWindow_getWidth(app->window);
-                int h = ANativeWindow_getHeight(app->window);
-                ANativeWindow_setBuffersGeometry(app->window, w, h,
-                    WINDOW_FORMAT_RGBA_8888);
-
-                if (g_canvas.px) {
-                    pa_canvas_resize(&g_canvas, w, h);
-                } else {
-                    pa_canvas_init(&g_canvas, w, h);
-                    pa_app_init(w, h);
-                }
+                configure_window(app->window);
                 g_running = 1;
                 g_previous = now_seconds();
-                LOGI("Window init %dx%d", w, h);
             }
             break;
 
@@ -218,14 +233,8 @@ static void on_cmd(struct android_app *app, int32_t cmd) {
             break;
 
         case APP_CMD_WINDOW_RESIZED:
-            if (app->window) {
-                int w = ANativeWindow_getWidth(app->window);
-                int h = ANativeWindow_getHeight(app->window);
-                ANativeWindow_setBuffersGeometry(app->window, w, h,
-                    WINDOW_FORMAT_RGBA_8888);
-                pa_canvas_resize(&g_canvas, w, h);
-                LOGI("Window resize %dx%d", w, h);
-            }
+        case APP_CMD_CONFIG_CHANGED:
+            if (app->window) configure_window(app->window);
             break;
     }
 }

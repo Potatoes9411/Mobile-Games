@@ -311,6 +311,9 @@ static int run_headless(const char *path, double seconds, int play, int autoplay
     return ok ? 0 : 1;
 }
 
+void pa_set_landscape(int on) { (void)on; }
+int pa_demo_mode(void) { return 0; }
+
 int main(int argc, char **argv) {
     int play = -1, autoplay = 0;
     double hz = 60.0, seconds = 0.0;

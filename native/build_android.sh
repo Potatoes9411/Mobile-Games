@@ -49,13 +49,8 @@ SOURCES=(
     "$SRC/save.c"
     "$SRC/hub.c"
     "$SRC/platform_android.c"
-    "$SRC/games/blockstorm.c"
-    "$SRC/games/chromerush.c"
-    "$SRC/games/helix.c"
-    "$SRC/games/roadhopper.c"
-    "$SRC/games/splat.c"
-    "$SRC/games/voidmuncher.c"
 )
+for f in "$SRC"/games/*.c; do SOURCES+=("$f"); done
 
 CFLAGS="-O2 -Wall -DANDROID -D__ANDROID__ -I$SRC -I$GLUE_SRC -fPIC"
 LDFLAGS="-shared -landroid -laaudio -llog -lm"

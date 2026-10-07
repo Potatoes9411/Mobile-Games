@@ -218,6 +218,24 @@ struct PA_Game {
     void  (*thumb)(PA_Canvas *c, float x, float y, float w, float h, float t);
 };
 
+/* Shell services for games (implemented by hub.c). The hub owns pausing and
+   leaving a game; a game only says where its pause button sits so it can fit
+   that game's own HUD. The anchor resets to the top-right corner before every
+   game render, so a game that never calls it still gets a sensible button. */
+void pa_hub_pause_anchor(float cx, float cy, float radius);
+/** Hide the pause button this frame (results cards, cutscenes). Back/ESC still pause. */
+void pa_hub_hide_pause(void);
+void pa_hub_pause(void);
+/** Request a landscape (1) or portrait (0) screen lock. Phones rotate and the
+    canvas is resized; the desktop and headless builds ignore it. */
+void pa_set_landscape(int on);
+/** Non-zero only in review captures (headless --demo N). A game may use it to
+    self-play into representative states - a bot steering, a level preloaded,
+    the results card forced - so reviewers see real gameplay. Always 0 in the
+    shipping builds, which must never branch on anything else from it. */
+int  pa_demo_mode(void);
+void pa_hub_exit(void);
+
 /* Implemented by hub.c, called by the platform layer.
    Update and render are separate so the platform can run the simulation on a
    fixed timestep and draw once, which is what makes behaviour identical on a
@@ -226,6 +244,8 @@ void pa_app_init(int w, int h);
 void pa_app_update(float dt, const PA_Input *in);
 void pa_app_render(PA_Canvas *c);
 void pa_app_shutdown(void);
+/** Non-zero while a game (or its pause sheet) is on screen. */
+int  pa_app_in_game(void);
 /** Non-zero once the app wants the window closed. */
 int  pa_app_should_quit(void);
 
