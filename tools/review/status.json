@@ -14,7 +14,8 @@
   "Roller Splat round 1: reference wins clearly (was overwhelming). Builder resumed on round 2.",
   "Typography upgrade merged into every game. Mob Clash native port merged; round 1 blind review started. Hub builder started.",
   "Mob Clash round 1: reference wins overwhelmingly (crowd mass, lighting, camera). Builder resumed on round 2.",
-  "Block Storm round 2: OURS WINS the blind comparison by a clear margin."
+  "Block Storm round 2: OURS WINS the blind comparison by a clear margin.",
+  "Roller Splat round 2: OURS WINS the blind comparison (slight)."
  ],
  "engine": [
   {
@@ -70,10 +71,10 @@
    "id": "splat",
    "name": "Roller Splat",
    "ref": "Roller Splat!",
-   "phase": "fixing",
-   "round": 1,
-   "verdict": "Reference wins, clear",
-   "gap": "Later worlds lose the 3D slab and wall depth; procedural mazes read as noise; paint needs bevel and sparkle; bigger win celebration."
+   "phase": "won",
+   "round": 2,
+   "verdict": "Ours wins, slight",
+   "gap": "Won on HUD, palette, readability and polish. Reference still has deeper wall extrusion and stronger camera tilt; depth pass under way."
   },
   {
    "id": "voidmuncher",
