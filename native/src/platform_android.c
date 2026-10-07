@@ -37,6 +37,7 @@ static int        g_focused;       /* has input focus */
 static double     g_accumulator;
 static double     g_previous;
 static struct android_app *g_app;
+static int        g_phys_w, g_phys_h;  /* panel size, for mapping touches */
 
 /* touch tracking for swipe/tap classification */
 static float g_press_x, g_press_y;
@@ -156,7 +157,6 @@ static void present(void) {
    so a 1440p phone costs the software rasterizer the same as a 720p one and
    UI measured in pixels is the same physical size everywhere. */
 #define LOGICAL_SHORT 540
-static int g_phys_w, g_phys_h;
 
 static void configure_window(ANativeWindow *win) {
     ANativeWindow_setBuffersGeometry(win, 0, 0, WINDOW_FORMAT_RGBA_8888);

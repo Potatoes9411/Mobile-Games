@@ -37,7 +37,10 @@ rm -rf "$BUILD"
 mkdir -p "$BUILD"
 
 # Keystore for debug signing
-KEYSTORE="${KEYSTORE:-$BUILD/debug.keystore}"
+# Kept outside the build dir: a new key per build makes Android refuse to
+# install the update over the previous one.
+KEYSTORE="${KEYSTORE:-$HOME/.android/pocketarcade-debug.keystore}"
+mkdir -p "$(dirname "$KEYSTORE")"
 KEYSTORE_PASS="${KEYSTORE_PASS:-android}"
 KEY_ALIAS="${KEY_ALIAS:-androiddebugkey}"
 
