@@ -10,7 +10,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define MAX_ENTRIES 64
+#define MAX_ENTRIES 256
 #define MAX_KEY 32
 
 typedef struct { char key[MAX_KEY]; int value; } Entry;

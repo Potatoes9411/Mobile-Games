@@ -62,3 +62,4 @@ native/build_android/
 # Headless capture binary and review output
 native/out/
 reviews/
+__pycache__/
