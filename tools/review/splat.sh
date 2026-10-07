@@ -6,10 +6,10 @@
 # playing, so the frames are real play and fully deterministic.
 #   01  first screen        level 1, sky world, swipe hint
 #   02  early play          level 1, mid roll, wet paint at the ball
-#   03  busy mid-game       level 13, ice world, dense 13x21 board mid-solve
+#   03  busy mid-game       level 15, ice world, dense 13x21 board mid-solve
 #   04  signature mechanic  level 8, mustard world, a long roll spattering paint
 #   05  level complete      level 17, lawn world, splat badge and confetti
-#   06-10 motion strip      level 8, one 10-tile roll into a wall, 0.08 s apart
+#   06-10 motion strip      level 8, one 12-tile roll into a wall, 0.08 s apart
 set -euo pipefail
 out="${1:?usage: tools/review/splat.sh OUTDIR}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -32,9 +32,9 @@ shoot() {
 }
 
 shoot 1  "0.75,2.95"   01_first_screen 02_early_play
-shoot 13 "5.50"        03_busy_midgame
-shoot 8  "7.30"        04_signature_spatter
-shoot 17 "8.92"       05_level_complete
-shoot 8  "4.58,4.66,4.74,4.82,4.90" \
+shoot 15 "9.25"        03_busy_midgame
+shoot 8  "6.30"        04_signature_spatter
+shoot 17 "21.75"       05_level_complete
+shoot 8  "5.23,5.31,5.39,5.47,5.55" \
     06_motion_a 07_motion_b 08_motion_c 09_motion_d 10_motion_e
 ls "$out"/*.png

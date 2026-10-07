@@ -26,13 +26,13 @@
 #define MAX_H 24
 #define CELLS (MAX_W * MAX_H)
 #define MAX_DROPS 900
-#define CONFETTI 320
+#define CONFETTI 440
 #define MAX_SPARKS 120
 #define MAX_PROPS 8
 
 /* Camera and board geometry, in tiles. */
-#define TILT    0.42f
-#define WALL_H  0.45f
+#define TILT    0.56f
+#define WALL_H  0.72f
 #define SLAB_T  0.32f
 #define BALL_R  0.37f
 
@@ -264,11 +264,11 @@ static void level_dims(int index, int *W, int *H, float *density) {
     } else {
         PA_Rng r;
         pa_rng_seed(&r, (uint32_t)index * 131u + 7u);
-        *W = 11 + 2 * pa_rng_int(&r, 0, 1);
-        *H = 17 + 2 * pa_rng_int(&r, 0, 2);
+        *W = 13;
+        *H = 19 + 2 * pa_rng_int(&r, 0, 2);
     }
-    float t = (float)(index < 10 ? index : 10) / 10.0f;
-    *density = 0.70f + 0.12f * t;
+    float t = (float)(index < 14 ? index : 14) / 14.0f;
+    *density = 0.72f + 0.14f * t;
 }
 
 static int is_island(int x, int y) {
@@ -341,7 +341,10 @@ static int generate_level(int index, int *sx, int *sy) {
     pa_rng_seed(&r, (uint32_t)index * 7919u + 13u);
     int nx = (W - 1) / 2, ny = (H - 1) / 2;
     int lattice = nx * ny + (nx - 1) * ny + nx * (ny - 1);
-    for (int attempt = 0; attempt < 600; attempt++) {
+    /* Keep the densest fair board seen; stop early once one is dense enough. */
+    static char best[MAX_H][MAX_W + 1];
+    int best_open = -1, bsx = 0, bsy = 0;
+    for (int attempt = 0; attempt < 400; attempt++) {
         if (!carve_lattice(&r, W, H, sx, sy)) continue;
         if (!level_is_fair(*sx, *sy)) continue;
 
@@ -376,11 +379,21 @@ static int generate_level(int index, int *sx, int *sy) {
         for (int k = 1; k < H - 1; k++) { ux0 |= walkable(1, k); ux1 |= walkable(W - 2, k); }
         for (int k = 1; k < W - 1; k++) { uy0 |= walkable(k, 1); uy1 |= walkable(k, H - 2); }
         if (!(ux0 && ux1 && uy0 && uy1)) continue;
-        if (open < (int)((float)lattice * (density - 0.12f))) continue;
-        S.grid[*sy][*sx] = 'o';
-        return 1;
+        if (open >= (int)((float)lattice * (density - 0.06f))) {
+            S.grid[*sy][*sx] = 'o';
+            return 1;
+        }
+        if (open > best_open) {
+            best_open = open; bsx = *sx; bsy = *sy;
+            memcpy(best, S.grid, sizeof(best));
+        }
     }
-    return 0;
+    if (best_open < 0) return 0;
+    memcpy(S.grid, best, sizeof(best));
+    S.w = W; S.h = H;
+    *sx = bsx; *sy = bsy;
+    S.grid[*sy][*sx] = 'o';
+    return 1;
 }
 
 static const char *FALLBACK[] = {
@@ -601,7 +614,7 @@ static void burst_confetti(void) {
     float aspect = S.view_h / (S.view_w > 1.0f ? S.view_w : 1.0f);
     for (int i = 0; i < CONFETTI; i++) {
         Bit *b = &S.bits[i];
-        int group = i % 3;
+        int g5 = i % 5, group = g5 <= 1 ? 0 : g5 <= 3 ? 1 : 2;
         if (group == 0) {
             /* Blown out from behind the badge. */
             float a = pa_rng_range(&S.rng, 0.0f, PA_TAU), sp = pa_rng_range(&S.rng, 0.3f, 1.3f);
@@ -797,6 +810,16 @@ static void quad_paint(PA_Canvas *c, PA_Vec2 a, PA_Vec2 b, PA_Vec2 d, PA_Vec2 e,
     pa_fill_poly_paint(c, q, 4, p);
 }
 
+/** A wall face a-b along the top, d-e along the floor: lit at the lip, falling
+    into shade at the foot, as the reference's extruded walls are. */
+static void face_quad(PA_Canvas *c, PA_Vec2 a, PA_Vec2 b, PA_Vec2 d, PA_Vec2 e, PA_Color col) {
+    PA_Paint g = pa_linear((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, (d.x + e.x) * 0.5f, (d.y + e.y) * 0.5f);
+    pa_stop(&g, 0.0f, pa_shade(col, 0.16f));
+    pa_stop(&g, 0.55f, col);
+    pa_stop(&g, 1.0f, pa_shade(col, -0.22f));
+    quad_paint(c, a, b, d, e, &g);
+}
+
 static void tile_quad(PA_Canvas *c, float x0, float y0, float x1, float y1, float h, PA_Color col) {
     quad(c, pj(x0, y0, h), pj(x1, y0, h), pj(x1, y1, h), pj(x0, y1, h), col);
 }
@@ -807,9 +830,9 @@ static void fit_camera(PA_Canvas *c, float top, float bottom, float slide) {
     P.hw = (float)S.w * 0.5f; P.hh = (float)S.h * 0.5f;
     float md = (float)(S.w > S.h ? S.w : S.h);
     P.st = sinf(TILT); P.ct = cosf(TILT);
-    P.D = md * 3.2f;
-    P.hpx = 0.36f / P.hw;
-    P.hpy = 0.12f / P.hh;
+    P.D = md * 2.3f;
+    P.hpx = 0.42f / P.hw;
+    P.hpy = 0.10f / P.hh;
     P.cx = 0.0f; P.cy = 0.0f; P.k = 1.0f;
     float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
     /* The rim is about 0.035 of the screen width at the usual board size. */
@@ -1006,9 +1029,9 @@ static void draw_props(PA_Canvas *c, const Theme *th, float U, float pause_x, fl
 
 /* --------------------------------------------------------------- board */
 static PA_Color face_col(const Theme *th, int painted, int side, PA_Color paint) {
-    if (painted) return pa_shade(paint, side ? -0.22f : -0.34f);
+    if (painted) return pa_shade(paint, side ? -0.30f : -0.40f);
     PA_Color f = pa_hex(th->well_face);
-    return side ? pa_shade(f, 0.10f) : f;
+    return side ? pa_shade(f, -0.06f) : f;
 }
 
 static uint32_t hash3(uint32_t a, uint32_t b, uint32_t c) {
@@ -1120,8 +1143,8 @@ static void draw_faces(PA_Canvas *c, const Theme *th, PA_Color paint) {
             int p = S.painted[y + 1][x], x1 = x + 1;
             while (x1 < S.w && is_wall(x1, y) && walkable(x1, y + 1) && S.painted[y + 1][x1] == p) x1++;
             float a = (float)x - 0.01f, b = (float)x1 + 0.01f, yy = (float)(y + 1);
-            quad(c, pj(a, yy, WALL_H), pj(b, yy, WALL_H), pj(b, yy, 0), pj(a, yy, 0),
-                 face_col(th, p, 0, paint));
+            face_quad(c, pj(a, yy, WALL_H), pj(b, yy, WALL_H), pj(b, yy, 0), pj(a, yy, 0),
+                      face_col(th, p, 0, paint));
             x = x1;
         }
     }
@@ -1137,18 +1160,11 @@ static void draw_faces(PA_Canvas *c, const Theme *th, PA_Color paint) {
                 int p = S.painted[y][nx], y1 = y + 1;
                 while (y1 < S.h && is_wall(x, y1) && walkable(nx, y1) && S.painted[y1][nx] == p) y1++;
                 float a = (float)y - 0.01f, b = (float)y1 + 0.01f;
-                quad(c, pj(fxp, a, WALL_H), pj(fxp, b, WALL_H), pj(fxp, b, 0), pj(fxp, a, 0),
-                     face_col(th, p, 1, paint));
+                face_quad(c, pj(fxp, a, WALL_H), pj(fxp, b, WALL_H), pj(fxp, b, 0), pj(fxp, a, 0),
+                          face_col(th, p, 1, paint));
                 y = y1;
             }
         }
-}
-
-static int near_floor(int x, int y) {
-    for (int j = -1; j <= 1; j++)
-        for (int i = -1; i <= 1; i++)
-            if (walkable(x + i, y + j)) return 1;
-    return 0;
 }
 
 static void draw_tops(PA_Canvas *c, PA_Color top) {
@@ -1156,9 +1172,9 @@ static void draw_tops(PA_Canvas *c, PA_Color top) {
     for (int y = 0; y < S.h; y++) {
         int x = 0;
         while (x < S.w) {
-            if (!(is_wall(x, y) && near_floor(x, y))) { x++; continue; }
+            if (!is_wall(x, y)) { x++; continue; }
             int x1 = x + 1;
-            while (x1 < S.w && is_wall(x1, y) && near_floor(x1, y)) x1++;
+            while (x1 < S.w && is_wall(x1, y)) x1++;
             tile_quad(c, (float)x - e, (float)y - e, (float)x1 + e, (float)y + 1 + e, WALL_H, top);
             x = x1;
         }
@@ -1243,6 +1259,23 @@ static void draw_board(PA_Canvas *c, const Theme *th, PA_Color paint, float flas
         tile_quad(c, 0, 0, W, H, WALL_H, top);
     }
     draw_floor(c, th, paint, flash);
+
+    /* Walls cast their shadow into the corridors, light from the upper left:
+       each row of wall is shifted right and down on the floor. Rows are drawn
+       as runs so neighbouring tiles never double the darkness. */
+    for (int y = 0; y < S.h; y++) {
+        int x = 0;
+        while (x < S.w) {
+            if (!is_wall(x, y)) { x++; continue; }
+            int x1 = x + 1;
+            while (x1 < S.w && is_wall(x1, y)) x1++;
+            float ox = 0.34f, oy = 0.30f;
+            PA_Vec2 a = pj((float)x + ox, (float)y + oy, 0), b = pj((float)x1 + ox, (float)y + oy, 0);
+            PA_Vec2 d = pj((float)x1 + ox, (float)y + 1 + oy, 0), e = pj((float)x + ox, (float)y + 1 + oy, 0);
+            quad(c, a, b, d, e, PA_RGBA(12, 22, 48, 52));
+            x = x1;
+        }
+    }
 
     /* Ball contact shadow sits on the floor, under the walls' faces. */
     draw_faces(c, th, paint);
