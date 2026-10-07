@@ -19,7 +19,8 @@
   "Pin Rescue port merged; round 1 lost clearly (flat 2D tubes and hairline pins). Road Hopper re-pass, Horde Arena and Rooftop Run ports merged and sent blind; Helix and Block Storm confirmation rounds started.",
   "Helix Drop CONFIRMED: second blind win (clear) against different reference shots. Block Storm lost its confirmation round narrowly. Road Hopper, Rooftop Run and Horde Arena lost round 1 clearly; all back with builders.",
   "All 12 games now native (Avian Artillery port landed). Benchmarks show 26-91 ms per frame; performance builder started. Paper Territory lost round 1; Roller Splat lost its confirmation round. Five blind reviews running.",
-  "Block Storm CONFIRMED: clear win against the reference set it had narrowly lost to. Mob Clash now loses clearly (was overwhelming); Avian Artillery lost round 1 overwhelmingly."
+  "Block Storm CONFIRMED: clear win against the reference set it had narrowly lost to. Mob Clash now loses clearly (was overwhelming); Avian Artillery lost round 1 overwhelmingly.",
+  "Chrome Rush round 1 lost clearly (was overwhelming); Pin Rescue round 2 lost clearly. Both back with builders."
  ],
  "engine": [
   {
@@ -98,10 +99,10 @@
    "id": "chromerush",
    "name": "Chrome Rush",
    "ref": "Dashy Crashy GO!",
-   "phase": "review",
-   "round": 0,
-   "verdict": "Reference wins, overwhelming",
-   "gap": "Re-pass landed: crash KO sequence, night/sunset/day biomes, 20 car models, near-miss bubbles, garage. Round 1 blind review running."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, clear (was overwhelming)",
+   "gap": "Player car flat with no tyres or banking, KO moment unreadable, static camera, crowded top HUD. Ours wins HUD and readability."
   },
   {
    "id": "mobclash",
@@ -125,10 +126,10 @@
    "id": "pins",
    "name": "Pin Rescue",
    "ref": "Pull the Pin",
-   "phase": "review",
-   "round": 1,
+   "phase": "fixing",
+   "round": 2,
    "verdict": "Reference wins, clear",
-   "gap": "Round 2 landed: thick glass tubes, chunky pins, bigger shaded balls, visible bombs. Blind review running."
+   "gap": "Every captured level is the same bottle; balls small and grid-packed; bombs show no payoff; thin HUD and hand."
   },
   {
    "id": "runner",
