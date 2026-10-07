@@ -124,6 +124,9 @@ typedef struct { int shape, tint, item_cell, item; float pop; } Slot;
 enum { ITEM_NONE, ITEM_STAR, ITEM_GEM };
 #define MAX_FLYERS 16
 typedef struct { float t, x0, y0; int kind; } Flyer;
+#define FLY_POP 0.14f
+#define FLY_T   0.82f
+static void flyer_pos(const Flyer *fl, float *x, float *y, float *r);
 
 typedef struct {
     int   phase, slot, gx, gy, down;
@@ -131,7 +134,8 @@ typedef struct {
 } Bot;
 
 typedef struct {
-    PA_Rng rand;
+    PA_Rng rand;               /* gameplay: deals only */
+    PA_Rng fxr;                /* cosmetics, so effects never change the deals */
     int    cell[N * N];        /* -1 empty, else tint index */
     float  land[N * N];        /* placement settle, 1 -> 0 */
     float  clr[N * N];         /* clear burst clock; < -5 idle, < 0 waiting */
@@ -216,15 +220,16 @@ static void compute_layout(int w, int h) {
         L.score_size = W * 0.09f;
         L.score_y = H * 0.137f;
         L.tcell = L.cell * 0.60f;
-        /* Three slots of 0.28 sw with 0.06 sw gutters; a piece never spans
-           more than 0.24 sw, so the five-bar shrinks to fit its slot. */
+        /* Three fixed slots centred at 0.2, 0.5 and 0.8 sw; a piece never
+           spans more than 0.21 sw, so even the five-bar keeps a 0.09 sw
+           margin from the screen edge and the slots never shift. */
         L.slot_w = W * 0.28f;
         L.slot_h = tray_room * 0.92f;
-        L.piece_w = W * 0.24f;
+        L.piece_w = W * 0.21f;
         L.piece_h = tray_room * 0.78f;
         if (L.piece_h > W * 0.30f) L.piece_h = W * 0.30f;
         for (int i = 0; i < TRAY; i++) {
-            L.slot_cx[i] = W * 0.5f + (float)(i - 1) * W * 0.34f;
+            L.slot_cx[i] = W * 0.5f + (float)(i - 1) * W * 0.30f;
             L.slot_cy[i] = L.oy + side + tray_room * 0.45f;
         }
         L.strip_w = side;
@@ -296,29 +301,29 @@ static Part *spawn(int kind, float x, float y, float vx, float vy, float life, f
     memset(p, 0, sizeof(*p));
     p->kind = kind; p->x = x; p->y = y; p->vx = vx; p->vy = vy;
     p->life = p->max = life; p->size = size; p->col = col;
-    p->rot = pa_rng_range(&B.rand, 0.0f, PA_TAU);
-    p->vr = pa_rng_range(&B.rand, -9.0f, 9.0f);
+    p->rot = pa_rng_range(&B.fxr, 0.0f, PA_TAU);
+    p->vr = pa_rng_range(&B.fxr, -9.0f, 9.0f);
     return p;
 }
 
 static void confetti_burst(float x, float y, int count, float spread) {
     static const uint32_t CONF[] = { 0xFFC83A, 0xFF5A7A, 0x3CC8F0, 0x7CE85A, 0xB66CFF, 0xFFFFFF, 0xFF8A2A };
     for (int i = 0; i < count; i++) {
-        float a = pa_rng_range(&B.rand, -PA_PI * 0.95f, -PA_PI * 0.05f);
-        float v = pa_rng_range(&B.rand, 0.35f, 1.0f) * spread;
-        spawn(P_CONFETTI, x + pa_rng_range(&B.rand, -20.0f, 20.0f), y,
-              cosf(a) * v, sinf(a) * v, pa_rng_range(&B.rand, 1.6f, 2.6f),
-              L.side * pa_rng_range(&B.rand, 0.016f, 0.026f),
-              pa_hex(CONF[pa_rng_int(&B.rand, 0, 6)]));
+        float a = pa_rng_range(&B.fxr, -PA_PI * 0.95f, -PA_PI * 0.05f);
+        float v = pa_rng_range(&B.fxr, 0.35f, 1.0f) * spread;
+        spawn(P_CONFETTI, x + pa_rng_range(&B.fxr, -20.0f, 20.0f), y,
+              cosf(a) * v, sinf(a) * v, pa_rng_range(&B.fxr, 1.6f, 2.6f),
+              L.side * pa_rng_range(&B.fxr, 0.016f, 0.026f),
+              pa_hex(CONF[pa_rng_int(&B.fxr, 0, 6)]));
     }
 }
 
 static void sparkles(float x, float y, float rx, float ry, int count) {
     for (int i = 0; i < count; i++) {
-        spawn(P_SPARK, x + pa_rng_range(&B.rand, -rx, rx), y + pa_rng_range(&B.rand, -ry, ry),
-              pa_rng_range(&B.rand, -20.0f, 20.0f), pa_rng_range(&B.rand, -40.0f, -5.0f),
-              pa_rng_range(&B.rand, 0.5f, 1.0f), L.cell * pa_rng_range(&B.rand, 0.10f, 0.22f),
-              pa_rng_chance(&B.rand, 0.6f) ? pa_hex(0xFFF2A0) : PA_RGB(255, 255, 255));
+        spawn(P_SPARK, x + pa_rng_range(&B.fxr, -rx, rx), y + pa_rng_range(&B.fxr, -ry, ry),
+              pa_rng_range(&B.fxr, -20.0f, 20.0f), pa_rng_range(&B.fxr, -40.0f, -5.0f),
+              pa_rng_range(&B.fxr, 0.5f, 1.0f), L.cell * pa_rng_range(&B.fxr, 0.10f, 0.22f),
+              pa_rng_chance(&B.fxr, 0.6f) ? pa_hex(0xFFF2A0) : PA_RGB(255, 255, 255));
     }
 }
 
@@ -534,6 +539,17 @@ static void place(int slot, int gx, int gy) {
     }
     B.score += s->count;
     B.placed++;
+    /* Faint sparkle dust settling over the placed blocks. */
+    for (int i = 0; i < s->count; i++) {
+        float cx = L.ox + ((float)(gx + s->cx[i]) + 0.5f) * L.cell;
+        float cy = L.oy + ((float)(gy + s->cy[i]) + 0.5f) * L.cell;
+        for (int q = 0; q < 2; q++)
+            spawn(P_SPARK, cx + pa_rng_range(&B.fxr, -L.cell * 0.5f, L.cell * 0.5f),
+                  cy + pa_rng_range(&B.fxr, -L.cell * 0.5f, L.cell * 0.5f),
+                  pa_rng_range(&B.fxr, -12.0f, 12.0f), pa_rng_range(&B.fxr, -45.0f, -15.0f),
+                  pa_rng_range(&B.fxr, 0.35f, 0.65f), L.cell * pa_rng_range(&B.fxr, 0.06f, 0.11f),
+                  PA_RGBA(255, 252, 230, 150));
+    }
     B.tray[slot].shape = -1;
     pa_tone(240, 130, 0.08f, 1, 0.12f);
     pa_noise(0.04f, 0.05f);
@@ -771,6 +787,7 @@ static void new_run(void) {
     B.goal_need[0] = B.goal_need[1] = 3;
     pa_rng_seed(&B.rand, demo ? 0xB10C5u + (uint32_t)demo * 977u
                               : 0xB10Cu ^ ((uint32_t)g_best * 2654435761u + (uint32_t)g_best_loaded * 0x9E3779B9u));
+    pa_rng_seed(&B.fxr, 0x5EED1u + (uint32_t)demo);
     refill_tray();
     if (demo) demo_setup(demo);
     B.bot.think = 0.75f;
@@ -879,13 +896,13 @@ static void storm_update(float dt, const PA_Input *real_in) {
                 float cy = L.oy + ((float)(i / N) + 0.5f) * L.cell;
                 PA_Color col = pa_hex(TINTS[B.clr_tint[i]]);
                 for (int k = 0; k < 3; k++) {
-                    float a = pa_rng_range(&B.rand, 0.0f, PA_TAU);
-                    float v = L.side * pa_rng_range(&B.rand, 0.25f, 0.75f);
-                    spawn(P_SHARD, cx + pa_rng_range(&B.rand, -L.cell * 0.3f, L.cell * 0.3f),
-                          cy + pa_rng_range(&B.rand, -L.cell * 0.3f, L.cell * 0.3f),
+                    float a = pa_rng_range(&B.fxr, 0.0f, PA_TAU);
+                    float v = L.side * pa_rng_range(&B.fxr, 0.25f, 0.75f);
+                    spawn(P_SHARD, cx + pa_rng_range(&B.fxr, -L.cell * 0.3f, L.cell * 0.3f),
+                          cy + pa_rng_range(&B.fxr, -L.cell * 0.3f, L.cell * 0.3f),
                           cosf(a) * v, sinf(a) * v - L.side * 0.35f,
-                          pa_rng_range(&B.rand, 0.45f, 0.85f),
-                          L.cell * pa_rng_range(&B.rand, 0.12f, 0.26f),
+                          pa_rng_range(&B.fxr, 0.45f, 0.85f),
+                          L.cell * pa_rng_range(&B.fxr, 0.12f, 0.26f),
                           k == 0 ? pa_shade(col, 0.45f) : col);
                 }
                 spawn(P_DOT, cx, cy, 0, -L.side * 0.05f, 0.5f, L.cell * 0.1f, PA_RGB(255, 255, 255));
@@ -900,14 +917,21 @@ static void storm_update(float dt, const PA_Input *real_in) {
         Flyer *fl = &B.flyers[f];
         if (fl->kind == ITEM_NONE) continue;
         fl->t += dt;
-        if (fl->t > 0.0f && pa_rng_chance(&B.rand, 0.35f)) {
-            float e = pa_smooth(pa_clamp01(fl->t / 0.6f));
+        if (fl->t > FLY_POP && pa_rng_chance(&B.fxr, 0.45f)) {
+            float x, y, r;
+            flyer_pos(fl, &x, &y, &r);
             int k = fl->kind == ITEM_STAR ? 0 : 1;
-            float x = pa_lerpf(fl->x0, L.goal_x[k], e), y = pa_lerpf(fl->y0, L.goal_y[k], e) - sinf(e * PA_PI) * L.side * 0.12f;
             spawn(P_SPARK, x, y, 0, 0, 0.35f, L.cell * 0.12f, k ? pa_hex(0xFFB0FA) : pa_hex(0xFFF0A0));
         }
-        if (fl->t >= 0.6f) {
+        if (fl->t >= FLY_T) {
             int k = fl->kind == ITEM_STAR ? 0 : 1;
+            /* Landing pop: a ring and a puff of sparkles on the counter. */
+            spawn(P_DOT, L.goal_x[k], L.goal_y[k], 0, 0, 0.35f, L.goal_r * 0.5f, PA_RGB(255, 255, 255));
+            for (int q = 0; q < 6; q++) {
+                float a = (float)q * PA_TAU / 6.0f + pa_rng_range(&B.fxr, -0.3f, 0.3f);
+                spawn(P_SPARK, L.goal_x[k], L.goal_y[k], cosf(a) * L.goal_r * 4.0f, sinf(a) * L.goal_r * 4.0f,
+                      0.4f, L.goal_r * 0.35f, k ? pa_hex(0xFFB0FA) : pa_hex(0xFFF0A0));
+            }
             fl->kind = ITEM_NONE;
             if (B.goal_done_t <= 0.0f && B.goal_have[k] < B.goal_need[k]) B.goal_have[k]++;
             B.goal_pop[k] = 1.0f;
@@ -977,12 +1001,12 @@ static void storm_update(float dt, const PA_Input *real_in) {
         B.res_shown = (float)B.score * ease_out(k);
         int tick = (int)(k * 12.0f);
         if (tick > B.res_tick && k < 1.0f) { B.res_tick = tick; pa_tone(900 + 40.0f * (float)tick, 1000 + 40.0f * (float)tick, 0.03f, 0, 0.04f); }
-        if (B.res_new_best && B.phase_t < 3.0f && pa_rng_chance(&B.rand, 0.7f)) {
+        if (B.res_new_best && B.phase_t < 3.0f && pa_rng_chance(&B.fxr, 0.7f)) {
             static const uint32_t CONF[] = { 0xFFC83A, 0xFF5A7A, 0x3CC8F0, 0x7CE85A, 0xB66CFF, 0xFFFFFF };
-            spawn(P_CONFETTI, pa_rng_range(&B.rand, 0.0f, (float)L.w), -10.0f,
-                  pa_rng_range(&B.rand, -30.0f, 30.0f), pa_rng_range(&B.rand, 60.0f, 160.0f),
-                  4.0f, L.side * pa_rng_range(&B.rand, 0.016f, 0.026f),
-                  pa_hex(CONF[pa_rng_int(&B.rand, 0, 5)]));
+            spawn(P_CONFETTI, pa_rng_range(&B.fxr, 0.0f, (float)L.w), -10.0f,
+                  pa_rng_range(&B.fxr, -30.0f, 30.0f), pa_rng_range(&B.fxr, 60.0f, 160.0f),
+                  4.0f, L.side * pa_rng_range(&B.fxr, 0.016f, 0.026f),
+                  pa_hex(CONF[pa_rng_int(&B.fxr, 0, 5)]));
         }
         restart_hit(real_in);
         return;
@@ -1122,6 +1146,29 @@ static void draw_crown(PA_Canvas *c, float cx, float cy, float w) {
     pa_fill_ellipse(c, x0 + w * 0.30f, y0 + h * 0.62f, w * 0.06f, h * 0.10f, PA_RGBA(255, 255, 255, 110));
 }
 
+/** Where a collected item is along its flight: a short pop where it was
+    cleared, then a high arc (quadratic Bezier with its control point well
+    above both ends) into its goal counter. */
+static void flyer_pos(const Flyer *fl, float *x, float *y, float *r) {
+    int k = fl->kind == ITEM_STAR ? 0 : 1;
+    float r0 = L.cell * 0.31f;
+    if (fl->t < FLY_POP) {
+        float p = pa_clamp01(fl->t / FLY_POP);
+        *x = fl->x0; *y = fl->y0 - p * L.cell * 0.25f;
+        *r = r0 * (1.0f + 0.6f * sinf(p * PA_PI * 0.5f));
+        return;
+    }
+    float e = pa_clamp01((fl->t - FLY_POP) / (FLY_T - FLY_POP));
+    e = e < 0.5f ? 2.0f * e * e : 1.0f - 2.0f * (1.0f - e) * (1.0f - e);
+    float sx = fl->x0, sy = fl->y0 - L.cell * 0.25f, gx = L.goal_x[k], gy = L.goal_y[k];
+    float cx = (sx + gx) * 0.5f + (gx - sx) * 0.15f;
+    float cy = (sy < gy ? sy : gy) - L.side * 0.38f;
+    float u = 1.0f - e;
+    *x = u * u * sx + 2.0f * u * e * cx + e * e * gx;
+    *y = u * u * sy + 2.0f * u * e * cy + e * e * gy;
+    *r = pa_lerpf(r0 * 1.6f, L.goal_r, e) * (1.0f + 0.25f * sinf(e * PA_PI));
+}
+
 /* Collectible icons, drawn rather than imaged: a fat gold star and an
    eight-point magenta gem, both with a dark rim and a highlight. */
 static void draw_star5(PA_Canvas *c, float cx, float cy, float r, float grey) {
@@ -1163,12 +1210,29 @@ static void draw_item(PA_Canvas *c, int kind, float cx, float cy, float r, float
     else if (kind == ITEM_GEM) draw_gem(c, cx, cy, r, grey);
 }
 
+/** An item cell reads as a collectible at a glance: a gold-framed cream
+    plate set into the block, with the icon on it. */
+static void draw_item_tile(PA_Canvas *c, int kind, float cx, float cy, float size, float grey) {
+    float in = size * 0.13f, w = size - in * 2.0f, x = cx - w * 0.5f, y = cy - w * 0.5f;
+    float rr = size * 0.10f, rim = size * 0.055f;
+    pa_round_rect(c, x, y + rim * 0.6f, w, w, rr, grey_of(PA_RGBA(60, 30, 0, 110), grey));
+    PA_Paint frame = pa_linear(0, y, 0, y + w);
+    pa_stop(&frame, 0.0f, grey_of(pa_hex(0xFFEFA8), grey));
+    pa_stop(&frame, 1.0f, grey_of(pa_hex(0xD08A20), grey));
+    pa_round_rect_paint(c, x, y, w, w, rr, &frame);
+    PA_Paint plate = pa_linear(0, y + rim, 0, y + w - rim);
+    pa_stop(&plate, 0.0f, grey_of(pa_hex(0xFFF6E2), grey));
+    pa_stop(&plate, 1.0f, grey_of(pa_hex(0xEBCB92), grey));
+    pa_round_rect_paint(c, x + rim, y + rim, w - rim * 2.0f, w - rim * 2.0f, rr * 0.6f, &plate);
+    draw_item(c, kind, cx, cy, size * 0.27f, grey);
+}
+
 static void draw_slot_item(PA_Canvas *c, int slot, float x, float y, float cell, float grey) {
     const Slot *sl = &B.tray[slot];
     if (sl->item == ITEM_NONE || sl->item_cell < 0) return;
     const Shape *s = &SHAPES[sl->shape];
-    draw_item(c, sl->item, x + ((float)s->cx[sl->item_cell] + 0.5f) * cell,
-              y + ((float)s->cy[sl->item_cell] + 0.5f) * cell, cell * 0.31f, grey);
+    draw_item_tile(c, sl->item, x + ((float)s->cx[sl->item_cell] + 0.5f) * cell,
+                   y + ((float)s->cy[sl->item_cell] + 0.5f) * cell, cell, grey);
 }
 
 /* Text helpers: y is the vertical centre. */
@@ -1374,7 +1438,7 @@ static void draw_board(PA_Canvas *c, float ox, float oy, int gx, int gy, int gho
                 float sz = L.cell * sc, d = (sz - L.cell) * 0.5f;
                 block(c, px - d, py - d, sz, col, 1.0f);
                 if (B.item[i] != ITEM_NONE)
-                    draw_item(c, B.item[i], px + L.cell * 0.5f, py + L.cell * 0.5f, sz * 0.31f, B.grey[i]);
+                    draw_item_tile(c, B.item[i], px + L.cell * 0.5f, py + L.cell * 0.5f, sz, B.grey[i]);
                 if (ld > 0.6f) pa_fill_rect(c, px + 1, py + 1, L.cell - 2, L.cell - 2,
                                             PA_RGBA(255, 255, 255, (int)((ld - 0.6f) / 0.4f * 120.0f)));
             }
@@ -1552,7 +1616,7 @@ static void draw_goal_strip(PA_Canvas *c) {
     if (!L.land) text_mid(c, buf, lx, y + h * 0.70f, ls * 0.85f, PA_RGB(255, 255, 255), pa_hex(0x141C50), 1.3f);
 
     for (int k = 0; k < 2; k++) {
-        float r = L.goal_r * (1.0f + 0.3f * sinf(B.goal_pop[k] * PA_PI));
+        float r = L.goal_r * (1.0f + 0.45f * sinf(B.goal_pop[k] * PA_PI));
         float gx = L.goal_x[k], gy = L.goal_y[k];
         PA_Paint halo = pa_radial(gx, gy, r * 0.4f, r * 1.6f);
         pa_stop(&halo, 0.0f, k ? PA_RGBA(255, 120, 250, 60) : PA_RGBA(255, 220, 80, 60));
@@ -1583,11 +1647,14 @@ static void draw_flyers(PA_Canvas *c) {
         const Flyer *fl = &B.flyers[f];
         if (fl->kind == ITEM_NONE) continue;
         int k = fl->kind == ITEM_STAR ? 0 : 1;
+        (void)k;
         if (fl->t < 0.0f) { draw_item(c, fl->kind, fl->x0, fl->y0, L.cell * 0.31f, 0.0f); continue; }
-        float e = pa_smooth(pa_clamp01(fl->t / 0.6f));
-        float x = pa_lerpf(fl->x0, L.goal_x[k], e);
-        float y = pa_lerpf(fl->y0, L.goal_y[k], e) - sinf(e * PA_PI) * L.side * 0.12f;
-        float r = pa_lerpf(L.cell * 0.31f, L.goal_r, e) * (1.0f + 0.45f * sinf(e * PA_PI));
+        float x, y, r;
+        flyer_pos(fl, &x, &y, &r);
+        PA_Paint halo = pa_radial(x, y, r * 0.3f, r * 1.8f);
+        pa_stop(&halo, 0.0f, fl->kind == ITEM_GEM ? PA_RGBA(255, 140, 250, 90) : PA_RGBA(255, 230, 120, 90));
+        pa_stop(&halo, 1.0f, PA_RGBA(255, 255, 255, 0));
+        pa_fill_ellipse_paint(c, x, y, r * 1.8f, r * 1.8f, &halo);
         draw_item(c, fl->kind, x, y, r, 0.0f);
     }
 }
