@@ -15,7 +15,8 @@
   "Typography upgrade merged into every game. Mob Clash native port merged; round 1 blind review started. Hub builder started.",
   "Mob Clash round 1: reference wins overwhelmingly (crowd mass, lighting, camera). Builder resumed on round 2.",
   "Block Storm round 2: OURS WINS the blind comparison by a clear margin.",
-  "Roller Splat round 2: OURS WINS the blind comparison (slight)."
+  "Roller Splat round 2: OURS WINS the blind comparison (slight).",
+  "Pin Rescue port merged; round 1 lost clearly (flat 2D tubes and hairline pins). Road Hopper re-pass, Horde Arena and Rooftop Run ports merged and sent blind; Helix and Block Storm confirmation rounds started."
  ],
  "engine": [
   {
@@ -44,28 +45,28 @@
    "id": "roadhopper",
    "name": "Road Hopper",
    "ref": "Crossy Road",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "Reference wins, overwhelming",
-   "gap": "Flat prop-free world, box vehicles, dead death screen, coin counter hidden by pause."
+   "gap": "Re-pass landed: four worlds, voxel props, five vehicle types, deaths, eagle, results and roster. Round 1 blind review running."
   },
   {
    "id": "blockstorm",
    "name": "Block Storm",
    "ref": "Block Blast",
-   "phase": "won",
+   "phase": "review",
    "round": 2,
    "verdict": "Ours wins, clear",
-   "gap": "Won on effects, HUD and polish. Polishing tray edge fit and collectible feedback; confirmation round with different reference shots next."
+   "gap": "Won round 2. Polish landed; confirmation round against different reference shots running."
   },
   {
    "id": "helix",
    "name": "Helix Drop",
    "ref": "Helix Jump",
-   "phase": "won",
+   "phase": "review",
    "round": 1,
    "verdict": "Ours wins, slight",
-   "gap": "Won on cleaner, more readable play. Reference still better on typography and meta screens (chest picks, level map). Confirmation round after the font upgrade."
+   "gap": "Won round 1. Meta added (trophy card, chest room, level map); confirmation round against different reference shots running."
   },
   {
    "id": "splat",
@@ -116,28 +117,28 @@
    "id": "pins",
    "name": "Pin Rescue",
    "ref": "Pull the Pin",
-   "phase": "building",
-   "round": 0,
-   "verdict": "",
-   "gap": "Native port in progress (was web-only)."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, clear",
+   "gap": "Containers and pins are hairline 2D outlines; balls tiny; playfield small; bombs invisible until they blow. Ours wins on the win celebration."
   },
   {
    "id": "runner",
    "name": "Rooftop Run",
    "ref": "Subway Surfers",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "",
-   "gap": "Native port in progress (was web-only)."
+   "gap": "Native port landed: chase camera, trains and roofs, power-ups, inspector chase, revive and results. Round 1 blind review running."
   },
   {
    "id": "horde",
    "name": "Horde Arena",
    "ref": "Survivor!.io",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "",
-   "gap": "Native port in progress (was web-only)."
+   "gap": "Native port landed: joystick, 7 weapons with evolutions, XP draft, elites, bosses, lucky chest, results. Round 1 blind review running."
   },
   {
    "id": "avian",
