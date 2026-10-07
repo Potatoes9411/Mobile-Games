@@ -310,6 +310,45 @@ void pa_set_landscape(int on);
 int  pa_demo_mode(void);
 void pa_hub_exit(void);
 
+/* Cross-game meta (implemented by meta.c). The home screen runs an account
+   level with XP, gems, a cross-game coin bank, three daily missions, a login
+   streak and per-game mastery stars. Games feed it with ONE call per finished
+   run, made from update (never render) on the frame the run is decided: the
+   moment the results / game-over / level-clear card appears. Not on retry,
+   not every frame, not when the player quits from the pause sheet.
+
+     PA_RunReport r = { 0 };
+     r.score = g_score;           // headline number in your own units
+     r.coins = coins_this_run;    // soft currency banked this run, or 0
+     r.won   = level_cleared;     // 1 cleared/won, 0 died/lost/endless over
+     r.level = level_number;      // level just played, 0 for endless games
+     r.stars = stars_awarded;     // 0..3 if your results card rates the run
+     pa_meta_report("helix", &r);
+
+   Or the short form for endless games: pa_meta_run_end("roadhopper", score, coins);
+
+   The hub turns it into account XP (2x on the game of the day), a new BEST on
+   the game's tile, mastery stars, mission progress and coins in the header
+   bank; level-ups and completed missions are celebrated when the player comes
+   back to the home screen, never over your game. Keep your own `<id>.*` save
+   keys as they are: the bank is a lifetime total shown in the hub, it does
+   not spend or replace a game's own wallet. In review captures
+   (pa_demo_mode() != 0) the call is processed in memory and never saved. */
+typedef struct {
+    int score;   /* run's headline number, >= 0; the hub keeps the max as BEST */
+    int coins;   /* coins (soft currency) banked this run, >= 0 */
+    int won;     /* 1: level cleared / match won; 0: died, lost, endless run over */
+    int level;   /* level just played for level-based games, else 0 */
+    int stars;   /* 0..3 rating of this run if the game has one, else 0 */
+} PA_RunReport;
+
+void pa_meta_report(const char *game_id, const PA_RunReport *report);
+/** Same as pa_meta_report with won = level = stars = 0. */
+void pa_meta_run_end(const char *game_id, int score, int coins_earned);
+/** Read-only account info, for a game that wants to show it. */
+int  pa_meta_account_level(void);
+int  pa_meta_gems(void);
+
 /* Implemented by hub.c, called by the platform layer.
    Update and render are separate so the platform can run the simulation on a
    fixed timestep and draw once, which is what makes behaviour identical on a

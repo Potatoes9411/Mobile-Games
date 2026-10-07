@@ -12,7 +12,7 @@ sources=(
   "$here/src/font.c"
   "$here/src/audio.c"
   "$here/src/save.c"
-  "$here/src/hub.c"
+  "$here/src/hub.c" "$here/src/meta.c"
   "$here/src/platform_win32.c"
 )
 for f in "$here"/src/games/*.c; do sources+=("$f"); done

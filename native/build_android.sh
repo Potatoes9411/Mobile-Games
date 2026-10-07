@@ -51,6 +51,7 @@ SOURCES=(
     "$SRC/audio.c"
     "$SRC/save.c"
     "$SRC/hub.c"
+    "$SRC/meta.c"
     "$SRC/platform_android.c"
 )
 for f in "$SRC"/games/*.c; do SOURCES+=("$f"); done
