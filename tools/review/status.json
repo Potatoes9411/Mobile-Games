@@ -5,7 +5,8 @@
   "Headless review harness, blind A/B tool and critic protocol in place.",
   "Hub: per-game pause button, pause sheet, Android back button; phone renders at a 540-wide logical canvas.",
   "Wave 1 started: 6 native ports, engine typography, blind baseline reviews of the 6 existing games.",
-  "Blind round 0: all six existing native games lost to their references. Six re-pass builders started on the critics' ranked gap lists."
+  "Blind round 0: all six existing native games lost to their references. Six re-pass builders started on the critics' ranked gap lists.",
+  "Block Storm re-pass merged; round 1 blind review started."
  ],
  "engine": [
   {
@@ -43,10 +44,10 @@
    "id": "blockstorm",
    "name": "Block Storm",
    "ref": "Block Blast",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "Reference wins, overwhelming",
-   "gap": "No line-clear payoff, no ghost preview, broken best-score HUD, empty lower third."
+   "gap": "Re-pass landed (ghost preview, clear beams, combos, results flow). Round 1 blind review running."
   },
   {
    "id": "helix",
