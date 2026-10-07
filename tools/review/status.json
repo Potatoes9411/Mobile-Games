@@ -20,7 +20,8 @@
   "Helix Drop CONFIRMED: second blind win (clear) against different reference shots. Block Storm lost its confirmation round narrowly. Road Hopper, Rooftop Run and Horde Arena lost round 1 clearly; all back with builders.",
   "All 12 games now native (Avian Artillery port landed). Benchmarks show 26-91 ms per frame; performance builder started. Paper Territory lost round 1; Roller Splat lost its confirmation round. Five blind reviews running.",
   "Block Storm CONFIRMED: clear win against the reference set it had narrowly lost to. Mob Clash now loses clearly (was overwhelming); Avian Artillery lost round 1 overwhelmingly.",
-  "Chrome Rush round 1 lost clearly (was overwhelming); Pin Rescue round 2 lost clearly. Both back with builders."
+  "Chrome Rush round 1 lost clearly (was overwhelming); Pin Rescue round 2 lost clearly. Both back with builders.",
+  "New hub lobby and meta layer merged; exe and APK rebuilt. Horde Arena r2, Void Muncher re-pass and Roller Splat r4 sent to blind critics."
  ],
  "engine": [
   {
@@ -35,13 +36,13 @@
   },
   {
    "name": "Hub & shell",
-   "state": "building",
-   "note": "Pause sheet done. Builder rebuilding the home screen as a bright casual-game lobby with account level, gems, missions and streak."
+   "state": "done",
+   "note": "Bright game lobby: level/XP, gems, coins, game of the day, missions with chest, 7-day streak, per-game stars and bests, tile squash, launch wipe, restyled pause sheet with sound toggle. Games wire pa_meta_report in their next rounds."
   },
   {
    "name": "Android APK",
    "state": "partial",
-   "note": "Builds and installs; 540-wide logical canvas, back button, stable signing key. Every game measures 26-91 ms per frame, too slow for phones."
+   "note": "Rebuilt with the new hub and all 12 games (2.5 MB). 540-wide logical canvas, back button, stable signing key. Performance pass in progress."
   },
   {
    "name": "Rasterizer performance",
@@ -81,19 +82,19 @@
    "id": "splat",
    "name": "Roller Splat",
    "ref": "Roller Splat!",
-   "phase": "fixing",
+   "phase": "review",
    "round": 3,
    "verdict": "Reference wins, clear (after a slight win in round 2)",
-   "gap": "Confirmation round lost: board shrank to ~35% of the screen after the depth pass; flat lighting, sticker props, small ball."
+   "gap": "Round 4 landed: tall boards (~57% of screen), three-tone walls, shaped levels, 5% ball. Re-running against the set it lost to."
   },
   {
    "id": "voidmuncher",
    "name": "Void Muncher",
    "ref": "Hole.io",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "Reference wins, overwhelming",
-   "gap": "No swallow juice, flat lighting, hole reads as a sticker, weak HUD, sparse props."
+   "gap": "Re-pass landed: objects tip and fall in, lit city, thick 3D hole rim with swirl, panicking people, rival tags, results. Blind review running."
   },
   {
    "id": "chromerush",
@@ -144,10 +145,10 @@
    "id": "horde",
    "name": "Horde Arena",
    "ref": "Survivor!.io",
-   "phase": "fixing",
+   "phase": "review",
    "round": 1,
    "verdict": "Reference wins, clear",
-   "gap": "Attack effects tiny, bare streets, small boss, samey small enemies, hero lost in the swarm. Ours wins HUD and readability."
+   "gap": "Round 2 landed: forcefield fire ring, glow, textured streets with props, bigger boss and enemies, lit skill cards. Blind review running."
   },
   {
    "id": "avian",

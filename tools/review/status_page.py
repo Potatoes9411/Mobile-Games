@@ -110,6 +110,7 @@ dd {{ margin: 2px 0 0; }}
     <div><b>{sum(1 for g in games if g["verdict"])}</b><span>Games blind-reviewed</span></div>
   </div>
   <div class="grid">{"".join(cards)}</div>
+  <section class="game"><header><div><h3>Arcade hub</h3><p class="ref">The lobby every game launches from</p></div></header>{thumb("hub")}</section>
   <div class="lower">
     <section><h2>Shared engine</h2><ul class="eng">{eng}</ul></section>
     <section><h2>Programme log</h2><ol class="log" reversed>{log}</ol>
