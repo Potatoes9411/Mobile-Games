@@ -25,7 +25,8 @@
   "Roller Splat wins round 4 clearly; confirmation against the other reference set running. Horde Arena now loses only slightly; Void Muncher clearly (was overwhelming).",
   "Roller Splat split the reference sets (won set 2 clearly, lost set 1 slightly). New rule: a game is done only when one build beats both reference sets.",
   "Block Storm DONE: the same build beat both Block Blast reference sets clearly.",
-  "Helix Drop DONE: the same build beat both Helix Jump reference sets clearly."
+  "Helix Drop DONE: the same build beat both Helix Jump reference sets clearly.",
+  "Pin Rescue DONE: the same build beat both Pull the Pin reference sets."
  ],
  "engine": [
   {
@@ -131,10 +132,10 @@
    "id": "pins",
    "name": "Pin Rescue",
    "ref": "Pull the Pin",
-   "phase": "fixing",
-   "round": 2,
-   "verdict": "Reference wins, clear",
-   "gap": "Every captured level is the same bottle; balls small and grid-packed; bombs show no payoff; thin HUD and hand."
+   "phase": "won",
+   "round": 3,
+   "verdict": "Ours wins against both reference sets (slight, clear)",
+   "gap": "Done. Reference still has stronger 3D bomb props and a bigger tutorial hand."
   },
   {
    "id": "runner",
