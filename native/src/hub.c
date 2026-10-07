@@ -162,16 +162,16 @@ static void draw_home(PA_Canvas *c) {
         pa_fill_ellipse_paint(c, gx, gy, gr, gr, &glow);
     }
 
-    pa_text(c, "POCKET", 24.0f, 56.0f, 34.0f, PA_RGB(255, 255, 255), PA_ALIGN_LEFT, 6.0f);
+    pa_text(c, "POCKET", 24.0f, 26.0f, 34.0f, PA_RGB(255, 255, 255), PA_ALIGN_LEFT, 6.0f);
     float wm = pa_text_width("POCKET", 34.0f, 6.0f);
-    pa_text(c, "ARCADE", 24.0f + wm + 14.0f, 56.0f, 34.0f,
+    pa_text(c, "ARCADE", 24.0f + wm + 14.0f, 26.0f, 34.0f,
             PA_RGB(93, 224, 255), PA_ALIGN_LEFT, 6.0f);
 
-    pa_text(c, "NATIVE BUILD  -  NO BROWSER", 24.0f, 108.0f, 12.0f,
+    pa_text(c, "NATIVE BUILD  -  NO BROWSER", 24.0f, 96.0f, 12.0f,
             PA_RGBA(255, 255, 255, 110), PA_ALIGN_LEFT, 4.0f);
 
     pa_fill_rect(c, 24.0f, 140.0f, (float)c->w - 48.0f, 2.0f, PA_RGBA(255, 255, 255, 26));
-    pa_text(c, "ALL GAMES", 24.0f, 168.0f, 15.0f,
+    pa_text(c, "ALL GAMES", 24.0f, 153.0f, 15.0f,
             PA_RGBA(255, 255, 255, 190), PA_ALIGN_LEFT, 5.0f);
 
     layout_cards();
@@ -214,14 +214,14 @@ static void draw_home(PA_Canvas *c) {
 
         pa_fill_rect(c, r.x, r.y + th, r.w, 2.0f, PA_RGBA(255, 255, 255, 30));
 
-        pa_text(c, g->name, r.x + 12.0f, r.y + th + 24.0f, 15.0f,
+        pa_text(c, g->name, r.x + 12.0f, r.y + th + 10.0f, 15.0f,
                 PA_RGB(255, 255, 255), PA_ALIGN_LEFT, 1.0f);
-        pa_text(c, g->genre, r.x + 12.0f, r.y + th + 48.0f, 10.0f,
+        pa_text(c, g->genre, r.x + 12.0f, r.y + th + 36.0f, 10.0f,
                 g->accent, PA_ALIGN_LEFT, 3.0f);
 
         pa_round_rect(c, r.x + 10.0f, r.y + 10.0f, 54.0f, 22.0f, 7.0f,
                       PA_RGBA(10, 8, 24, 190));
-        pa_text(c, "PLAY", r.x + 37.0f, r.y + 25.0f, 11.0f,
+        pa_text(c, "PLAY", r.x + 37.0f, r.y + 15.5f, 11.0f,
                 g->accent, PA_ALIGN_CENTER, 2.0f);
 
         pa_stroke_poly(c, (PA_Vec2[]){
@@ -289,7 +289,7 @@ static void draw_pause_sheet(PA_Canvas *c) {
     float k = pa_smooth(pa_clamp01(g_pause_anim));
     pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(8, 10, 30, (int)(170.0f * k)));
     float off = (1.0f - k) * 60.0f;
-    pa_text_bold(c, "PAUSED", (float)c->w * 0.5f, (float)c->h * 0.38f + off, 46.0f,
+    pa_text_bold(c, "PAUSED", (float)c->w * 0.5f, (float)c->h * 0.38f - 46.0f + off, 46.0f,
                  PA_RGB(255, 255, 255), PA_RGB(20, 22, 40), PA_ALIGN_CENTER, 3.0f, 2.2f);
     const char *labels[2] = { "RESUME", "HOME" };
     PA_Color cols[2] = { PA_RGB(76, 200, 92), PA_RGB(70, 120, 235) };
@@ -299,7 +299,7 @@ static void draw_pause_sheet(PA_Canvas *c) {
         pa_round_rect(c, r.x, r.y + 6.0f, r.w, r.h, 20.0f, pa_shade(cols[i], -0.35f));
         pa_round_rect(c, r.x, r.y, r.w, r.h, 20.0f, cols[i]);
         pa_round_rect(c, r.x + 6.0f, r.y + 5.0f, r.w - 12.0f, r.h * 0.42f, 14.0f, PA_RGBA(255, 255, 255, 40));
-        pa_text_bold(c, labels[i], r.x + r.w * 0.5f, r.y + r.h * 0.5f + 9.0f, 26.0f,
+        pa_text_bold(c, labels[i], r.x + r.w * 0.5f, r.y + r.h * 0.5f - 13.0f, 26.0f,
                      PA_RGB(255, 255, 255), PA_RGB(20, 22, 40), PA_ALIGN_CENTER, 2.0f, 1.6f);
     }
 }
