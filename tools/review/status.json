@@ -16,7 +16,8 @@
   "Mob Clash round 1: reference wins overwhelmingly (crowd mass, lighting, camera). Builder resumed on round 2.",
   "Block Storm round 2: OURS WINS the blind comparison by a clear margin.",
   "Roller Splat round 2: OURS WINS the blind comparison (slight).",
-  "Pin Rescue port merged; round 1 lost clearly (flat 2D tubes and hairline pins). Road Hopper re-pass, Horde Arena and Rooftop Run ports merged and sent blind; Helix and Block Storm confirmation rounds started."
+  "Pin Rescue port merged; round 1 lost clearly (flat 2D tubes and hairline pins). Road Hopper re-pass, Horde Arena and Rooftop Run ports merged and sent blind; Helix and Block Storm confirmation rounds started.",
+  "Helix Drop CONFIRMED: second blind win (clear) against different reference shots. Block Storm lost its confirmation round narrowly. Road Hopper, Rooftop Run and Horde Arena lost round 1 clearly; all back with builders."
  ],
  "engine": [
   {
@@ -45,28 +46,28 @@
    "id": "roadhopper",
    "name": "Road Hopper",
    "ref": "Crossy Road",
-   "phase": "review",
-   "round": 0,
-   "verdict": "Reference wins, overwhelming",
-   "gap": "Re-pass landed: four worlds, voxel props, five vehicle types, deaths, eagle, results and roster. Round 1 blind review running."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, clear",
+   "gap": "Lanes too sparse, flat lighting, simple vehicles, biomes share assets, few effects. Ours wins on HUD and readability."
   },
   {
    "id": "blockstorm",
    "name": "Block Storm",
    "ref": "Block Blast",
-   "phase": "review",
-   "round": 2,
-   "verdict": "Ours wins, clear",
-   "gap": "Won round 2. Polish landed; confirmation round against different reference shots running."
+   "phase": "fixing",
+   "round": 3,
+   "verdict": "Reference wins, slight (after a clear win in round 2)",
+   "gap": "Confirmation round lost narrowly on layering: confetti over the HUD, praise text too wide, mushy line clear, tray scale, dragged piece past the board."
   },
   {
    "id": "helix",
    "name": "Helix Drop",
    "ref": "Helix Jump",
-   "phase": "review",
-   "round": 1,
-   "verdict": "Ours wins, slight",
-   "gap": "Won round 1. Meta added (trophy card, chest room, level map); confirmation round against different reference shots running."
+   "phase": "won",
+   "round": 2,
+   "verdict": "Ours wins, clear (confirmed)",
+   "gap": "Won two independent blind rounds (slight, then clear against different reference shots). Done; re-checked after engine changes."
   },
   {
    "id": "splat",
@@ -126,19 +127,19 @@
    "id": "runner",
    "name": "Rooftop Run",
    "ref": "Subway Surfers",
-   "phase": "review",
-   "round": 0,
-   "verdict": "",
-   "gap": "Native port landed: chase camera, trains and roofs, power-ups, inspector chase, revive and results. Round 1 blind review running."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, clear",
+   "gap": "Flat lighting, empty lower track, capsule runner with no character, repeated scenery, camera shows too much sky."
   },
   {
    "id": "horde",
    "name": "Horde Arena",
    "ref": "Survivor!.io",
-   "phase": "review",
-   "round": 0,
-   "verdict": "",
-   "gap": "Native port landed: joystick, 7 weapons with evolutions, XP draft, elites, bosses, lucky chest, results. Round 1 blind review running."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, clear",
+   "gap": "Attack effects tiny, bare streets, small boss, samey small enemies, hero lost in the swarm. Ours wins HUD and readability."
   },
   {
    "id": "avian",
