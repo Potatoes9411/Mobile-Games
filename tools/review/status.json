@@ -26,7 +26,8 @@
   "Roller Splat split the reference sets (won set 2 clearly, lost set 1 slightly). New rule: a game is done only when one build beats both reference sets.",
   "Block Storm DONE: the same build beat both Block Blast reference sets clearly.",
   "Helix Drop DONE: the same build beat both Helix Jump reference sets clearly.",
-  "Pin Rescue DONE: the same build beat both Pull the Pin reference sets."
+  "Pin Rescue DONE: the same build beat both Pull the Pin reference sets.",
+  "Rooftop Run round 2 lost both reference sets clearly. Helix skins and Pin Rescue polish merged."
  ],
  "engine": [
   {
@@ -142,9 +143,9 @@
    "name": "Rooftop Run",
    "ref": "Subway Surfers",
    "phase": "fixing",
-   "round": 1,
-   "verdict": "Reference wins, clear",
-   "gap": "Flat lighting, empty lower track, capsule runner with no character, repeated scenery, camera shows too much sky."
+   "round": 2,
+   "verdict": "Reference wins both sets, clear",
+   "gap": "Flat-shaded trains, small faceless hero, repeated gantry and facades, no light direction or distance fog, rooftop layer not visible."
   },
   {
    "id": "horde",
