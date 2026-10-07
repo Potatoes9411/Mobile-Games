@@ -63,3 +63,7 @@ native/build_android/
 native/out/
 reviews/
 __pycache__/
+
+# Local run artifacts
+*.save
+.claude/worktrees/
