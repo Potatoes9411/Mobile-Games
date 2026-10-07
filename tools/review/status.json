@@ -10,7 +10,8 @@
   "Block Storm round 1: reference wins only slightly (was overwhelming); ours now wins on effects and juice. Round 2 started.",
   "Helix Drop re-pass merged; round 1 blind review started.",
   "Roller Splat re-pass merged; round 1 blind review started. Block Storm builder resumed on round 2.",
-  "Helix Drop round 1: OURS WINS the blind comparison (slight). Confirmation round queued after the font upgrade."
+  "Helix Drop round 1: OURS WINS the blind comparison (slight). Confirmation round queued after the font upgrade.",
+  "Roller Splat round 1: reference wins clearly (was overwhelming). Builder resumed on round 2."
  ],
  "engine": [
   {
@@ -66,10 +67,10 @@
    "id": "splat",
    "name": "Roller Splat",
    "ref": "Roller Splat!",
-   "phase": "review",
-   "round": 0,
-   "verdict": "Reference wins, overwhelming",
-   "gap": "Re-pass landed (tilted 3D board, wells, spatter, five themed worlds, splat win badge). Round 1 blind review running."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, clear",
+   "gap": "Later worlds lose the 3D slab and wall depth; procedural mazes read as noise; paint needs bevel and sparkle; bigger win celebration."
   },
   {
    "id": "voidmuncher",
