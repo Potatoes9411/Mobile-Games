@@ -87,9 +87,12 @@ static int find_shape(const char *mask) {
 
 /* ----------------------------------------------------------------- palette */
 /* The reference's seven block hues, fully saturated: the board is read as
-   pattern, and two hues a few points apart would read as one. */
+   pattern, and two hues a few points apart would read as one. Hues in
+   degrees: red 347, orange 29, yellow 44, green 125, cyan 190, blue 233,
+   purple 274. Every neighbour is 40+ apart except orange/yellow, which the
+   reference also pairs and which a 30% luma gap keeps apart. */
 static const uint32_t TINTS[] = {
-    0xE83A3A, 0xFF7A1A, 0xFFC21A, 0x3CC84A, 0x2EC8E8, 0x3A6CF0, 0xA04AE0
+    0xE02850, 0xFF8A1F, 0xFFC81A, 0x3CC84A, 0x2EC8E8, 0x3C50F0, 0xA04AE0
 };
 enum { T_RED, T_ORANGE, T_YELLOW, T_GREEN, T_CYAN, T_BLUE, T_PURPLE };
 #define TINT_COUNT ((int)(sizeof(TINTS) / sizeof(TINTS[0])))
@@ -113,7 +116,14 @@ typedef struct {
 typedef struct { int row, index, tint; float t; } Beam;
 typedef struct { float x, y, t; int tint; char txt[16]; } FloatText;
 
-typedef struct { int shape, tint; float pop; } Slot;
+typedef struct { int shape, tint, item_cell, item; float pop; } Slot;
+
+/* Collectibles: some pieces carry a star or a gem on one block. Clearing the
+   block flies it to the goal strip; filling both counters pays a bonus and
+   raises the next goal. */
+enum { ITEM_NONE, ITEM_STAR, ITEM_GEM };
+#define MAX_FLYERS 16
+typedef struct { float t, x0, y0; int kind; } Flyer;
 
 typedef struct {
     int   phase, slot, gx, gy, down;
@@ -127,6 +137,10 @@ typedef struct {
     float  clr[N * N];         /* clear burst clock; < -5 idle, < 0 waiting */
     int    clr_tint[N * N];
     float  grey[N * N];        /* game-over grey-out 0..1 */
+    int    item[N * N];        /* ITEM_* riding on a block */
+    Flyer  flyers[MAX_FLYERS];
+    int    goal_level, goal_have[2], goal_need[2];
+    float  goal_pop[2], goal_done_t;
     Slot   tray[TRAY];
     int    score, best_start, passed_best, combo, since_clear, placed;
     float  shown, punch;
@@ -157,7 +171,8 @@ static int   g_best, g_best_loaded;
 
 static struct {
     int   w, h, land;
-    float side, cell, ox, oy, tcell;
+    float side, cell, ox, oy, tcell, piece_w, piece_h;
+    float strip_x, strip_y, strip_w, strip_h, goal_x[2], goal_y[2], goal_r;
     float slot_cx[TRAY], slot_cy[TRAY], slot_w, slot_h;
     float hud_y, crown_x, crown_s, best_size, score_y, score_size;
     float pause_x, pause_r;
@@ -179,64 +194,99 @@ static PA_Color fade(PA_Color c, float a) { return pa_alpha(c, (float)PA_A(c) / 
 static void compute_layout(int w, int h) {
     L.w = w; L.h = h;
     L.land = w > h;
+    float W = (float)w, H = (float)h;
     if (!L.land) {
-        /* Measured off the phone plates: the board spans 0.88 of the width,
-           the crown row sits 0.40 board-sides above it, the score 0.16 above
-           it, and the tray rides close underneath (critique: no dead third). */
-        const float stack_k = 1.84f;
-        float side = (float)w * 0.88f;
-        if (side * stack_k > (float)h * 0.93f) side = (float)h * 0.93f / stack_k;
-        float top = ((float)h - side * stack_k) * 0.40f;
-        if (top < (float)h * 0.025f) top = (float)h * 0.025f;
-        L.side = side;
-        L.cell = side / (float)N;
-        L.ox = ((float)w - side) * 0.5f;
-        L.oy = top + side * 0.40f;
-        L.hud_y = top + side * 0.055f;
-        L.score_y = L.oy - side * 0.165f;
-        L.score_size = side * 0.112f;
-        L.tcell = L.cell * 0.60f;
-        L.slot_w = side / 3.0f;
-        L.slot_h = L.tcell * 5.6f;
-        for (int i = 0; i < TRAY; i++) {
-            L.slot_cx[i] = L.ox + side * (0.18f + 0.32f * (float)i);
-            L.slot_cy[i] = L.oy + side + side * 0.255f;
+        /* Measured off the phone plates: crown row at 0.07 sh, score at about
+           0.145 sh, board top at 0.22 sh spanning 0.88 sw; the tray under it
+           and a goal strip using the bottom 0.12 sh. */
+        float side = W * 0.88f;
+        L.oy = H * 0.22f;
+        L.strip_h = W * 0.13f;
+        float strip_cy = H - H * 0.062f;
+        if (strip_cy + L.strip_h * 0.5f > H - 6.0f) strip_cy = H - 6.0f - L.strip_h * 0.5f;
+        float tray_room = strip_cy - L.strip_h * 0.5f - (L.oy + side);
+        if (tray_room < W * 0.34f) {
+            side -= W * 0.34f - tray_room;
+            tray_room = W * 0.34f;
         }
-        L.crown_x = L.ox + side * 0.005f;
-        L.crown_s = side * 0.105f;
-        L.best_size = side * 0.054f;
-        L.pause_x = L.ox + side - side * 0.04f;
-        L.pause_r = side * 0.046f;
-        L.btn_w = side * 0.62f; L.btn_h = side * 0.15f;
-        L.btn_x = (float)w * 0.5f; L.btn_y = L.slot_cy[0];
-    } else {
-        float side = (float)h * 0.80f;
-        if (side > (float)w * 0.56f) side = (float)w * 0.56f;
         L.side = side;
         L.cell = side / (float)N;
-        L.oy = (float)h - side - (float)h * 0.04f;
-        L.ox = (float)w * 0.42f - side * 0.5f;
+        L.ox = (W - side) * 0.5f;
+        L.hud_y = H * 0.07f;
+        L.score_size = W * 0.09f;
+        L.score_y = H * 0.137f;
+        L.tcell = L.cell * 0.60f;
+        /* Three slots of 0.28 sw with 0.06 sw gutters; a piece never spans
+           more than 0.24 sw, so the five-bar shrinks to fit its slot. */
+        L.slot_w = W * 0.28f;
+        L.slot_h = tray_room * 0.92f;
+        L.piece_w = W * 0.24f;
+        L.piece_h = tray_room * 0.78f;
+        if (L.piece_h > W * 0.30f) L.piece_h = W * 0.30f;
+        for (int i = 0; i < TRAY; i++) {
+            L.slot_cx[i] = W * 0.5f + (float)(i - 1) * W * 0.34f;
+            L.slot_cy[i] = L.oy + side + tray_room * 0.45f;
+        }
+        L.strip_w = side;
+        L.strip_x = L.ox;
+        L.strip_y = strip_cy - L.strip_h * 0.5f;
+        L.goal_r = L.strip_h * 0.30f;
+        L.goal_x[0] = L.strip_x + L.strip_w * 0.30f; L.goal_y[0] = strip_cy;
+        L.goal_x[1] = L.strip_x + L.strip_w * 0.66f; L.goal_y[1] = strip_cy;
+        L.crown_x = L.ox + side * 0.005f;
+        L.crown_s = W * 0.095f;
+        L.best_size = W * 0.048f;
+        L.pause_x = L.ox + side - side * 0.04f;
+        L.pause_r = W * 0.042f;
+        L.btn_w = side * 0.62f; L.btn_h = side * 0.15f;
+        L.btn_x = W * 0.5f; L.btn_y = L.slot_cy[0];
+    } else {
+        float side = H * 0.80f;
+        if (side > W * 0.56f) side = W * 0.56f;
+        L.side = side;
+        L.cell = side / (float)N;
+        L.oy = H - side - H * 0.04f;
+        L.ox = W * 0.42f - side * 0.5f;
         L.hud_y = L.oy * 0.5f;
         L.score_y = L.oy * 0.5f;
         L.score_size = L.oy * 0.62f;
         if (L.score_size > side * 0.11f) L.score_size = side * 0.11f;
-        float col_x = L.ox + side + ((float)w - L.ox - side) * 0.5f;
+        float col_x = L.ox + side + (W - L.ox - side) * 0.5f;
         L.tcell = L.cell * 0.60f;
-        if (L.tcell > side / 3.0f / 5.6f) L.tcell = side / 3.0f / 5.6f;
-        L.slot_w = ((float)w - L.ox - side) * 0.8f;
+        L.slot_w = (W - L.ox - side) * 0.8f;
         L.slot_h = side / 3.0f;
+        L.piece_w = L.slot_w * 0.85f;
+        L.piece_h = L.slot_h * 0.85f;
         for (int i = 0; i < TRAY; i++) {
             L.slot_cx[i] = col_x;
             L.slot_cy[i] = L.oy + side * (1.0f / 6.0f + (float)i / 3.0f);
         }
-        L.crown_x = (float)w * 0.04f;
+        /* Goal strip stands upright in the margin left of the board. */
+        L.strip_w = L.ox - W * 0.06f;
+        L.strip_h = side * 0.42f;
+        L.strip_x = W * 0.03f;
+        L.strip_y = L.oy + side * 0.5f - L.strip_h * 0.5f;
+        L.goal_r = L.strip_h * 0.12f;
+        L.goal_x[0] = L.strip_x + L.strip_w * 0.32f; L.goal_y[0] = L.strip_y + L.strip_h * 0.40f;
+        L.goal_x[1] = L.strip_x + L.strip_w * 0.32f; L.goal_y[1] = L.strip_y + L.strip_h * 0.74f;
+        L.crown_x = W * 0.04f;
         L.crown_s = L.oy * 0.5f;
         L.best_size = L.oy * 0.28f;
-        L.pause_x = (float)w - L.oy * 0.5f;
+        L.pause_x = W - L.oy * 0.5f;
         L.pause_r = L.oy * 0.24f;
         L.btn_w = side * 0.62f; L.btn_h = side * 0.14f;
         L.btn_x = L.ox + side * 0.5f; L.btn_y = L.oy + side * 0.84f;
     }
+}
+
+/** Tray scale for one piece: the reference's 0.6 of a board cell, shrunk
+    when the piece would overflow its slot. */
+static float tray_cell_for(int shape) {
+    const Shape *s = &SHAPES[shape];
+    float c = L.tcell;
+    if ((float)s->w * c > L.piece_w) c = L.piece_w / (float)s->w;
+    if ((float)s->h * c > L.piece_h) c = L.piece_h / (float)s->h;
+    return c;
 }
 
 /* ------------------------------------------------------------- particles */
@@ -315,6 +365,12 @@ static void refill_tray(void) {
             last = t;
             B.tray[i].tint = t;
             B.tray[i].pop = -0.07f * (float)i;
+            B.tray[i].item = ITEM_NONE;
+            B.tray[i].item_cell = -1;
+            if (pa_rng_chance(&B.rand, 0.38f)) {
+                B.tray[i].item = pa_rng_chance(&B.rand, 0.5f) ? ITEM_STAR : ITEM_GEM;
+                B.tray[i].item_cell = pa_rng_int(&B.rand, 0, SHAPES[B.tray[i].shape].count - 1);
+            }
         }
         if (tray_playable()) break;
     }
@@ -391,6 +447,17 @@ static void resolve_clears(int tint, float pcx, float pcy) {
                             ((float)y + 0.5f - pcy) * ((float)y + 0.5f - pcy));
             B.clr[i] = -d * 0.035f;
             B.clr_tint[i] = tint;
+            if (B.item[i] != ITEM_NONE) {
+                for (int f = 0; f < MAX_FLYERS; f++) {
+                    if (B.flyers[f].kind != ITEM_NONE) continue;
+                    B.flyers[f].kind = B.item[i];
+                    B.flyers[f].t = B.clr[i] - 0.05f;
+                    B.flyers[f].x0 = L.ox + ((float)x + 0.5f) * L.cell;
+                    B.flyers[f].y0 = L.oy + ((float)y + 0.5f) * L.cell;
+                    break;
+                }
+                B.item[i] = ITEM_NONE;
+            }
             B.cell[i] = -1;
             B.land[i] = 0.0f;
             cleared++;
@@ -435,11 +502,6 @@ static void resolve_clears(int tint, float pcx, float pcy) {
     if (B.combo >= 2) {
         B.combo_show = B.combo;
         B.combo_t = 0.0001f;
-        int first_row = -1;
-        for (int k = 0; k < N && first_row < 0; k++) if (rows[k]) first_row = k;
-        float y = first_row >= 0 ? L.oy + ((float)first_row + 0.5f) * L.cell : L.oy + L.side * 0.5f;
-        if (lines >= 2) y = L.oy + L.side * 0.60f;
-        B.combo_y = pa_clampf(y, L.oy + L.cell * 1.2f, L.oy + L.side - L.cell * 1.2f);
     }
     B.shake = lines >= 2 ? 0.22f + 0.05f * (float)lines : 0.10f;
     clear_sound(lines, B.combo);
@@ -468,6 +530,7 @@ static void place(int slot, int gx, int gy) {
         int k = idx(gx + s->cx[i], gy + s->cy[i]);
         B.cell[k] = tint;
         B.land[k] = 1.0f;
+        B.item[k] = i == B.tray[slot].item_cell ? B.tray[slot].item : ITEM_NONE;
     }
     B.score += s->count;
     B.placed++;
@@ -509,6 +572,8 @@ static void load_board(const char *rows[N]) {
 static void set_tray(int i, const char *mask, int tint) {
     B.tray[i].shape = find_shape(mask);
     B.tray[i].tint = tint;
+    B.tray[i].item = ITEM_NONE;
+    B.tray[i].item_cell = -1;
     B.tray[i].pop = -0.07f * (float)i;
 }
 
@@ -531,6 +596,11 @@ static void demo_setup(int mode) {
         set_tray(0, "##|##", T_PURPLE);
         set_tray(1, "###", T_GREEN);
         set_tray(2, ".#|##", T_YELLOW);
+        B.tray[1].item = ITEM_GEM; B.tray[1].item_cell = 1;
+        B.item[idx(0, 5)] = ITEM_STAR; B.item[idx(6, 6)] = ITEM_GEM;
+        B.item[idx(3, 1)] = ITEM_STAR; B.item[idx(7, 0)] = ITEM_GEM;
+        B.goal_level = 2; B.goal_need[0] = B.goal_need[1] = 5;
+        B.goal_have[0] = 3; B.goal_have[1] = 2;
         B.combo = 2; B.since_clear = 0;
         B.score = 1240; B.best_start = 2650;
     } else if (mode == 3) {
@@ -548,9 +618,13 @@ static void demo_setup(int mode) {
         set_tray(0, "###", T_ORANGE);
         set_tray(1, "###|###|###", T_BLUE);
         set_tray(2, "#|#|#|#|#", T_CYAN);
+        B.item[idx(1, 7)] = ITEM_GEM; B.item[idx(2, 2)] = ITEM_STAR;
+        B.goal_level = 3; B.goal_need[0] = B.goal_need[1] = 7;
+        B.goal_have[0] = 4; B.goal_have[1] = 5;
         B.score = 2590; B.best_start = 2650;
     } else {
         B.best_start = 2650;
+        B.tray[0].item = ITEM_STAR; B.tray[0].item_cell = 0;
     }
     B.shown = (float)B.score;
 }
@@ -583,7 +657,10 @@ static float bot_eval(int slot, int gx, int gy) {
         }
         rows[k] = fr; cols[k] = fc; lines += fr + fc;
     }
-    for (int y = 0; y < N; y++) for (int x = 0; x < N; x++) if (rows[y] || cols[x]) bd[idx(x, y)] = -1;
+    for (int y = 0; y < N; y++) for (int x = 0; x < N; x++) if (rows[y] || cols[x]) {
+        if (B.item[idx(x, y)] != ITEM_NONE) score += 12.0f;
+        bd[idx(x, y)] = -1;
+    }
     score += (float)(lines * lines) * 40.0f + (float)lines * 20.0f;
 
     int filled = 0;
@@ -690,6 +767,8 @@ static void new_run(void) {
     B.drag = -1;
     B.ret_slot = -1;
     B.best_start = g_best;
+    B.goal_level = 1;
+    B.goal_need[0] = B.goal_need[1] = 3;
     pa_rng_seed(&B.rand, demo ? 0xB10C5u + (uint32_t)demo * 977u
                               : 0xB10Cu ^ ((uint32_t)g_best * 2654435761u + (uint32_t)g_best_loaded * 0x9E3779B9u));
     refill_tray();
@@ -710,7 +789,7 @@ static void storm_stop(void) { if (B.phase == 0) save_best(); }
 static void drag_geom(float *px, float *py, float *cs) {
     const Shape *s = &SHAPES[B.tray[B.drag].shape];
     float e = ease_out(B.lift);
-    float c = pa_lerpf(L.tcell, L.cell, e);
+    float c = pa_lerpf(tray_cell_for(B.tray[B.drag].shape), L.cell, e);
     float tx = B.fx, ty = B.fy - ((float)s->h * L.cell * 0.5f + L.cell * LIFT_GAP);
     float cx = pa_lerpf(B.grab_x, tx, e), cy = pa_lerpf(B.grab_y, ty, e);
     *px = cx - (float)s->w * c * 0.5f;
@@ -767,7 +846,7 @@ static void storm_update(float dt, const PA_Input *real_in) {
     if (B.shake > 0.0f) B.shake = B.shake > dt ? B.shake - dt : 0.0f;
     if (B.punch > 0.0f) B.punch = B.punch > dt * 4.0f ? B.punch - dt * 4.0f : 0.0f;
     if (B.praise_t > 0.0f) { B.praise_t += dt; if (B.praise_t > 1.6f) B.praise_t = 0.0f; }
-    if (B.combo_t > 0.0f) { B.combo_t += dt; if (B.combo_t > 1.5f) B.combo_t = 0.0f; }
+    if (B.combo_t > 0.0f) { B.combo_t += dt; if (B.combo_t > 1.02f) B.combo_t = 0.0f; }
     if (B.toast_on) {
         float before = B.toast_t;
         B.toast_t += dt;
@@ -815,6 +894,53 @@ static void storm_update(float dt, const PA_Input *real_in) {
         }
     }
     update_parts(dt);
+
+    /* Collectibles in flight land on the goal strip. */
+    for (int f = 0; f < MAX_FLYERS; f++) {
+        Flyer *fl = &B.flyers[f];
+        if (fl->kind == ITEM_NONE) continue;
+        fl->t += dt;
+        if (fl->t > 0.0f && pa_rng_chance(&B.rand, 0.35f)) {
+            float e = pa_smooth(pa_clamp01(fl->t / 0.6f));
+            int k = fl->kind == ITEM_STAR ? 0 : 1;
+            float x = pa_lerpf(fl->x0, L.goal_x[k], e), y = pa_lerpf(fl->y0, L.goal_y[k], e) - sinf(e * PA_PI) * L.side * 0.12f;
+            spawn(P_SPARK, x, y, 0, 0, 0.35f, L.cell * 0.12f, k ? pa_hex(0xFFB0FA) : pa_hex(0xFFF0A0));
+        }
+        if (fl->t >= 0.6f) {
+            int k = fl->kind == ITEM_STAR ? 0 : 1;
+            fl->kind = ITEM_NONE;
+            if (B.goal_done_t <= 0.0f && B.goal_have[k] < B.goal_need[k]) B.goal_have[k]++;
+            B.goal_pop[k] = 1.0f;
+            pa_tone(k ? 1180.0f : 990.0f, k ? 1760.0f : 1480.0f, 0.09f, 0, 0.07f);
+            if (B.goal_done_t <= 0.0f && B.goal_have[0] >= B.goal_need[0] && B.goal_have[1] >= B.goal_need[1]) {
+                int bonus = 150 * B.goal_level;
+                B.score += bonus;
+                B.goal_done_t = 0.0001f;
+                for (int ff = 0; ff < MAX_FLOATS; ff++) {
+                    if (B.floats[ff].t > 0.0f) continue;
+                    B.floats[ff].t = 0.0001f;
+                    B.floats[ff].x = L.strip_x + L.strip_w * 0.5f;
+                    B.floats[ff].y = L.strip_y - L.cell * 0.4f;
+                    B.floats[ff].tint = T_YELLOW;
+                    snprintf(B.floats[ff].txt, sizeof(B.floats[ff].txt), "+%d", bonus);
+                    break;
+                }
+                confetti_burst(L.strip_x + L.strip_w * 0.5f, L.strip_y, 50, L.side * 1.0f);
+                pa_sfx("win");
+            }
+        }
+    }
+    for (int k = 0; k < 2; k++) if (B.goal_pop[k] > 0.0f) B.goal_pop[k] = B.goal_pop[k] > dt * 4.0f ? B.goal_pop[k] - dt * 4.0f : 0.0f;
+    if (B.goal_done_t > 0.0f) {
+        B.goal_done_t += dt;
+        if (B.goal_done_t > 1.4f) {
+            B.goal_done_t = 0.0f;
+            B.goal_level++;
+            int need = 3 + 2 * (B.goal_level - 1);
+            B.goal_need[0] = B.goal_need[1] = need > 15 ? 15 : need;
+            B.goal_have[0] = B.goal_have[1] = 0;
+        }
+    }
 
     /* Score counts up rather than jumping. */
     if (B.shown < (float)B.score) {
@@ -996,10 +1122,59 @@ static void draw_crown(PA_Canvas *c, float cx, float cy, float w) {
     pa_fill_ellipse(c, x0 + w * 0.30f, y0 + h * 0.62f, w * 0.06f, h * 0.10f, PA_RGBA(255, 255, 255, 110));
 }
 
+/* Collectible icons, drawn rather than imaged: a fat gold star and an
+   eight-point magenta gem, both with a dark rim and a highlight. */
+static void draw_star5(PA_Canvas *c, float cx, float cy, float r, float grey) {
+    PA_Vec2 pts[10];
+    for (int i = 0; i < 10; i++) {
+        float a = -PA_PI * 0.5f + (float)i * PA_PI / 5.0f, rr = (i & 1) ? r * 0.50f : r;
+        pts[i].x = cx + cosf(a) * rr; pts[i].y = cy + sinf(a) * rr + r * 0.08f;
+    }
+    pa_stroke_poly(c, pts, 10, 1, r * 0.24f, grey_of(pa_hex(0xA84E00), grey));
+    PA_Paint g = pa_linear(0, cy - r, 0, cy + r);
+    pa_stop(&g, 0.0f, grey_of(pa_hex(0xFFF27A), grey));
+    pa_stop(&g, 1.0f, grey_of(pa_hex(0xFFA400), grey));
+    pa_fill_poly_paint(c, pts, 10, &g);
+    pa_fill_ellipse(c, cx - r * 0.16f, cy - r * 0.10f, r * 0.17f, r * 0.10f, PA_RGBA(255, 255, 255, (int)(160.0f * (1.0f - grey))));
+}
+
+static void draw_gem(PA_Canvas *c, float cx, float cy, float r, float grey) {
+    PA_Vec2 pts[16], in[8];
+    for (int i = 0; i < 16; i++) {
+        float a = -PA_PI * 0.5f + (float)i * PA_PI / 8.0f, rr = (i & 1) ? r * 0.72f : r;
+        pts[i].x = cx + cosf(a) * rr; pts[i].y = cy + sinf(a) * rr;
+    }
+    for (int i = 0; i < 8; i++) {
+        float a = -PA_PI * 0.5f + PA_PI / 8.0f + (float)i * PA_PI / 4.0f;
+        in[i].x = cx + cosf(a) * r * 0.48f; in[i].y = cy + sinf(a) * r * 0.48f;
+    }
+    pa_stroke_poly(c, pts, 16, 1, r * 0.20f, grey_of(pa_hex(0x5E0C74), grey));
+    PA_Paint g = pa_radial(cx - r * 0.2f, cy - r * 0.25f, 0.0f, r * 1.1f);
+    pa_stop(&g, 0.0f, grey_of(pa_hex(0xFF8CF6), grey));
+    pa_stop(&g, 1.0f, grey_of(pa_hex(0xB81CC4), grey));
+    pa_fill_poly_paint(c, pts, 16, &g);
+    pa_fill_poly(c, in, 8, grey_of(pa_hex(0xF060EE), grey));
+    PA_Vec2 hi[3] = { { cx - r * 0.42f, cy - r * 0.10f }, { cx - r * 0.10f, cy - r * 0.44f }, { cx - r * 0.06f, cy - r * 0.10f } };
+    pa_fill_poly(c, hi, 3, PA_RGBA(255, 255, 255, (int)(150.0f * (1.0f - grey))));
+}
+
+static void draw_item(PA_Canvas *c, int kind, float cx, float cy, float r, float grey) {
+    if (kind == ITEM_STAR) draw_star5(c, cx, cy, r, grey);
+    else if (kind == ITEM_GEM) draw_gem(c, cx, cy, r, grey);
+}
+
+static void draw_slot_item(PA_Canvas *c, int slot, float x, float y, float cell, float grey) {
+    const Slot *sl = &B.tray[slot];
+    if (sl->item == ITEM_NONE || sl->item_cell < 0) return;
+    const Shape *s = &SHAPES[sl->shape];
+    draw_item(c, sl->item, x + ((float)s->cx[sl->item_cell] + 0.5f) * cell,
+              y + ((float)s->cy[sl->item_cell] + 0.5f) * cell, cell * 0.31f, grey);
+}
+
 /* Text helpers: y is the vertical centre. */
 static void text_mid(PA_Canvas *c, const char *t, float x, float cy, float size,
                      PA_Color fill, PA_Color outline, float weight) {
-    pa_text_bold(c, t, x, cy - size * 0.5f, size, fill, outline, PA_ALIGN_CENTER, size * 0.06f, weight);
+    pa_text_bold(c, t, x, cy - size * 0.5f, size, fill, outline, PA_ALIGN_CENTER, 0.0f, weight);
 }
 
 static void soft_glow(PA_Canvas *c, float cx, float cy, float half_w, float r, PA_Color col, float a) {
@@ -1076,7 +1251,7 @@ static void draw_beam(PA_Canvas *c, const Beam *bm, float ox, float oy) {
         pa_fill_rect_paint(c, ox + L.ox - bleed, cy - thick * 0.5f, L.side + bleed * 2.0f, thick, &p);
         if (t < 0.15f)
             pa_fill_rect(c, ox + L.ox, cy - L.cell * 0.5f, L.side, L.cell,
-                         PA_RGBA(255, 255, 255, (int)(204.0f * (1.0f - t / 0.15f))));
+                         PA_RGBA(255, 255, 255, (int)(140.0f * (1.0f - t / 0.15f))));
     } else {
         float cx = ox + L.ox + ((float)bm->index + 0.5f) * L.cell;
         PA_Paint p = pa_linear(cx - thick * 0.5f, 0, cx + thick * 0.5f, 0);
@@ -1088,7 +1263,7 @@ static void draw_beam(PA_Canvas *c, const Beam *bm, float ox, float oy) {
         pa_fill_rect_paint(c, cx - thick * 0.5f, oy + L.oy - bleed, thick, L.side + bleed * 2.0f, &p);
         if (t < 0.15f)
             pa_fill_rect(c, cx - L.cell * 0.5f, oy + L.oy, L.cell, L.side,
-                         PA_RGBA(255, 255, 255, (int)(204.0f * (1.0f - t / 0.15f))));
+                         PA_RGBA(255, 255, 255, (int)(140.0f * (1.0f - t / 0.15f))));
     }
     /* Square motes drifting inside the beam, as the reference's do. */
     for (int m = 0; m < 10; m++) {
@@ -1198,6 +1373,8 @@ static void draw_board(PA_Canvas *c, float ox, float oy, int gx, int gy, int gho
                 float sc = 1.0f + sinf(ld * PA_PI) * 0.07f;
                 float sz = L.cell * sc, d = (sz - L.cell) * 0.5f;
                 block(c, px - d, py - d, sz, col, 1.0f);
+                if (B.item[i] != ITEM_NONE)
+                    draw_item(c, B.item[i], px + L.cell * 0.5f, py + L.cell * 0.5f, sz * 0.31f, B.grey[i]);
                 if (ld > 0.6f) pa_fill_rect(c, px + 1, py + 1, L.cell - 2, L.cell - 2,
                                             PA_RGBA(255, 255, 255, (int)((ld - 0.6f) / 0.4f * 120.0f)));
             }
@@ -1259,12 +1436,12 @@ static void draw_hud(PA_Canvas *c) {
     draw_crown(c, L.crown_x + cw * 0.5f, L.hud_y, cw);
     snprintf(buf, sizeof(buf), "%d", best);
     pa_text_bold(c, buf, L.crown_x + cw * 1.22f, L.hud_y - L.best_size * 0.5f, L.best_size,
-                 pa_hex(GOLD), pa_hex(0x8A4A00), PA_ALIGN_LEFT, L.best_size * 0.06f, 1.5f);
+                 pa_hex(GOLD), pa_hex(0x8A4A00), PA_ALIGN_LEFT, 0.0f, 1.5f);
 
     snprintf(buf, sizeof(buf), "%d", (int)(B.shown + 0.5f));
     float sz = L.score_size * (1.0f + 0.06f * B.punch);
     float sx = L.land ? L.ox + L.side * 0.5f : (float)L.w * 0.5f;
-    text_mid(c, buf, sx, L.score_y, sz, PA_RGB(255, 255, 255), pa_hex(0x26357E), 2.2f);
+    text_mid(c, buf, sx, L.score_y, sz, PA_RGB(255, 255, 255), pa_hex(0x2A2F7A), 2.2f);
 }
 
 static void draw_callouts(PA_Canvas *c, float ox, float oy) {
@@ -1279,54 +1456,63 @@ static void draw_callouts(PA_Canvas *c, float ox, float oy) {
         float x = pa_clampf(ox + ft->x, ox + L.ox + size * 1.5f, ox + L.ox + L.side - size * 1.5f);
         float fy0 = ft->y;
         /* Keep the score clear of the praise and combo callouts. */
-        if (B.combo_t > 0.0f && fabsf(fy0 - B.combo_y) < L.cell * 1.3f) fy0 = B.combo_y + L.cell * 1.75f;
-        if (B.praise_t > 0.0f && fabsf(fy0 - (L.oy + L.side * 0.36f)) < L.cell * 1.2f) fy0 = L.oy + L.side * 0.36f + L.cell * 1.3f;
-        if (B.combo_t > 0.0f && fabsf(fy0 - B.combo_y) < L.cell * 1.3f) fy0 = B.combo_y + L.cell * 1.75f;
+        if (B.praise_t > 0.0f && fabsf(fy0 - (L.oy + L.side * 0.45f)) < L.cell * 1.2f)
+            fy0 = L.oy + L.side * 0.45f + (fy0 < L.oy + L.side * 0.45f ? -1.0f : 1.0f) * L.cell * 1.6f;
         float y = oy + fy0 - ease_out(t / 1.1f) * L.cell * 0.5f;
         text_mid(c, ft->txt, x, y, size, fade(PA_RGB(255, 255, 255), a),
                  fade(pa_shade(pa_hex(TINTS[ft->tint]), -0.55f), a), 1.9f);
     }
 
-    int both = B.praise_t > 0.0f && B.combo_t > 0.0f;
     if (B.praise_t > 0.0f) {
         float t = B.praise_t;
         float a = t < 1.2f ? 1.0f : 1.0f - (t - 1.2f) / 0.4f;
         float sc = t < 0.14f ? 0.3f + 0.95f * (t / 0.14f) : (t < 0.28f ? 1.25f - 0.25f * ((t - 0.14f) / 0.14f) : 1.0f);
-        float size = L.side * 0.115f;
-        float fitw = pa_text_width(B.praise, size, size * 0.06f);
+        float size = L.side * 0.10f;
+        float fitw = pa_text_width(B.praise, size, 0.0f);
         if (fitw > L.side * 0.86f) size *= L.side * 0.86f / fitw;
         size *= sc;
-        float y = oy + L.oy + L.side * (both ? 0.36f : 0.45f) - t * L.cell * 0.25f;
+        float y = oy + L.oy + L.side * 0.45f - t * L.cell * 0.25f;
         soft_glow(c, bcx, y, pa_text_width(B.praise, size, 0) * 0.42f, size * 1.15f, pa_hex(0xFFB020), a);
         text_mid(c, B.praise, bcx, y, size, fade(pa_hex(0xFFD84A), a), fade(pa_hex(0x8A3600), a), 2.4f);
     }
 
     if (B.combo_t > 0.0f) {
+        /* Off the board: a pill in the gap between score and board, popped
+           in, held 0.6 s, then faded, so the clear itself stays visible. */
         float t = B.combo_t;
-        float a = t < 1.1f ? 1.0f : 1.0f - (t - 1.1f) / 0.4f;
-        float y = oy + B.combo_y;
-        float bh = L.cell * 1.5f * pa_clamp01(t / 0.12f);
-        /* A dark glowing band across the board behind the callout. */
-        PA_Paint band = pa_linear(0, y - bh * 0.5f, 0, y + bh * 0.5f);
-        pa_stop(&band, 0.0f, PA_RGBA(80, 200, 255, 0));
-        pa_stop(&band, 0.12f, PA_RGBA(80, 200, 255, (int)(a * 140.0f)));
-        pa_stop(&band, 0.22f, PA_RGBA(14, 30, 90, (int)(a * 200.0f)));
-        pa_stop(&band, 0.78f, PA_RGBA(14, 30, 90, (int)(a * 200.0f)));
-        pa_stop(&band, 0.88f, PA_RGBA(80, 200, 255, (int)(a * 140.0f)));
-        pa_stop(&band, 1.0f, PA_RGBA(80, 200, 255, 0));
-        pa_fill_rect_paint(c, ox + L.ox - L.cell * 0.3f, y - bh * 0.5f, L.side + L.cell * 0.6f, bh, &band);
+        float a = t < 0.72f ? 1.0f : 1.0f - (t - 0.72f) / 0.3f;
+        float sc = t < 0.12f ? 0.4f + 0.75f * (t / 0.12f) : (t < 0.22f ? 1.15f - 0.15f * ((t - 0.12f) / 0.10f) : 1.0f);
+        float pw = (float)L.w * 0.55f * sc, ph = (float)L.w * 0.07f * sc;
+        float pcx = bcx;
+        float y = (L.score_y + L.score_size * 0.62f + L.oy - 4.0f) * 0.5f;
+        if (L.land) {
+            /* Landscape: in the left margin, above the goal strip. */
+            pw = L.strip_w * sc; ph = L.strip_w * 0.2f * sc;
+            pcx = L.strip_x + L.strip_w * 0.5f;
+            y = L.strip_y - L.strip_w * 0.2f;
+        }
+        float px = pcx - pw * 0.5f, py = y - ph * 0.5f;
+        soft_glow(c, pcx, y, pw * 0.42f, ph * 1.1f, pa_hex(0x50C8FF), a * 0.8f);
+        pa_round_rect(c, px - 2.0f, py - 2.0f, pw + 4.0f, ph + 4.0f, ph * 0.5f + 2.0f, fade(pa_hex(0x7FDCFF), a));
+        PA_Paint pill = pa_linear(0, py, 0, py + ph);
+        pa_stop(&pill, 0.0f, fade(pa_hex(0x2A4AB8), a));
+        pa_stop(&pill, 1.0f, fade(pa_hex(0x14206A), a));
+        pa_round_rect_paint(c, px, py, pw, ph, ph * 0.5f, &pill);
 
         char num[12];
         snprintf(num, sizeof(num), "%d", B.combo_show);
-        float sc = t < 0.12f ? 0.4f + 0.8f * (t / 0.12f) : (t < 0.24f ? 1.2f - 0.2f * ((t - 0.12f) / 0.12f) : 1.0f);
-        float ws = L.side * 0.085f * sc, ns = L.side * 0.12f * sc;
-        float w1 = pa_text_width("Combo", ws, ws * 0.06f), w2 = pa_text_width(num, ns, ns * 0.06f);
-        float gap = ws * 0.45f, x0 = bcx - (w1 + gap + w2) * 0.5f;
-        soft_glow(c, x0 + w1 + gap + w2 * 0.5f, y, w2 * 0.4f, ns * 1.1f, pa_hex(0xFFD040), a);
-        pa_text_bold(c, "Combo", x0, y - ws * 0.5f, ws, fade(PA_RGB(240, 248, 255), a), fade(pa_hex(0x1A3A9A), a),
-                     PA_ALIGN_LEFT, ws * 0.06f, 2.0f);
-        pa_text_bold(c, num, x0 + w1 + gap, y - ns * 0.55f, ns, fade(pa_hex(0xFFD23A), a), fade(pa_hex(0x7A3000), a),
-                     PA_ALIGN_LEFT, ns * 0.06f, 2.3f);
+        float ws = ph * 0.52f, ns = ph * 0.74f;
+        float w1 = pa_text_width("Combo", ws, 0.0f), w2 = pa_text_width(num, ns, 0.0f);
+        float gap = ws * 0.45f, x0 = pcx - (w1 + gap + w2) * 0.5f;
+        soft_glow(c, x0 + w1 + gap + w2 * 0.5f, y, w2 * 0.3f, ns * 0.9f, pa_hex(0xFFD040), a);
+        pa_text_bold(c, "Combo", x0, y - ws * 0.5f, ws, fade(PA_RGB(240, 248, 255), a), fade(pa_hex(0x0E1650), a),
+                     PA_ALIGN_LEFT, 0.0f, 1.8f);
+        pa_text_bold(c, num, x0 + w1 + gap, y - ns * 0.52f, ns, fade(pa_hex(0xFFD23A), a), fade(pa_hex(0x7A3000), a),
+                     PA_ALIGN_LEFT, 0.0f, 2.1f);
+        for (int i = 0; i < 2; i++) {
+            float sx = pcx + (i ? 1.0f : -1.0f) * (pw * 0.5f + ph * 0.1f);
+            star4(c, sx, y - ph * 0.35f, ph * 0.22f * (0.6f + 0.4f * sinf(t * 12.0f + (float)i * 2.0f)), fade(PA_RGB(255, 246, 200), a));
+        }
     }
 
     if (B.toast_on && B.toast_t > 0.0f) {
@@ -1346,6 +1532,66 @@ static void draw_callouts(PA_Canvas *c, float ox, float oy) {
     }
 }
 
+static void draw_goal_strip(PA_Canvas *c) {
+    float x = L.strip_x, y = L.strip_y, w = L.strip_w, h = L.strip_h;
+    float done = B.goal_done_t > 0.0f ? 1.0f : 0.0f;
+    float glow = done * (0.5f + 0.5f * sinf(B.goal_done_t * 14.0f));
+    pa_round_rect(c, x - 2.0f, y - 2.0f, w + 4.0f, h + 4.0f, h * 0.28f,
+                  pa_mix(pa_hex(0x6A7CC6), pa_hex(0xFFD040), glow));
+    PA_Paint g = pa_linear(0, y, 0, y + h);
+    pa_stop(&g, 0.0f, pa_hex(0x34459C));
+    pa_stop(&g, 1.0f, pa_hex(0x283678));
+    pa_round_rect_paint(c, x, y, w, h, h * 0.26f, &g);
+
+    char buf[24];
+    float ls = L.land ? w * 0.13f : h * 0.22f;
+    float lx = L.land ? x + w * 0.5f : x + w * 0.12f;
+    float ly = L.land ? y + h * 0.13f : y + h * 0.36f;
+    text_mid(c, done ? "Done!" : "Goal", lx, ly, ls, done ? pa_hex(0xFFD23A) : pa_hex(0xC8D4FF), pa_hex(0x141C50), 1.3f);
+    snprintf(buf, sizeof(buf), "Lv %d", B.goal_level);
+    if (!L.land) text_mid(c, buf, lx, y + h * 0.70f, ls * 0.85f, PA_RGB(255, 255, 255), pa_hex(0x141C50), 1.3f);
+
+    for (int k = 0; k < 2; k++) {
+        float r = L.goal_r * (1.0f + 0.3f * sinf(B.goal_pop[k] * PA_PI));
+        float gx = L.goal_x[k], gy = L.goal_y[k];
+        PA_Paint halo = pa_radial(gx, gy, r * 0.4f, r * 1.6f);
+        pa_stop(&halo, 0.0f, k ? PA_RGBA(255, 120, 250, 60) : PA_RGBA(255, 220, 80, 60));
+        pa_stop(&halo, 1.0f, PA_RGBA(255, 255, 255, 0));
+        pa_fill_ellipse_paint(c, gx, gy, r * 1.6f, r * 1.6f, &halo);
+        draw_item(c, k ? ITEM_GEM : ITEM_STAR, gx, gy, r, 0.0f);
+        int full = B.goal_have[k] >= B.goal_need[k];
+        snprintf(buf, sizeof(buf), "%d/%d", B.goal_have[k], B.goal_need[k]);
+        float ts = L.land ? w * 0.12f : h * 0.30f;
+        float tx = gx + L.goal_r * 1.45f;
+        float bw = L.land ? w * 0.42f : w * 0.19f, bh = ts * 0.32f;
+        pa_text_bold(c, buf, tx, gy - ts * 0.85f, ts, full ? pa_hex(0x8CFF7A) : PA_RGB(255, 255, 255),
+                     pa_hex(0x141C50), PA_ALIGN_LEFT, 0.0f, 1.4f);
+        float by = gy + ts * 0.32f;
+        pa_round_rect(c, tx, by, bw, bh, bh * 0.5f, pa_hex(0x172058));
+        float f = pa_clamp01((float)B.goal_have[k] / (float)B.goal_need[k]);
+        if (f > 0.0f) {
+            PA_Paint bar = pa_linear(0, by, 0, by + bh);
+            pa_stop(&bar, 0.0f, full ? pa_hex(0x9CFF6A) : (k ? pa_hex(0xFF8CF6) : pa_hex(0xFFE060)));
+            pa_stop(&bar, 1.0f, full ? pa_hex(0x3CC84A) : (k ? pa_hex(0xC020C8) : pa_hex(0xFFA400)));
+            pa_round_rect_paint(c, tx, by, bw * f, bh, bh * 0.5f, &bar);
+        }
+    }
+}
+
+static void draw_flyers(PA_Canvas *c) {
+    for (int f = 0; f < MAX_FLYERS; f++) {
+        const Flyer *fl = &B.flyers[f];
+        if (fl->kind == ITEM_NONE) continue;
+        int k = fl->kind == ITEM_STAR ? 0 : 1;
+        if (fl->t < 0.0f) { draw_item(c, fl->kind, fl->x0, fl->y0, L.cell * 0.31f, 0.0f); continue; }
+        float e = pa_smooth(pa_clamp01(fl->t / 0.6f));
+        float x = pa_lerpf(fl->x0, L.goal_x[k], e);
+        float y = pa_lerpf(fl->y0, L.goal_y[k], e) - sinf(e * PA_PI) * L.side * 0.12f;
+        float r = pa_lerpf(L.cell * 0.31f, L.goal_r, e) * (1.0f + 0.45f * sinf(e * PA_PI));
+        draw_item(c, fl->kind, x, y, r, 0.0f);
+    }
+}
+
 static void draw_tray(PA_Canvas *c) {
     if (B.phase == 2) return;
     for (int i = 0; i < TRAY; i++) {
@@ -1353,7 +1599,7 @@ static void draw_tray(PA_Canvas *c) {
         const Shape *sh = &SHAPES[B.tray[i].shape];
         float pop = ease_back(pa_clamp01(B.tray[i].pop));
         if (pop <= 0.02f) continue;
-        float tc = L.tcell * pop;
+        float tc = tray_cell_for(B.tray[i].shape) * pop;
         float sx = L.slot_cx[i] - (float)sh->w * tc * 0.5f;
         float sy = L.slot_cy[i] - (float)sh->h * tc * 0.5f;
         PA_Color tint = pa_hex(TINTS[B.tray[i].tint]);
@@ -1362,6 +1608,7 @@ static void draw_tray(PA_Canvas *c) {
         else if (!any_fits(B.tray[i].shape)) { tint = grey_of(tint, 0.85f); alpha = 0.75f; }
         shape_shadow(c, B.tray[i].shape, sx, sy, tc, tc * 0.14f, 50);
         draw_shape(c, B.tray[i].shape, tint, sx, sy, tc, alpha);
+        draw_slot_item(c, i, sx, sy, tc, B.phase >= 1 ? pa_clamp01((B.phase_t - 0.5f) / 0.2f) : 0.0f);
     }
 }
 
@@ -1411,13 +1658,13 @@ static void draw_results(PA_Canvas *c) {
         char best[32];
         snprintf(best, sizeof(best), "%d", g_best > B.best_start ? g_best : B.best_start);
         float bs = L.side * 0.07f;
-        float tw = pa_text_width(best, bs, bs * 0.06f), cw = bs * 1.6f;
+        float tw = pa_text_width(best, bs, 0.0f), cw = bs * 1.6f;
         float x0 = cx - (cw + bs * 0.4f + tw) * 0.5f, y = L.oy + L.side * 0.68f;
         text_mid(c, "Best Score", cx, L.oy + L.side * 0.55f, L.side * 0.045f, fade(pa_hex(0xC8D4FF), a), fade(pa_hex(0x141C50), a), 1.4f);
         if (a > 0.02f) {
             draw_crown(c, x0 + cw * 0.5f, y, cw);
             pa_text_bold(c, best, x0 + cw + bs * 0.4f, y - bs * 0.5f, bs, fade(pa_hex(GOLD), a), fade(pa_hex(0x8A4A00), a),
-                         PA_ALIGN_LEFT, bs * 0.06f, 1.6f);
+                         PA_ALIGN_LEFT, 0.0f, 1.6f);
         }
     }
 
@@ -1435,12 +1682,12 @@ static void draw_results(PA_Canvas *c) {
         pa_round_rect_paint(c, x, y, w, h, h * 0.32f, &g);
         pa_round_rect(c, x + h * 0.2f, y + h * 0.08f, w - h * 0.4f, h * 0.18f, h * 0.09f, PA_RGBA(255, 255, 255, 70));
         float ts = h * 0.40f;
-        float lw = pa_text_width("Play Again", ts, ts * 0.06f);
+        float lw = pa_text_width("Play Again", ts, 0.0f);
         float ir = h * 0.2f, total = ir * 2.0f + h * 0.18f + lw;
         float ix = L.btn_x - total * 0.5f + ir;
         restart_icon(c, ix, L.btn_y, ir, PA_RGB(255, 255, 255));
         pa_text_bold(c, "Play Again", ix + ir + h * 0.18f, L.btn_y - ts * 0.5f, ts, PA_RGB(255, 255, 255),
-                     pa_hex(0x1A6A28), PA_ALIGN_LEFT, ts * 0.06f, 1.6f);
+                     pa_hex(0x1A6A28), PA_ALIGN_LEFT, 0.0f, 1.6f);
     }
 }
 
@@ -1474,24 +1721,28 @@ static void storm_render(PA_Canvas *c) {
     }
     draw_board(c, sx, sy, gx, gy, ghost_ok, rows, cols, prev_tint);
     draw_parts(c, 0);
+    draw_goal_strip(c);
     draw_tray(c);
 
     if (B.ret_slot >= 0) {
         const Shape *sh = &SHAPES[B.tray[B.ret_slot].shape];
         float k = ease_out(B.ret_t);
-        float cs = pa_lerpf(B.ret_cell, L.tcell, k);
+        float cs = pa_lerpf(B.ret_cell, tray_cell_for(B.tray[B.ret_slot].shape), k);
         float cx = pa_lerpf(B.ret_x, L.slot_cx[B.ret_slot], k), cy = pa_lerpf(B.ret_y, L.slot_cy[B.ret_slot], k);
         draw_shape(c, B.tray[B.ret_slot].shape, pa_hex(TINTS[B.tray[B.ret_slot].tint]),
                    cx - (float)sh->w * cs * 0.5f, cy - (float)sh->h * cs * 0.5f, cs, 1.0f);
+        draw_slot_item(c, B.ret_slot, cx - (float)sh->w * cs * 0.5f, cy - (float)sh->h * cs * 0.5f, cs, 0.0f);
     }
     if (B.drag >= 0) {
         float px, py, cs;
         drag_geom(&px, &py, &cs);
         shape_shadow(c, B.tray[B.drag].shape, px, py, cs, cs * 0.22f * ease_out(B.lift), 70);
         draw_shape(c, B.tray[B.drag].shape, pa_hex(TINTS[B.tray[B.drag].tint]), px, py, cs, 1.0f);
+        draw_slot_item(c, B.drag, px, py, cs, 0.0f);
     }
 
     draw_callouts(c, sx, sy);
+    draw_flyers(c);
     draw_hud(c);
 
     if (B.phase == 1 && B.phase_t > 1.1f) {
