@@ -31,8 +31,8 @@ grab 08_level_failed    204   3.20   # grey ball reached the cup
 python3 "$shots" render pins "$work/panel" --shots 1.2 --demo 5 --input "0.5:tap:0.729f:39" > /dev/null
 cp "$work/panel/pins_00.png" "$out/09_skins_panel.png"
 
-# motion strip: six frames 0.08 s apart while the pegs scatter the pour
-python3 "$shots" render pins "$work/strip" --shots 2.00,2.08,2.16,2.24,2.32,2.40 --demo 3 > /dev/null
+# motion strip: six frames 0.08 s apart as the full cup overflows and spills
+python3 "$shots" render pins "$work/strip" --shots 2.80,2.88,2.96,3.04,3.12,3.20 --demo 1 > /dev/null
 python3 "$shots" sheet "$out/10_motion_strip.png" "$work"/strip/pins_0*.png --height 1170 > /dev/null
 
 ls "$out"

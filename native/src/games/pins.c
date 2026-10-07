@@ -116,9 +116,9 @@ static const PA_Color BALL_COLS[8] = {
 
 /* 1: one pin, the tutorial */
 static const float LV01[] = {
-    V_, NECK_L, 236,500, 100,410, 100,40, 370,40, 370,410, 304,500, NECK_R, Z_,
-    P_, 98,215, 402,215,
-    B_, 0, 106,95,258,114, 200,
+    V_, NECK_L, 236,500, 85,410, 85,40, 315,40, 315,410, 304,500, NECK_R, Z_,
+    P_, 83,215, 345,215,
+    B_, 0, 91,90,218,119, 200,
     G_, 100, S_, 1, 0, E_
 };
 
@@ -438,6 +438,7 @@ static float g_state_t, g_time, g_goal_t, g_settle_t, g_shake;
 static float g_cup_pulse, g_cup_bounce;
 static float g_tick_cd, g_pop_cd;
 static int   g_pulls;
+static int   g_hint_used;
 static float g_boom_t;
 static float g_kick;          /* blast shake, 0.15 s */        /* a bomb went off: the fail card follows the blast */
 static float g_intro;         /* level-in fade, also gates sounds */
@@ -671,7 +672,7 @@ static void load_level(int level) {
     g_count = 0; g_shown_pct = 0;
     g_state = ST_PLAY; g_state_t = 0; g_fail_reason = FAIL_NONE;
     g_goal_t = -1.0f; g_settle_t = 0; g_shake = 0; g_cup_pulse = g_cup_bounce = 0;
-    g_pulls = 0; g_boom_t = 0; g_kick = 0; g_run_pulls = g_run_greys = 0; g_banked = 0; g_intro = 0; g_hint_t = 0; g_time = 0;
+    g_pulls = 0; g_hint_used = 0; g_boom_t = 0; g_kick = 0; g_run_pulls = g_run_greys = 0; g_banked = 0; g_intro = 0; g_hint_t = 0; g_time = 0;
     g_demo_step = 0; g_demo_wait = 0.8f; g_demo_phase = 0;
     g_hand_x = DW + 80.0f; g_hand_y = DH * 0.75f; g_hand_press = 0; g_tug = 0; g_hand_target = -1;
     presettle(1.4f);
@@ -902,8 +903,24 @@ static void save_progress(int next) {
     pa_save_flush();
 }
 
+/* one report to the hub per finished level: the level reached is the
+   headline, a clean solve (no hint, no wasted pull) earns all three stars */
+static void report_run(int won) {
+    PA_RunReport r;
+    memset(&r, 0, sizeof r);
+    r.won = won;
+    r.level = g_level + 1;
+    r.score = won ? g_level + 1 : g_level;
+    if (won) {
+        r.stars = 1 + (g_hint_used ? 0 : 1) + (g_pulls <= g_nsol ? 1 : 0);
+        r.coins = 10 + r.stars * 5;
+    }
+    pa_meta_report("pins", &r);
+}
+
 static void win(void) {
     g_state = ST_WIN; g_state_t = 0;
+    report_run(1);
     save_progress(g_level + 1);
     bank_stats();
     pa_sfx("win");
@@ -919,6 +936,7 @@ static void win(void) {
 static void fail(int reason) {
     if (g_state != ST_PLAY) return;
     g_state = ST_FAIL; g_state_t = 0; g_fail_reason = reason;
+    report_run(0);
     bank_stats();
     g_shake = g_shake > 0.3f ? g_shake : 0.3f;
     pa_sfx("lose");
@@ -1241,7 +1259,7 @@ static void s_update(float dt, const PA_Input *in) {
             if (in_box(floor_btn(1), in->x, in->y)) { save_progress(g_level + 1); next_level(); return; }
             if (in_box(hud_btn(HUD_HINT), in->x, in->y)) {
                 int h = hint_pin();
-                if (h >= 0) { g_hand_target = h; g_hint_t = 3.6f; pa_sfx("select"); }
+                if (h >= 0) { g_hand_target = h; g_hint_t = 3.6f; g_hint_used = 1; pa_sfx("select"); }
                 return;
             }
             if (in_box(hud_btn(HUD_COLLECTION), in->x, in->y)) { open_panel(PANEL_COLLECTION); return; }
@@ -1478,7 +1496,7 @@ static void draw_ball(PA_Canvas *c, float x, float y, float r, PA_Color col, flo
 /* The bomb: a glossy black sphere with a steel cap, a brown wick and a spark
    that always flickers at its tip, burning hot and fast once lit. */
 static void draw_bomb(PA_Canvas *c, const Ball *b) {
-    float x = sx(b->x), y = sy(b->y), r = b->r * g_s;
+    float x = sx(b->x), y = sy(b->y), r = b->r * g_s * 1.12f;
     float lit = b->fuse > 0 ? 1.0f : 0.0f;
     float pulse = lit * (0.5f + 0.5f * sinf(g_time * 60.0f));
     float fl = 0.5f + 0.5f * sinf(g_time * 23.0f + b->x * 0.3f);
@@ -2093,7 +2111,7 @@ static void s_render(PA_Canvas *c) {
     for (int k = 0; k < g_npin; k++) draw_pin(c, &g_pin[k]);
     draw_particles(c, 0);
     if (g_hand_x < DW + 100.0f && g_state == ST_PLAY)
-        draw_hand(c, sx(g_hand_x), sy(g_hand_y), g_hand_press, 0.87f * (float)c->w / 540.0f);
+        draw_hand(c, sx(g_hand_x), sy(g_hand_y), g_hand_press, (g_level == 0 ? 1.1f : 0.87f) * (float)c->w / 540.0f);
     g_ox -= shx; g_oy -= shy;
 
     if (g_state == ST_PLAY) draw_floor_buttons(c);

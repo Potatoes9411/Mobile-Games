@@ -139,6 +139,7 @@ typedef struct {
     float  chest_t[9], chest_last;
     /* level map */
     float  map_hop;
+    int    run_coins, reported, chest_skin;
 
     /* demo bot */
     int    bot_bounces[MAX_FLOORS];
@@ -149,6 +150,33 @@ typedef struct {
 
 static Helix H;
 static int   g_best, g_coins, g_keys, g_loaded;
+
+/* --------------------------------------------------------------- ball skins
+   Collectibles, each with its own paint and trail. Three are bought with
+   coins on the level map; the rainbow ball is the chest room's best prize. */
+enum { SKIN_CLASSIC, SKIN_EYE, SKIN_MELON, SKIN_SOCCER, SKIN_RAINBOW, SKIN_COUNT };
+static const struct { const char *name; int cost; uint32_t splat, trail; } SKINS[SKIN_COUNT] = {
+    { "CLASSIC", 0,   0,        0        },
+    { "EYEBALL", 150, 0x3FA9FF, 0x3FA9FF },
+    { "MELON",   250, 0xFF6F8E, 0x3FA34D },
+    { "SOCCER",  350, 0xFFFFFF, 0xFFFFFF },
+    { "RAINBOW", -1,  0,        0        },
+};
+static int g_skins = 1, g_skin = SKIN_CLASSIC;
+
+static int cur_skin(void) {
+    /* The boss level dresses the classic ball as an eyeball. */
+    if (g_skin == SKIN_CLASSIC && H.th.boss) return SKIN_EYE;
+    return g_skin;
+}
+static PA_Color rainbow(float t) { return pa_hsl(t, 0.85f, 0.58f); }
+static PA_Color splat_col(int seed) {
+    int s = cur_skin();
+    if (s == SKIN_RAINBOW) return rainbow((float)(seed % 7) / 7.0f);
+    if (s == SKIN_CLASSIC || (s == SKIN_EYE && H.th.boss && g_skin == SKIN_CLASSIC)) return pa_hex(H.th.ball);
+    return pa_hex(SKINS[s].splat);
+}
+
 
 static struct {
     int   w, h;
@@ -285,12 +313,15 @@ static float under_angle(void) { return pa_wrapf(PA_TAU * 0.25f - H.spin, PA_TAU
 static void load_save(void) {
     if (g_loaded) return;
     g_loaded = 1;
-    if (demo()) { g_best = 2460; g_coins = 1240; g_keys = 2; return; }
+    if (demo()) { g_best = 2460; g_coins = 1240; g_keys = 2; g_skins = 1; g_skin = 0; return; }
     g_best = pa_save_get("helix.best", 0);
     g_coins = pa_save_get("helix.coins", 0);
     g_keys = pa_save_get("helix.keys", 0);
     if (g_keys < 0) g_keys = 0;
     if (g_keys > KEYS_FOR_CHESTS) g_keys = KEYS_FOR_CHESTS;
+    g_skins = pa_save_get("helix.skins", 1) | 1;
+    g_skin = pa_save_get("helix.skin", 0);
+    if (g_skin < 0 || g_skin >= SKIN_COUNT || !(g_skins & (1 << g_skin))) g_skin = SKIN_CLASSIC;
 }
 
 static void save_progress(void) {
@@ -298,6 +329,8 @@ static void save_progress(void) {
     pa_save_set("helix.best", g_best);
     pa_save_set("helix.coins", g_coins);
     pa_save_set("helix.keys", g_keys);
+    pa_save_set("helix.skins", g_skins);
+    pa_save_set("helix.skin", g_skin);
     pa_save_set("helix.level", H.level);
     pa_save_flush();
 }
@@ -338,7 +371,11 @@ static void helix_start(void) {
     begin_level(level, 0);
 }
 
-static void helix_stop(void) { save_progress(); }
+static void report_run(int won);
+static void helix_stop(void) {
+    if (H.state == ST_DEAD || H.state == ST_FAIL) report_run(0);
+    save_progress();
+}
 
 /* --------------------------------------------------------------- feedback */
 static Part *new_part(void) {
@@ -448,11 +485,24 @@ static void die(int floor_index) {
     H.state_t = 0.0f;
     H.shake = 1.0f;
     H.death_floor = floor_index;
-    splash(H.floors[floor_index].y * L.spacing, pa_hex(H.th.ball), 14, 1.0f);
+    splash(H.floors[floor_index].y * L.spacing, splat_col((int)(H.time * 97.0f)), 14, 1.0f);
     pa_tone(300, 70, 0.45f, 3, 0.13f);
     pa_noise(0.22f, 0.16f);
     if (H.score > g_best) g_best = H.score;
     save_progress();
+}
+
+static void report_run(int won) {
+    if (H.reported) return;
+    H.reported = 1;
+    PA_RunReport r;
+    memset(&r, 0, sizeof(r));
+    r.score = H.score;
+    r.coins = H.run_coins;
+    r.won = won;
+    r.level = H.level;
+    r.stars = won ? (H.continued ? 2 : 3) : 0;
+    pa_meta_report("helix", &r);
 }
 
 static void win(void) {
@@ -465,6 +515,8 @@ static void win(void) {
     H.win_coins = 20 + H.level * 5;
     H.coins_shown = g_coins;
     g_coins += H.win_coins;
+    H.run_coins += H.win_coins;
+    report_run(1);
     H.coin_hold = H.time + 1.6f;
     H.key_earned = g_keys < KEYS_FOR_CHESTS;
     if (g_keys < KEYS_FOR_CHESTS) g_keys++;
@@ -485,7 +537,7 @@ static void land_bounce(Floor *f) {
     f->splat_a[k] = under_angle() + ((float)((int)(H.time * 53.0f) % 7) - 3.0f) * 0.012f;
     f->splat_t[k] = 0.0f;
     f->splat_seed[k] = (unsigned char)((int)(H.time * 97.0f) & 255);
-    splash(f->y * L.spacing, pa_hex(H.th.ball), 7, 0.7f);
+    splash(f->y * L.spacing, splat_col(f->splat_seed[k]), 7, 0.7f);
     H.combo = 0;
     pa_tone(520.0f + (float)(H.level % 4) * 40.0f, 760.0f, 0.06f, 0, 0.08f);
 }
@@ -617,6 +669,7 @@ static int in_rect(Rect r, float x, float y) {
 }
 
 static void retry(void) {
+    report_run(0);
     begin_level(H.level, 0);
 }
 
@@ -675,6 +728,37 @@ static void enter_chests(void) {
     H.chest_last = -10.0f;
 }
 
+static void skin_slot(int i, float *x, float *y) {
+    *x = L.cx + ((float)i - 2.0f) * 78.0f * L.u;
+    *y = (float)L.h * 0.19f;
+}
+
+/* Tap on the map's skin row: wear an owned skin or buy a locked one. */
+static int skin_picker_tap(float tx, float ty) {
+    for (int i = 0; i < SKIN_COUNT; i++) {
+        float x, y;
+        skin_slot(i, &x, &y);
+        float dx = tx - x, dy = ty - y, r = 36.0f * L.u;
+        if (dx * dx + dy * dy > r * r) continue;
+        if (g_skins & (1 << i)) {
+            g_skin = i;
+            pa_sfx("select");
+        } else if (SKINS[i].cost > 0 && g_coins >= SKINS[i].cost) {
+            g_coins -= SKINS[i].cost;
+            H.coins_shown = g_coins;
+            g_skins |= 1 << i;
+            g_skin = i;
+            pa_sfx("coin");
+            pa_tone(500, 1200, 0.2f, 1, 0.08f);
+        } else {
+            pa_sfx("bad");
+        }
+        save_progress();
+        return 1;
+    }
+    return 0;
+}
+
 static void enter_map(void) {
     H.state = ST_MAP;
     H.state_t = 0.0f;
@@ -698,10 +782,16 @@ static void open_chest(int i) {
     H.chest_last = H.time;
     g_keys--;
     H.coins_shown = H.coins_shown < g_coins ? H.coins_shown : g_coins;
-    g_coins += H.chest_val[i];
-    H.coin_hold = H.time + 0.75f;
     Rect r = chest_cell(i);
-    coin_burst(r.x + r.w * 0.5f, r.y + r.h * 0.5f, H.chest_val[i] >= 100 ? 16 : 9);
+    if (H.chest_val[i] == H.best_prize && !(g_skins & (1 << SKIN_RAINBOW))) {
+        g_skins |= 1 << SKIN_RAINBOW;           /* the best prize is the skin */
+        H.chest_skin = 1;
+        pa_sfx("win");
+    } else {
+        g_coins += H.chest_val[i];
+        H.coin_hold = H.time + 0.75f;
+        coin_burst(r.x + r.w * 0.5f, r.y + r.h * 0.5f, H.chest_val[i] >= 100 ? 16 : 9);
+    }
     pa_tone(300, 900, 0.18f, 2, 0.08f);
     pa_sfx("coin");
     save_progress();
@@ -789,8 +879,16 @@ static void helix_update(float dt, const PA_Input *in) {
     }
     if (H.state == ST_CHEST) { chest_update(dt, in, bot); return; }
     if (H.state == ST_MAP) {
-        int go = in->tapped && H.state_t > 1.0f;
-        if (bot) go = H.state_t > 2.8f;
+        int on_picker = in->tapped && skin_picker_tap(in->x, in->y);
+        int go = in->tapped && !on_picker && H.state_t > 1.0f;
+        if (bot) {
+            go = H.state_t > 2.8f;
+            /* Show the picker being used: wear the newest skin. */
+            if (H.state_t > 1.3f && H.state_t - dt <= 1.3f) {
+                for (int k = SKIN_COUNT - 1; k > 0; k--)
+                    if (g_skins & (1 << k)) { if (g_skin != k) { g_skin = k; pa_sfx("select"); } break; }
+            }
+        }
         if (H.state_t > 0.55f && H.map_hop == 0.0f) { H.map_hop = 0.001f; pa_tone(500, 900, 0.12f, 1, 0.08f); }
         if (H.map_hop > 0.0f && H.map_hop < 1.0f) {
             H.map_hop += dt / 0.6f;
@@ -867,6 +965,7 @@ static void helix_update(float dt, const PA_Input *in) {
                 H.score += gain;
                 pop_score(gain);
                 g_coins += 1;
+                H.run_coins += 1;
                 shatter(f, 34, 0.8f);
                 H.shake = H.shake > 0.25f ? H.shake : 0.25f;
                 pa_tone(380.0f + 90.0f * (float)H.combo, 620.0f + 120.0f * (float)H.combo, 0.10f, 1, 0.08f);
@@ -888,6 +987,7 @@ static void helix_update(float dt, const PA_Input *in) {
                 H.score += gain;
                 pop_score(gain);
                 g_coins += 3;
+                H.run_coins += 3;
                 shatter(f, 52, 1.25f);
                 H.shake = 1.0f;
                 H.passed++;
@@ -1267,7 +1367,7 @@ static void draw_half(PA_Canvas *c, const Floor *f, int idx, float cx, float cy,
         if ((sinf(a) > 0.0f) != near) continue;
         if (kind_at(f, f->splat_a[q]) == SEG_GAP) continue;
         splat_decal(c, cx, cy, a, rm, k, f->splat_seed[q], f->splat_t[q],
-                    pa_alpha(pa_shade(pa_hex(H.th.ball), -0.04f), alpha * 0.95f));
+                    pa_alpha(pa_shade(splat_col(f->splat_seed[q]), -0.04f), alpha * 0.95f));
     }
 }
 
@@ -1369,13 +1469,114 @@ static void pillar(PA_Canvas *c, float cx, float d0, float d1, int shadow_top) {
     }
 }
 
+/* Shading laid over a patterned ball so it still reads as a sphere. */
+static void sphere_shade(PA_Canvas *c, float cx, float cy, float rx, float ry) {
+    PA_Paint sh = pa_radial(cx - rx * 0.35f, cy - ry * 0.4f, rx * 0.05f, rx * 1.45f);
+    pa_stop(&sh, 0.0f, PA_RGBA(255, 255, 255, 120));
+    pa_stop(&sh, 0.45f, PA_RGBA(255, 255, 255, 0));
+    pa_stop(&sh, 0.80f, PA_RGBA(0, 0, 0, 30));
+    pa_stop(&sh, 1.0f, PA_RGBA(0, 0, 0, 90));
+    pa_fill_ellipse_paint(c, cx, cy, rx, ry, &sh);
+    pa_fill_ellipse(c, cx - rx * 0.36f, cy - ry * 0.42f, rx * 0.20f, ry * 0.13f, PA_RGBA(255, 255, 255, 190));
+}
+
+/* Band of a circle between heights y0 and y1 (relative to centre, in ry units). */
+static void ball_band(PA_Canvas *c, float cx, float cy, float rx, float ry, float y0, float y1, PA_Color col) {
+    PA_Vec2 pts[24];
+    int n = 0;
+    for (int i = 0; i <= 10; i++) {
+        float y = pa_lerpf(y0, y1, (float)i / 10.0f);
+        float w = sqrtf(pa_clampf(1.0f - y * y, 0.0f, 1.0f));
+        pts[n].x = cx + w * rx; pts[n].y = cy + y * ry; n++;
+    }
+    for (int i = 10; i >= 0; i--) {
+        float y = pa_lerpf(y0, y1, (float)i / 10.0f);
+        float w = sqrtf(pa_clampf(1.0f - y * y, 0.0f, 1.0f));
+        pts[n].x = cx - w * rx; pts[n].y = cy + y * ry; n++;
+    }
+    pa_fill_poly(c, pts, n, col);
+}
+
+static void pentagon(PA_Canvas *c, float x, float y, float r, float rot, PA_Color col) {
+    PA_Vec2 p[5];
+    for (int i = 0; i < 5; i++) {
+        float a = rot + (float)i / 5.0f * PA_TAU - PA_PI * 0.5f;
+        p[i].x = x + cosf(a) * r; p[i].y = y + sinf(a) * r;
+    }
+    pa_fill_poly(c, p, 5, col);
+}
+
+/** A ball in the given skin. `col` is the classic paint (theme colour). */
+static void skin_ball(PA_Canvas *c, int skin, float cx, float cy, float rx, float ry, PA_Color col, float roll) {
+    switch (skin) {
+    case SKIN_EYE: {
+        PA_Paint bp = pa_radial(cx - rx * 0.3f, cy - ry * 0.4f, rx * 0.1f, rx * 1.3f);
+        pa_stop(&bp, 0.0f, PA_RGB(255, 255, 255));
+        pa_stop(&bp, 0.6f, PA_RGB(236, 238, 244));
+        pa_stop(&bp, 1.0f, PA_RGB(170, 176, 190));
+        pa_fill_ellipse_paint(c, cx, cy, rx, ry, &bp);
+        float ex = cx + rx * 0.18f, ey = cy - ry * 0.05f;
+        pa_fill_ellipse(c, ex, ey, rx * 0.46f, ry * 0.46f, pa_hex(0x2C8FE0));
+        pa_fill_ellipse(c, ex, ey, rx * 0.30f, ry * 0.30f, pa_hex(0x0D4A86));
+        pa_fill_ellipse(c, ex, ey, rx * 0.20f, ry * 0.20f, PA_RGB(10, 12, 20));
+        pa_fill_circle(c, ex - rx * 0.12f, ey - ry * 0.14f, rx * 0.09f, PA_RGB(255, 255, 255));
+    } break;
+    case SKIN_MELON: {
+        PA_Paint bp = pa_radial(cx - rx * 0.3f, cy - ry * 0.4f, rx * 0.1f, rx * 1.3f);
+        pa_stop(&bp, 0.0f, pa_hex(0x8EE07A));
+        pa_stop(&bp, 0.6f, pa_hex(0x3FA34D));
+        pa_stop(&bp, 1.0f, pa_hex(0x22702E));
+        pa_fill_ellipse_paint(c, cx, cy, rx, ry, &bp);
+        /* Dark stripes running pole to pole, turning as it rolls. */
+        for (int i = 0; i < 6; i++) {
+            float a = (float)i / 6.0f * PA_PI + roll;
+            float xs = cosf(a);
+            if (sinf(a) < 0.0f) continue;
+            float w = rx * 0.13f * (0.4f + 0.6f * sinf(a));
+            pa_fill_ellipse(c, cx + xs * rx * 0.82f, cy, w, ry * 0.92f * sqrtf(1.0f - xs * xs * 0.55f), pa_hex(0x1F6E2B));
+        }
+        sphere_shade(c, cx, cy, rx, ry);
+    } break;
+    case SKIN_SOCCER: {
+        PA_Paint bp = pa_radial(cx - rx * 0.3f, cy - ry * 0.4f, rx * 0.1f, rx * 1.3f);
+        pa_stop(&bp, 0.0f, PA_RGB(255, 255, 255));
+        pa_stop(&bp, 0.7f, PA_RGB(236, 238, 242));
+        pa_stop(&bp, 1.0f, PA_RGB(176, 182, 194));
+        pa_fill_ellipse_paint(c, cx, cy, rx, ry, &bp);
+        PA_Color ink = PA_RGB(34, 36, 44);
+        pentagon(c, cx, cy, rx * 0.30f, roll, ink);
+        for (int i = 0; i < 5; i++) {
+            float a = roll + (float)i / 5.0f * PA_TAU - PA_PI * 0.5f;
+            float px = cx + cosf(a) * rx * 0.70f, py = cy + sinf(a) * ry * 0.70f;
+            pa_line(c, cx + cosf(a) * rx * 0.30f, cy + sinf(a) * ry * 0.30f, px, py, rx * 0.06f, ink);
+            pentagon(c, cx + cosf(a) * rx * 0.80f, cy + sinf(a) * ry * 0.80f, rx * 0.17f, a + PA_PI, ink);
+        }
+        sphere_shade(c, cx, cy, rx, ry);
+    } break;
+    case SKIN_RAINBOW: {
+        static const uint32_t RB[6] = { 0xFF4D4D, 0xFF9E2C, 0xFFE03A, 0x4CD964, 0x3FA9FF, 0x9B5CF6 };
+        for (int i = 0; i < 6; i++)
+            ball_band(c, cx, cy, rx, ry, -1.0f + (float)i / 3.0f, -1.0f + (float)(i + 1) / 3.0f + 0.02f, pa_hex(RB[i]));
+        sphere_shade(c, cx, cy, rx, ry);
+    } break;
+    default: {
+        PA_Paint ball = pa_radial(cx - rx * 0.34f, cy - ry * 0.40f, rx * 0.08f, rx * 1.35f);
+        pa_stop(&ball, 0.0f, pa_shade(col, 0.70f));
+        pa_stop(&ball, 0.40f, col);
+        pa_stop(&ball, 1.0f, pa_shade(col, -0.40f));
+        pa_fill_ellipse_paint(c, cx, cy, rx, ry, &ball);
+        pa_fill_ellipse(c, cx - rx * 0.36f, cy - ry * 0.42f, rx * 0.22f, ry * 0.15f, PA_RGBA(255, 255, 255, 200));
+    } break;
+    }
+}
+
 static void draw_ball(PA_Canvas *c, float cx) {
     float d = depth_of(H.ball_y);
     float k = persp_k(d);
     float rm = (L.inner + L.R) * 0.5f * k;
     float base = proj_y(d) + rm * L.squash;
     float br = L.ball_r * k;
-    int boss = H.th.boss;
+    int skin = cur_skin();
     PA_Color col = pa_mix(pa_hex(H.th.ball), pa_hex(0xFF6A00), H.fire_t);
 
     /* Contact shadow on the next surface below. */
@@ -1428,33 +1629,29 @@ static void draw_ball(PA_Canvas *c, float cx) {
         pa_fill_ellipse_paint(c, cx, by, br * 2.6f, br * 2.6f, &glow);
     } else if (H.ball_v > 4.0f && H.state == ST_PLAY) {
         float len = pa_clampf((H.ball_v - 4.0f) * 0.15f, 0.0f, 1.0f) * br * 4.0f;
-        PA_Vec2 tail[3] = { { cx - br * 0.8f, by }, { cx + br * 0.8f, by }, { cx, by - br - len } };
-        PA_Paint tp = pa_linear(0, by, 0, by - br - len);
-        pa_stop(&tp, 0.0f, pa_alpha(col, 0.5f));
-        pa_stop(&tp, 1.0f, pa_alpha(col, 0.0f));
-        pa_fill_poly_paint(c, tail, 3, &tp);
+        if (skin == SKIN_RAINBOW) {
+            /* Rainbow streak: six thin ribbons. */
+            static const uint32_t RB[6] = { 0xFF4D4D, 0xFF9E2C, 0xFFE03A, 0x4CD964, 0x3FA9FF, 0x9B5CF6 };
+            float sw = br * 1.5f / 6.0f, l2 = len * 1.6f + br;
+            for (int i = 0; i < 6; i++) {
+                float x0 = cx - br * 0.75f + (float)i * sw;
+                PA_Paint tp = pa_linear(0, by, 0, by - l2);
+                pa_stop(&tp, 0.0f, pa_alpha(pa_hex(RB[i]), 0.85f));
+                pa_stop(&tp, 1.0f, pa_alpha(pa_hex(RB[i]), 0.0f));
+                pa_fill_rect_paint(c, x0, by - l2, sw + 0.5f, l2, &tp);
+            }
+        } else {
+            PA_Color tc = skin == SKIN_CLASSIC ? col : pa_hex(SKINS[skin].trail);
+            PA_Vec2 tail[3] = { { cx - br * 0.8f, by }, { cx + br * 0.8f, by }, { cx, by - br - len } };
+            PA_Paint tp = pa_linear(0, by, 0, by - br - len);
+            pa_stop(&tp, 0.0f, pa_alpha(tc, 0.55f));
+            pa_stop(&tp, 1.0f, pa_alpha(tc, 0.0f));
+            pa_fill_poly_paint(c, tail, 3, &tp);
+        }
     }
 
-    if (boss && H.fire_t < 0.5f) {
-        /* The boss-level skin: an eyeball rolling its eye at the player. */
-        PA_Paint bp = pa_radial(cx - rx * 0.3f, by - ry * 0.4f, br * 0.1f, br * 1.3f);
-        pa_stop(&bp, 0.0f, PA_RGB(255, 255, 255));
-        pa_stop(&bp, 0.6f, PA_RGB(236, 238, 244));
-        pa_stop(&bp, 1.0f, PA_RGB(170, 176, 190));
-        pa_fill_ellipse_paint(c, cx, by, rx, ry, &bp);
-        float ex = cx + rx * 0.18f, ey = by - ry * 0.05f;
-        pa_fill_ellipse(c, ex, ey, rx * 0.46f, ry * 0.46f, pa_hex(0x2C8FE0));
-        pa_fill_ellipse(c, ex, ey, rx * 0.30f, ry * 0.30f, pa_hex(0x0D4A86));
-        pa_fill_ellipse(c, ex, ey, rx * 0.20f, ry * 0.20f, PA_RGB(10, 12, 20));
-        pa_fill_circle(c, ex - rx * 0.12f, ey - ry * 0.14f, br * 0.09f, PA_RGB(255, 255, 255));
-        return;
-    }
-    PA_Paint ball = pa_radial(cx - rx * 0.34f, by - ry * 0.40f, br * 0.08f, br * 1.35f);
-    pa_stop(&ball, 0.0f, pa_shade(col, 0.70f));
-    pa_stop(&ball, 0.40f, col);
-    pa_stop(&ball, 1.0f, pa_shade(col, -0.40f));
-    pa_fill_ellipse_paint(c, cx, by, rx, ry, &ball);
-    pa_fill_ellipse(c, cx - rx * 0.36f, by - ry * 0.42f, rx * 0.22f, ry * 0.15f, PA_RGBA(255, 255, 255, 200));
+    /* On fire the skin glows through as the fireball. */
+    skin_ball(c, H.fire_t > 0.5f ? SKIN_CLASSIC : skin, cx, by, rx, ry, col, H.spin * 0.8f);
 }
 
 static void draw_parts(PA_Canvas *c, float cx, int screen_space) {
@@ -2072,10 +2269,16 @@ static void chest_screen(PA_Canvas *c) {
     pa_fill_poly(c, star, 24, PA_RGBA(255, 110, 30, (int)(a * 230)));
     chest_icon(c, bx, by, 92.0f * u, 1, 0.0f);
     ribbon(c, by + 70.0f * u, 210.0f * u, 46.0f * u, pa_hex(0xFF6A1F), "BEST PRIZE", 24.0f * u);
-    coin_icon(c, bx + 108.0f * u, by - 22.0f * u, 14.0f * u);
-    snprintf(buf, sizeof(buf), "%d", H.best_prize);
-    pa_text_bold(c, buf, bx + 126.0f * u, by - 33.0f * u, 22.0f * u, PA_RGB(255, 255, 255), PA_RGB(20, 20, 30),
-                 PA_ALIGN_LEFT, 1.0f * u, 0.9f);
+    if (!(g_skins & (1 << SKIN_RAINBOW)) || H.chest_skin) {
+        skin_ball(c, SKIN_RAINBOW, bx + 112.0f * u, by - 20.0f * u, 18.0f * u, 18.0f * u, 0, 0.0f);
+        pa_text_bold(c, "SKIN", bx + 136.0f * u, by - 31.0f * u, 20.0f * u, PA_RGB(255, 255, 255), PA_RGB(20, 20, 30),
+                     PA_ALIGN_LEFT, 1.0f * u, 0.9f);
+    } else {
+        coin_icon(c, bx + 108.0f * u, by - 22.0f * u, 14.0f * u);
+        snprintf(buf, sizeof(buf), "%d", H.best_prize);
+        pa_text_bold(c, buf, bx + 126.0f * u, by - 33.0f * u, 22.0f * u, PA_RGB(255, 255, 255), PA_RGB(20, 20, 30),
+                     PA_ALIGN_LEFT, 1.0f * u, 0.9f);
+    }
 
     /* The card of nine. */
     Rect c0 = chest_cell(0), c8 = chest_cell(8);
@@ -2101,7 +2304,11 @@ static void chest_screen(PA_Canvas *c) {
             chest_icon(c, x, y - 8.0f * u, 62.0f * u, best, o * 3.0f);
             float tp = elastic(pa_clamp01(o * 2.5f - 0.2f));
             snprintf(buf, sizeof(buf), "%d", H.chest_val[i]);
-            if (tp > 0.05f)
+            if (best && H.chest_skin && tp > 0.05f) {
+                skin_ball(c, SKIN_RAINBOW, x, y - 30.0f * u * tp, 22.0f * u * tp, 22.0f * u * tp, 0, 0.0f);
+                pa_text_bold(c, "SKIN!", x, y + 20.0f * u, 22.0f * u * tp, PA_RGB(255, 255, 255), pa_hex(0xB0700A),
+                             PA_ALIGN_CENTER, 1.0f * u, 1.0f);
+            } else if (tp > 0.05f)
                 pa_text_bold(c, buf, x, y + 20.0f * u, 26.0f * u * tp, PA_RGB(255, 255, 255), pa_hex(0x0B5C86),
                              PA_ALIGN_CENTER, 1.0f * u, 1.0f);
         } else {
@@ -2132,7 +2339,7 @@ static void chest_screen(PA_Canvas *c) {
    the ball wearing a "YOU" tag hopping onto the next one. */
 static void map_disc_pos(int slot, float *x, float *y) {
     float h = (float)L.h;
-    *y = h * 0.78f - (float)slot * h * 0.135f;
+    *y = h * 0.80f - (float)slot * h * 0.125f;
     *x = L.cx + ((slot & 1) ? 0.16f : -0.14f) * 540.0f * L.u;
 }
 
@@ -2159,7 +2366,7 @@ static void map_screen(PA_Canvas *c) {
     }
     /* A boat and an ice floe for scale. */
     {
-        float x = w * 0.20f, y = h * 0.24f;
+        float x = w * 0.86f, y = h * 0.80f;
         PA_Vec2 hull[4] = { { x - 70 * u, y }, { x + 80 * u, y }, { x + 60 * u, y + 34 * u }, { x - 56 * u, y + 34 * u } };
         pa_fill_ellipse(c, x, y + 40 * u, 90 * u, 14 * u, PA_RGBA(255, 255, 255, 90));
         pa_fill_poly(c, hull, 4, pa_hex(0xF4F7FA));
@@ -2193,12 +2400,12 @@ static void map_screen(PA_Canvas *c) {
         Theme th = boss ? BOSS_THEME : THEMES[(lvl - 1 - (lvl - 1) / 5) % THEME_COUNT];
         PA_Color col = boss ? pa_hex(HAZARD) : pa_hex(th.plate);
         float rx = 72.0f * u, ry = 30.0f * u, thick = 20.0f * u;
-        pa_fill_ellipse(c, x, y + 110.0f * u, 42.0f * u, 12.0f * u, PA_RGBA(255, 255, 255, 110));
+        pa_fill_ellipse(c, x, y + 96.0f * u, 42.0f * u, 12.0f * u, PA_RGBA(255, 255, 255, 110));
         PA_Paint pp = pa_linear(x - 26.0f * u, 0, x + 26.0f * u, 0);
         pa_stop(&pp, 0.0f, pa_hex(0xC9D2DC));
         pa_stop(&pp, 0.35f, pa_hex(0xFFFFFF));
         pa_stop(&pp, 1.0f, pa_hex(0xB5BFCB));
-        pa_fill_rect_paint(c, x - 26.0f * u, y, 52.0f * u, 110.0f * u, &pp);
+        pa_fill_rect_paint(c, x - 26.0f * u, y, 52.0f * u, 96.0f * u, &pp);
         pa_fill_ellipse(c, x, y + thick, rx, ry, pa_shade(col, -0.38f));
         pa_fill_rect(c, x - rx, y, rx * 2.0f, thick, pa_shade(col, -0.30f));
         PA_Paint tp = pa_linear(0, y - ry, 0, y + ry);
@@ -2250,12 +2457,7 @@ static void map_screen(PA_Canvas *c) {
         if (since > 0.0f) sq = expf(-since * 8.0f) * cosf(since * 30.0f) * 0.25f;
     }
     pa_shadow(c, gx, gy, br, br * 0.35f, 0.4f);
-    PA_Color bc = pa_hex(H.th.ball);
-    PA_Paint bp = pa_radial(bx - br * 0.35f, by - br * 1.4f, 2.0f, br * 1.4f);
-    pa_stop(&bp, 0.0f, pa_shade(bc, 0.6f));
-    pa_stop(&bp, 0.5f, bc);
-    pa_stop(&bp, 1.0f, pa_shade(bc, -0.4f));
-    pa_fill_ellipse_paint(c, bx, by - br * (1.0f - sq), br * (1.0f + sq), br * (1.0f - sq), &bp);
+    skin_ball(c, g_skin, bx, by - br * (1.0f - sq), br * (1.0f + sq), br * (1.0f - sq), pa_hex(H.th.ball), t * 3.0f);
     float tagy = by - br * 2.0f - 46.0f * u + sinf(H.time * 4.0f) * 4.0f * u;
     pa_round_rect(c, bx - 42.0f * u, tagy + 3.0f * u, 84.0f * u, 38.0f * u, 19.0f * u, PA_RGBA(0, 0, 0, 60));
     pa_round_rect(c, bx - 42.0f * u, tagy, 84.0f * u, 38.0f * u, 19.0f * u, PA_RGB(255, 255, 255));
@@ -2273,6 +2475,43 @@ static void map_screen(PA_Canvas *c) {
         float bs = pa_smooth(pa_clamp01((H.state_t - 0.9f) * 3.0f));
         rr.y += (1.0f - bs) * 60.0f * u;
         button(c, rr, pa_hex(0x2FC85A), "PLAY", 36.0f * u, 0);
+    }
+
+    /* Skin row: wear, buy with coins, or win the rainbow from a chest. */
+    {
+        float x0s, ys;
+        skin_slot(0, &x0s, &ys);
+        float pw = 78.0f * u * 5.0f + 20.0f * u;
+        pa_round_rect(c, L.cx - pw * 0.5f, ys - 44.0f * u, pw, 104.0f * u, 26.0f * u, PA_RGBA(10, 60, 100, 70));
+        for (int i = 0; i < SKIN_COUNT; i++) {
+            float x, y;
+            skin_slot(i, &x, &y);
+            int own = (g_skins >> i) & 1, sel = i == g_skin;
+            if (sel) pa_fill_circle(c, x, y, 35.0f * u, pa_hex(0xFFC21C));
+            pa_fill_circle(c, x, y, 31.0f * u, own ? PA_RGB(255, 255, 255) : PA_RGBA(20, 40, 70, 150));
+            skin_ball(c, i, x, y, 21.0f * u, 21.0f * u, pa_hex(H.th.ball), 0.4f);
+            char pb[16];
+            if (!own) {
+                pa_fill_circle(c, x, y, 31.0f * u, PA_RGBA(20, 30, 50, 50));
+                /* Padlock badge, so the skin itself stays visible. */
+                float lx = x + 20.0f * u, ly = y + 16.0f * u;
+                pa_fill_circle(c, lx, ly, 13.0f * u, pa_hex(0x24324A));
+                pa_stroke_circle(c, lx, ly - 4.0f * u, 4.5f * u, 2.2f * u, PA_RGB(255, 255, 255));
+                pa_round_rect(c, lx - 6.5f * u, ly - 2.0f * u, 13.0f * u, 10.0f * u, 2.0f * u, PA_RGB(255, 255, 255));
+                if (SKINS[i].cost > 0) {
+                    snprintf(pb, sizeof(pb), "%d", SKINS[i].cost);
+                    coin_icon(c, x - 18.0f * u, y + 44.0f * u, 8.0f * u);
+                    pa_text_bold(c, pb, x - 8.0f * u, y + 37.0f * u, 15.0f * u,
+                                 g_coins >= SKINS[i].cost ? PA_RGB(255, 255, 255) : PA_RGB(255, 170, 170),
+                                 PA_RGBA(10, 30, 60, 220), PA_ALIGN_LEFT, 0.5f * u, 0.8f);
+                } else {
+                    key_icon(c, x, y + 45.0f * u, 26.0f * u, pa_hex(0xFFC21C));
+                }
+            } else if (sel) {
+                pa_text_bold(c, SKINS[i].name, x, y + 37.0f * u, 13.0f * u, PA_RGB(255, 255, 255),
+                             PA_RGBA(10, 30, 60, 220), PA_ALIGN_CENTER, 0.5f * u, 0.8f);
+            }
+        }
     }
     meta_header(c);
 }
