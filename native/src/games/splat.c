@@ -26,12 +26,13 @@
 #define MAX_H 24
 #define CELLS (MAX_W * MAX_H)
 #define MAX_DROPS 900
-#define CONFETTI 220
+#define CONFETTI 320
+#define MAX_SPARKS 120
 #define MAX_PROPS 8
 
 /* Camera and board geometry, in tiles. */
 #define TILT    0.42f
-#define WALL_H  0.6f
+#define WALL_H  0.45f
 #define SLAB_T  0.32f
 #define BALL_R  0.37f
 
@@ -43,7 +44,7 @@ enum { PROP_TUBE, PROP_SHARD, PROP_LOG, PROP_BUSH, PROP_ORB, PROP_RING };
 
 typedef struct {
     uint32_t bg;
-    int      ground;          /* 1: the maze is cut straight into the backdrop */
+    uint32_t rim;             /* contrasting lip around the slab */
     uint32_t slab, slab_front;
     uint32_t well, well_face; /* unpainted corridor floor and its walls */
     uint32_t ink;             /* HUD outline */
@@ -52,20 +53,21 @@ typedef struct {
     uint32_t paints[4];
 } Theme;
 
-/* Five worlds, five levels each, measured off the plates: periwinkle with cyan
-   tubes and a white slab; mustard ground with orange logs; an ice field of
-   low-poly shards under a blue slab; a lawn with round bushes; and a lavender
-   dusk with glossy orbs and rings. */
+/* Five worlds, five levels each, measured off the plates. Every one is a
+   raised slab with a contrasting rim: periwinkle with cyan tubes and a white
+   slab; mustard with orange logs and a white slab; an ice field of low-poly
+   shards under a blue slab; a lawn with round bushes under a blue slab; and
+   a lavender dusk with glossy orbs and rings. */
 static const Theme THEMES[] = {
-    { 0x6A9CF4, 0, 0xFFFFFF, 0xD3DDEB, 0xA9D3DC, 0x7FA2B0, 0x1A237E,
+    { 0x6A9CF4, 0x3949D8, 0xFFFFFF, 0xD3DDEB, 0xA9D3DC, 0x7FA2B0, 0x1A237E,
       0x4FDCFF, 0x26AEEA, PROP_TUBE, { 0x7A1CF2, 0xFF9F00, 0x00C96B, 0xFF2D87 } },
-    { 0xE8DE55, 1, 0xE8DE55, 0xC9BE3A, 0xACD8E0, 0x6F909C, 0x3B3B3B,
+    { 0xE8DE55, 0xFF8A1F, 0xFFFFFF, 0xE6E0C8, 0xACD8E0, 0x6F909C, 0x3B3B3B,
       0xFFB347, 0xF5781E, PROP_LOG,  { 0xFF2A78, 0xE81FE8, 0x1F5BFF, 0x8A2BE2 } },
-    { 0xEDF2FA, 0, 0x0AA2FF, 0x0679C4, 0x9DBACA, 0x6F8B9C, 0x4A4E63,
+    { 0xEDF2FA, 0x0A4FA8, 0x0AA2FF, 0x0770B8, 0x9DBACA, 0x6F8B9C, 0x4A4E63,
       0xF8FAFE, 0xBDC4E3, PROP_SHARD, { 0xD8246E, 0xFF9800, 0x7C2BF0, 0x00B860 } },
-    { 0x14DE33, 1, 0x14DE33, 0x0FB82A, 0xA9D8E1, 0x6F98A4, 0x174D1F,
-      0x27B84A, 0x168A30, PROP_BUSH, { 0xFF2A78, 0xFFA000, 0x8B1FFF, 0x1F5BFF } },
-    { 0x9B87FF, 0, 0xFFFFFF, 0xDAD3F7, 0xC8C2EF, 0x9890CC, 0x2D1F6B,
+    { 0x14DE33, 0xFFFFFF, 0x0AA0F5, 0x0770B8, 0xA4C6D8, 0x6A8EA3, 0x174D1F,
+      0x27B84A, 0x168A30, PROP_BUSH, { 0xFF2A78, 0xFFA000, 0xE81FE8, 0x8B1FFF } },
+    { 0x9B87FF, 0xFF6FB5, 0xFFFFFF, 0xDAD3F7, 0xC8C2EF, 0x9890CC, 0x2D1F6B,
       0xFF7BC0, 0xFFD54F, PROP_ORB,  { 0x00BFA5, 0xFF6D00, 0xE91E63, 0x2962FF } },
 };
 #define THEME_COUNT ((int)(sizeof(THEMES) / sizeof(THEMES[0])))
@@ -77,6 +79,7 @@ static const uint32_t CONFETTI_COLS[6] = { 0xFF1744, 0x00E676, 0xFFEA00, 0xD500F
 typedef struct { float u, v, h, vu, vv, vh, age, life, size; int stuck; PA_Color col; } Drop;
 typedef struct { float x, y, vx, vy, rot, vr, flip, vflip, size; PA_Color col; } Bit;
 typedef struct { int kind; float x, y, s, ang, sweep, phase; } Prop;
+typedef struct { float u, v, age, life, size; } Spark;
 
 typedef struct {
     int   level, theme;
@@ -106,6 +109,8 @@ typedef struct {
     Drop  drops[MAX_DROPS];
     int   drop_next;
     Bit   bits[CONFETTI];
+    Spark sparks[MAX_SPARKS];
+    int   spark_next;
     Prop  props[MAX_PROPS];
     int   nprops;
     PA_Rng rng;
@@ -235,131 +240,143 @@ static int compute_par(void) {
 }
 
 /* ------------------------------------------------------------ generation */
-static void level_dims(int index, int *iw, int *ih, float *density) {
-    /* Interior sizes. Even the first board is a real 7x9 maze; by the second
-       world they are as dense as the reference's late boards. */
-    static const int TW[] = { 7, 7, 9, 9, 9, 9, 11, 11, 11, 11, 11, 11, 11, 13, 13 };
-    static const int TH[] = { 9, 11, 13, 13, 15, 15, 15, 17, 17, 19, 19, 19, 21, 21, 21 };
+/*
+ * Boards are built on a lattice: corridors run only along odd rows and odd
+ * columns, so every corridor is exactly one tile wide and every wall is a
+ * straight run or a clean rectangular block between corridors - the look of
+ * the reference boards, not cave noise. Tiles at (odd, odd) are junction
+ * nodes, tiles between two nodes are the links, and tiles at (even, even) are
+ * always wall.
+ *
+ * The carver rolls a virtual ball node to node and opens each roll, locking
+ * the link past every stop as a wall, so its own sequence of rolls always
+ * solves the board. Links are then opened one at a time (with their mirror
+ * image on most boards, which gives them a deliberate, symbol-like symmetry),
+ * each kept only if the board stays fair. Openings that would leave a lone
+ * one-tile wall island are refused past two per board.
+ */
+static void level_dims(int index, int *W, int *H, float *density) {
+    /* Whole-grid sizes including the rim wall: 9 to 13 columns. */
+    static const int TW[] = { 9, 9, 11, 11, 11, 11, 11, 13, 13, 13, 11, 13, 13, 13, 13 };
+    static const int TH[] = { 11, 13, 13, 15, 15, 17, 17, 17, 19, 19, 19, 19, 21, 21, 21 };
     if (index < 15) {
-        *iw = TW[index]; *ih = TH[index];
+        *W = TW[index]; *H = TH[index];
     } else {
         PA_Rng r;
         pa_rng_seed(&r, (uint32_t)index * 131u + 7u);
-        *iw = 9 + 2 * pa_rng_int(&r, 0, 2);
-        *ih = 17 + 2 * pa_rng_int(&r, 0, 2);
+        *W = 11 + 2 * pa_rng_int(&r, 0, 1);
+        *H = 17 + 2 * pa_rng_int(&r, 0, 2);
     }
-    float t = (float)(index < 12 ? index : 12) / 12.0f;
-    *density = 0.60f + 0.08f * t;
+    float t = (float)(index < 10 ? index : 10) / 10.0f;
+    *density = 0.70f + 0.12f * t;
 }
 
-static int carve_level(PA_Rng *r, int W, int H, float density, int *sx, int *sy) {
+static int is_island(int x, int y) {
+    if (x < 1 || y < 1 || x >= S.w - 1 || y >= S.h - 1 || walkable(x, y)) return 0;
+    return walkable(x + 1, y) && walkable(x - 1, y) && walkable(x, y + 1) && walkable(x, y - 1);
+}
+
+static int count_islands(void) {
+    int n = 0;
+    for (int y = 2; y < S.h - 1; y += 2)
+        for (int x = 2; x < S.w - 1; x += 2) n += is_island(x, y);
+    return n;
+}
+
+static int carve_lattice(PA_Rng *r, int W, int H, int *sx, int *sy) {
     unsigned char lock[MAX_H][MAX_W];
     memset(lock, 0, sizeof(lock));
     memset(S.grid, 0, sizeof(S.grid));
     S.w = W; S.h = H;
     for (int y = 0; y < H; y++) { memset(S.grid[y], '#', (size_t)W); S.grid[y][W] = 0; }
-
-    int x = pa_rng_int(r, 1, W - 2), y = pa_rng_int(r, 1, H - 2);
+    int nx = (W - 1) / 2, ny = (H - 1) / 2;
+    int x = 1 + 2 * pa_rng_int(r, 0, nx - 1), y = 1 + 2 * pa_rng_int(r, 0, ny - 1);
     *sx = x; *sy = y;
     S.grid[y][x] = '.';
-    int carved = 1, target = (int)((float)((W - 2) * (H - 2)) * density);
-    int last = -1, fails = 0;
-    while (carved < target && fails < 900) {
+    int nodes = 1, target = (nx * ny * 3) / 4, last = -1, fails = 0;
+    while (nodes < target && fails < 900) {
         int d = pa_rng_int(r, 0, 3);
-        if (last >= 0 && (d ^ 1) == last && pa_rng_chance(r, 0.85f)) { fails++; continue; }
-        if (last >= 0 && d == last) { fails++; continue; }
-        int span = (DXS[d] ? W : H) - 3;
-        if (span < 1) span = 1;
-        /* Long runs read as Roller Splat corridors; short ones make knots. */
-        int L = pa_rng_chance(r, 0.6f) ? pa_rng_int(r, span / 2 > 1 ? span / 2 : 1, span)
-                                       : pa_rng_int(r, 1, span);
-        int ok = 1, fresh = 0;
+        if (last >= 0 && ((d ^ 1) == last || d == last)) { fails++; continue; }
+        int span = DXS[d] ? nx - 1 : ny - 1;
+        int k = pa_rng_chance(r, 0.6f) ? pa_rng_int(r, (span + 1) / 2, span) : pa_rng_int(r, 1, span);
+        int L = 2 * k, ok = 1, fresh = 0;
         for (int i = 1; i <= L; i++) {
             int cx = x + DXS[d] * i, cy = y + DYS[d] * i;
             if (cx < 1 || cy < 1 || cx > W - 2 || cy > H - 2 || lock[cy][cx]) { ok = 0; break; }
-            if (S.grid[cy][cx] == '#') fresh++;
+            if ((i & 1) == 0 && S.grid[cy][cx] == '#') fresh++;
         }
         if (!ok) { fails++; continue; }
-        int nx = x + DXS[d] * (L + 1), ny = y + DYS[d] * (L + 1);
-        int border = nx < 1 || ny < 1 || nx > W - 2 || ny > H - 2;
-        if (!border && S.grid[ny][nx] != '#') { fails++; continue; }
+        int ex = x + DXS[d] * (L + 1), ey = y + DYS[d] * (L + 1);
+        int border = ex < 1 || ey < 1 || ex > W - 2 || ey > H - 2;
+        if (!border && S.grid[ey][ex] != '#') { fails++; continue; }
         if (fresh == 0 && !pa_rng_chance(r, 0.3f)) { fails++; continue; }
         for (int i = 1; i <= L; i++) S.grid[y + DYS[d] * i][x + DXS[d] * i] = '.';
-        if (!border) lock[ny][nx] = 1;
+        if (!border) lock[ey][ex] = 1;
         x += DXS[d] * L; y += DYS[d] * L;
         last = d;
-        carved += fresh;
+        nodes += fresh;
     }
-    return carved >= target;
+    return nodes >= target / 2;
+}
+
+/* Open link (lx, ly) and any wall node at its ends; returns how many tiles. */
+static int open_link(int lx, int ly, int undo[][2]) {
+    int n = 0;
+    int vert = (lx & 1);                /* odd x, even y: joins the nodes above and below */
+    int cells[3][2] = { { lx, ly },
+                        { vert ? lx : lx - 1, vert ? ly - 1 : ly },
+                        { vert ? lx : lx + 1, vert ? ly + 1 : ly } };
+    for (int i = 0; i < 3; i++) {
+        int cx = cells[i][0], cy = cells[i][1];
+        if (S.grid[cy][cx] == '#') { S.grid[cy][cx] = '.'; undo[n][0] = cx; undo[n][1] = cy; n++; }
+    }
+    return n;
 }
 
 static int generate_level(int index, int *sx, int *sy) {
-    int iw, ih;
+    int W, H;
     float density;
-    level_dims(index, &iw, &ih, &density);
-    int W = iw + 2, H = ih + 2;
+    level_dims(index, &W, &H, &density);
     PA_Rng r;
     pa_rng_seed(&r, (uint32_t)index * 7919u + 13u);
+    int nx = (W - 1) / 2, ny = (H - 1) / 2;
+    int lattice = nx * ny + (nx - 1) * ny + nx * (ny - 1);
     for (int attempt = 0; attempt < 600; attempt++) {
-        if (!carve_level(&r, W, H, density * 0.72f, sx, sy)) continue;
+        if (!carve_lattice(&r, W, H, sx, sy)) continue;
         if (!level_is_fair(*sx, *sy)) continue;
 
-        /* Thin the walls: open wall tiles next to the corridors one at a time,
-           keeping each only if the board stays fair. This turns the carver's
-           thick blocks into the single-tile islands and short spurs the
-           reference boards are made of. Fully open 2x2 rooms are mostly
-           refused, so corridors stay corridors. */
-        {
-            static int cand[CELLS];
-            int nc = 0, open = 0, target = (int)((float)((W - 2) * (H - 2)) * density);
-            for (int yy = 1; yy < H - 1; yy++)
-                for (int xx = 1; xx < W - 1; xx++) {
-                    if (S.grid[yy][xx] == '.') open++;
-                    else cand[nc++] = yy * MAX_W + xx;
-                }
-            for (int i = nc - 1; i > 0; i--) {
-                int j = pa_rng_int(&r, 0, i), t = cand[i];
-                cand[i] = cand[j]; cand[j] = t;
+        static int cand[CELLS];
+        int nc = 0, open = 0;
+        for (int yy = 1; yy < H - 1; yy++)
+            for (int xx = 1; xx < W - 1; xx++) {
+                if (S.grid[yy][xx] == '.') open++;
+                else if (((xx ^ yy) & 1) == 1) cand[nc++] = yy * MAX_W + xx;   /* a link */
             }
-            for (int i = 0; i < nc && open < target; i++) {
-                int xx = cand[i] % MAX_W, yy = cand[i] / MAX_W;
-                if (!walkable(xx + 1, yy) && !walkable(xx - 1, yy) &&
-                    !walkable(xx, yy + 1) && !walkable(xx, yy - 1)) continue;
-                S.grid[yy][xx] = '.';
-                int room = 0;
-                for (int oy = -1; oy <= 0; oy++)
-                    for (int ox = -1; ox <= 0; ox++)
-                        if (walkable(xx + ox, yy + oy) && walkable(xx + ox + 1, yy + oy) &&
-                            walkable(xx + ox, yy + oy + 1) && walkable(xx + ox + 1, yy + oy + 1)) room = 1;
-                if ((room && pa_rng_chance(&r, 0.9f)) || !level_is_fair(*sx, *sy)) {
-                    S.grid[yy][xx] = '#';
-                    continue;
-                }
-                open++;
+        for (int i = nc - 1; i > 0; i--) {
+            int j = pa_rng_int(&r, 0, i), t = cand[i];
+            cand[i] = cand[j]; cand[j] = t;
+        }
+        int target = (int)((float)lattice * density);
+        int mirror = (index % 3) != 2;
+        for (int i = 0; i < nc && open < target; i++) {
+            int lx = cand[i] % MAX_W, ly = cand[i] / MAX_W;
+            if (S.grid[ly][lx] != '#') continue;
+            int undo[6][2], n = open_link(lx, ly, undo);
+            int mx = W - 1 - lx;
+            if (mirror && mx != lx && S.grid[ly][mx] == '#') n += open_link(mx, ly, undo + n);
+            if (count_islands() > 2 || !level_is_fair(*sx, *sy)) {
+                for (int k = 0; k < n; k++) S.grid[undo[k][1]][undo[k][0]] = '#';
+                continue;
             }
+            open += n;
         }
-
-        /* Crop to the carved area plus a one-tile wall border, and only keep
-           boards that fill most of the size asked for. */
-        int x0 = W, y0 = H, x1 = 0, y1 = 0;
-        for (int yy = 0; yy < H; yy++)
-            for (int xx = 0; xx < W; xx++)
-                if (S.grid[yy][xx] == '.') {
-                    if (xx < x0) x0 = xx;
-                    if (xx > x1) x1 = xx;
-                    if (yy < y0) y0 = yy;
-                    if (yy > y1) y1 = yy;
-                }
-        if (x1 - x0 + 1 < iw - 1 || y1 - y0 + 1 < ih - 1) continue;
-        x0--; y0--; x1++; y1++;
-        int cw = x1 - x0 + 1, chh = y1 - y0 + 1;
-        for (int yy = 0; yy < chh; yy++) {
-            memmove(S.grid[yy], S.grid[yy + y0] + x0, (size_t)cw);
-            S.grid[yy][cw] = 0;
-        }
-        for (int yy = chh; yy < MAX_H; yy++) memset(S.grid[yy], 0, MAX_W + 1);
-        S.w = cw; S.h = chh;
-        *sx -= x0; *sy -= y0;
+        /* The board must use its whole frame: an all-wall outer row or
+           column of nodes reads as a mistake. */
+        int ux0 = 0, ux1 = 0, uy0 = 0, uy1 = 0;
+        for (int k = 1; k < H - 1; k++) { ux0 |= walkable(1, k); ux1 |= walkable(W - 2, k); }
+        for (int k = 1; k < W - 1; k++) { uy0 |= walkable(k, 1); uy1 |= walkable(k, H - 2); }
+        if (!(ux0 && ux1 && uy0 && uy1)) continue;
+        if (open < (int)((float)lattice * (density - 0.12f))) continue;
         S.grid[*sy][*sx] = 'o';
         return 1;
     }
@@ -468,6 +485,7 @@ static void load_level(int index) {
     S.intro_t = 0.0f; S.idle_t = 0.0f;
     S.note_i = 0;
     for (int i = 0; i < MAX_DROPS; i++) S.drops[i].life = 0.0f;
+    for (int i = 0; i < MAX_SPARKS; i++) S.sparks[i].life = 0.0f;
     S.par = compute_par();
     build_props();
 }
@@ -521,6 +539,20 @@ static void spatter(float u, float v, int n) {
     }
 }
 
+/** Glints scattered over the last three tiles behind the ball. */
+static void sparkle(int n) {
+    for (int i = 0; i < n; i++) {
+        Spark *k = &S.sparks[S.spark_next];
+        S.spark_next = (S.spark_next + 1) % MAX_SPARKS;
+        float back = pa_rng_range(&S.rng, 0.1f, 3.0f), side = pa_rng_range(&S.rng, -0.38f, 0.38f);
+        k->u = S.bx + 0.5f - (float)S.dx * back + (float)-S.dy * side;
+        k->v = S.by + 0.5f - (float)S.dy * back + (float)S.dx * side;
+        k->age = 0.0f;
+        k->life = pa_rng_range(&S.rng, 0.25f, 0.4f);
+        k->size = pa_rng_range(&S.rng, 0.10f, 0.22f);
+    }
+}
+
 /** A burst against the wall the ball stopped on, or all around it. */
 static void splash(float u, float v, int n, float speed, int radial) {
     PA_Color paint = paint_col();
@@ -569,26 +601,33 @@ static void burst_confetti(void) {
     float aspect = S.view_h / (S.view_w > 1.0f ? S.view_w : 1.0f);
     for (int i = 0; i < CONFETTI; i++) {
         Bit *b = &S.bits[i];
-        if (i < CONFETTI / 2) {
+        int group = i % 3;
+        if (group == 0) {
             /* Blown out from behind the badge. */
-            float a = pa_rng_range(&S.rng, 0.0f, PA_TAU), sp = pa_rng_range(&S.rng, 0.25f, 1.25f);
-            b->x = 0.5f + pa_rng_range(&S.rng, -0.15f, 0.15f);
-            b->y = aspect * 0.22f + pa_rng_range(&S.rng, -0.06f, 0.06f);
+            float a = pa_rng_range(&S.rng, 0.0f, PA_TAU), sp = pa_rng_range(&S.rng, 0.3f, 1.3f);
+            b->x = 0.5f + pa_rng_range(&S.rng, -0.3f, 0.3f);
+            b->y = aspect * 0.2f + pa_rng_range(&S.rng, -0.06f, 0.06f);
             b->vx = cosf(a) * sp;
-            b->vy = sinf(a) * sp - 0.45f;
+            b->vy = sinf(a) * sp - 0.35f;
+        } else if (group == 1) {
+            /* Blown up and out from the finished board. */
+            float a = pa_rng_range(&S.rng, PA_PI * 1.05f, PA_PI * 1.95f), sp = pa_rng_range(&S.rng, 0.5f, 1.6f);
+            b->x = 0.5f + pa_rng_range(&S.rng, -0.25f, 0.25f);
+            b->y = aspect * pa_rng_range(&S.rng, 0.45f, 0.75f);
+            b->vx = cosf(a) * sp * 0.7f;
+            b->vy = sinf(a) * sp;
         } else {
-            /* Raining in from above the screen. */
+            /* A curtain already falling over the whole screen height. */
             b->x = pa_rng_range(&S.rng, -0.05f, 1.05f);
-            b->y = pa_rng_range(&S.rng, -0.6f, -0.02f);
-            b->vx = pa_rng_range(&S.rng, -0.12f, 0.12f);
-            b->vy = pa_rng_range(&S.rng, 0.1f, 0.5f);
+            b->y = aspect * pa_rng_range(&S.rng, -0.35f, 0.95f);
+            b->vx = pa_rng_range(&S.rng, -0.1f, 0.1f);
+            b->vy = pa_rng_range(&S.rng, 0.05f, 0.3f);
         }
         b->rot = pa_rng_range(&S.rng, 0.0f, PA_TAU);
         b->vr = pa_rng_range(&S.rng, -7.0f, 7.0f);
         b->flip = pa_rng_range(&S.rng, 0.0f, PA_TAU);
         b->vflip = pa_rng_range(&S.rng, 4.0f, 11.0f);
-        float sz = pa_rng_next(&S.rng);
-        b->size = 0.012f + sz * sz * 0.036f;
+        b->size = pa_rng_range(&S.rng, 0.012f, 0.026f);
         b->col = pa_hex(CONFETTI_COLS[i % 6]);
     }
 }
@@ -660,6 +699,8 @@ static void splat_update(float dt, const PA_Input *in) {
         for (int x = 0; x < S.w; x++)
             if (S.age[y][x] < 50.0f) S.age[y][x] += dt;
     update_drops(dt);
+    for (int i = 0; i < MAX_SPARKS; i++)
+        if (S.sparks[i].life > 0.0f && (S.sparks[i].age += dt) >= S.sparks[i].life) S.sparks[i].life = 0.0f;
 
     if (S.cleared) {
         S.clear_t += dt;
@@ -703,6 +744,7 @@ static void splat_update(float dt, const PA_Input *in) {
             }
             S.age[y][x] = 0.0f;
             spatter((float)x + 0.5f, (float)y + 0.5f, 12);
+            sparkle(8);
         }
         if (S.roll_s >= (float)S.roll_len) finish_roll();
         return;
@@ -733,7 +775,7 @@ static void splat_update(float dt, const PA_Input *in) {
  */
 
 static struct {
-    float cx, cy, k, D, st, ct, hw, hh, hpx, hpy, tile;
+    float cx, cy, k, D, st, ct, hw, hh, hpx, hpy, tile, rim, shadow;
 } P;
 
 static PA_Vec2 pj(float gx, float gy, float h) {
@@ -770,14 +812,17 @@ static void fit_camera(PA_Canvas *c, float top, float bottom, float slide) {
     P.hpy = 0.12f / P.hh;
     P.cx = 0.0f; P.cy = 0.0f; P.k = 1.0f;
     float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
+    /* The rim is about 0.035 of the screen width at the usual board size. */
+    P.rim = 0.045f * (float)S.w;
     for (int i = 0; i < 8; i++) {
-        PA_Vec2 p = pj((i & 1) ? (float)S.w : 0.0f, (i & 2) ? (float)S.h : 0.0f, (i & 4) ? WALL_H : -SLAB_T);
+        PA_Vec2 p = pj((i & 1) ? (float)S.w + P.rim : -P.rim, (i & 2) ? (float)S.h + P.rim : -P.rim,
+                       (i & 4) ? WALL_H : -SLAB_T);
         if (p.x < minx) minx = p.x;
         if (p.x > maxx) maxx = p.x;
         if (p.y < miny) miny = p.y;
         if (p.y > maxy) maxy = p.y;
     }
-    float avail_w = (float)c->w * 0.88f, avail_h = bottom - top;
+    float avail_w = (float)c->w * 0.80f, avail_h = bottom - top;
     float s = avail_w / (maxx - minx);
     if ((maxy - miny) * s > avail_h) s = avail_h / (maxy - miny);
     P.k = s;
@@ -785,6 +830,7 @@ static void fit_camera(PA_Canvas *c, float top, float bottom, float slide) {
     P.cy = top + (avail_h - (maxy - miny) * s) * 0.5f - miny * s + slide;
     PA_Vec2 a = pj(P.hw, P.hh, 0.0f), b = pj(P.hw + 1.0f, P.hh, 0.0f);
     P.tile = b.x - a.x;
+    P.shadow = (float)c->w * 0.02f;
 }
 
 /* ------------------------------------------------------------ prop art */
@@ -917,7 +963,7 @@ static int prop_radius(const Prop *p, float U, float *r) {
 }
 
 static void draw_props(PA_Canvas *c, const Theme *th, float U, float pause_x, float pause_y,
-                       float pause_r, float bx0, float by0, float bx1, float by1) {
+                       float pause_r) {
     float W = (float)c->w, H = (float)c->h;
     for (int i = 0; i < S.nprops; i++) {
         const Prop *p = &S.props[i];
@@ -930,11 +976,6 @@ static void draw_props(PA_Canvas *c, const Theme *th, float U, float pause_x, fl
             float ddx = x - pause_x, ddy = y - pause_y;
             if (ddx * ddx + ddy * ddy >= (r + pause_r + 14.0f) * (r + pause_r + 14.0f)) break;
             y += 6.0f;
-        }
-        /* On ground worlds nothing hides a prop, so keep them off the maze. */
-        if (th->ground && x + r * 0.8f > bx0 && x - r * 0.8f < bx1) {
-            if (y < (by0 + by1) * 0.5f && y + r * 0.7f > by0) y = by0 - r * 0.7f;
-            if (y > (by0 + by1) * 0.5f && y - r * 0.7f < by1) y = by1 + r * 0.7f;
         }
         switch (p->kind) {
         case PROP_TUBE:
@@ -1022,6 +1063,22 @@ static void draw_floor(PA_Canvas *c, const Theme *th, PA_Color paint, float flas
                 pa_fill_rect(c, p.x - sz * 0.5f, p.y - sz * 0.5f, sz, sz, pa_alpha(col, a));
             }
         }
+
+    /* A darker inner edge where paint meets a wall or bare floor, about two
+       pixels wide, so the painted channel reads as a glossy filled groove. */
+    {
+        float bw = 2.2f / (P.tile > 1.0f ? P.tile : 1.0f);
+        PA_Color edge = pa_shade(paint, -0.15f);
+        for (int y = 0; y < S.h; y++)
+            for (int x = 0; x < S.w; x++) {
+                if (!walkable(x, y) || !S.painted[y][x] || S.age[y][x] < FRESH) continue;
+                float x0 = (float)x, y0 = (float)y;
+                if (!walkable(x, y - 1) || !S.painted[y - 1][x]) tile_quad(c, x0, y0, x0 + 1, y0 + bw, 0, edge);
+                if (!walkable(x, y + 1) || !S.painted[y + 1][x]) tile_quad(c, x0, y0 + 1 - bw, x0 + 1, y0 + 1, 0, edge);
+                if (!walkable(x - 1, y) || !S.painted[y][x - 1]) tile_quad(c, x0, y0, x0 + bw, y0 + 1, 0, edge);
+                if (!walkable(x + 1, y) || !S.painted[y][x + 1]) tile_quad(c, x0 + 1 - bw, y0, x0 + 1, y0 + 1, 0, edge);
+            }
+    }
 
     /* Contact shadow at the foot of the walls, strongest under the far wall
        whose face the camera sees. */
@@ -1159,20 +1216,30 @@ static void draw_ball(PA_Canvas *c, PA_Color paint) {
 
 static void draw_board(PA_Canvas *c, const Theme *th, PA_Color paint, float flash) {
     PA_Color top = pa_hex(th->slab);
-    if (!th->ground) {
-        float W = (float)S.w, H = (float)S.h;
-        /* Soft contact shadow, then the slab's front edge and its top. */
+    float W = (float)S.w, H = (float)S.h, rw = P.rim;
+    {
+        /* Soft drop shadow, 30% black, offset about 0.02 of the screen width. */
+        PA_Vec2 q[4] = { pj(-rw, -rw, -SLAB_T), pj(W + rw, -rw, -SLAB_T),
+                         pj(W + rw, H + rw, -SLAB_T), pj(-rw, H + rw, -SLAB_T) };
         for (int k = 0; k < 3; k++) {
-            float o = 0.12f + 0.12f * (float)k, g = 0.06f * (float)k;
-            PA_Vec2 a = pj(-g, -g + o, -SLAB_T), b = pj(W + g, -g + o, -SLAB_T);
-            PA_Vec2 d = pj(W + g, H + g + o, -SLAB_T), e = pj(-g, H + g + o, -SLAB_T);
-            quad(c, a, b, d, e, pa_alpha(pa_shade(pa_hex(th->bg), -0.5f), 0.10f));
+            float o = P.shadow, g = P.shadow * 0.35f * (float)(2 - k);
+            PA_Vec2 sq[4] = { { q[0].x + o - g, q[0].y + o - g }, { q[1].x + o + g, q[1].y + o - g },
+                              { q[2].x + o + g, q[2].y + o + g }, { q[3].x + o - g, q[3].y + o + g } };
+            pa_fill_poly(c, sq, 4, PA_RGBA(0, 0, 0, 26));
         }
-        PA_Vec2 a = pj(0, H, WALL_H), b = pj(W, H, WALL_H), d = pj(W, H, -SLAB_T), e = pj(0, H, -SLAB_T);
+    }
+    {
+        /* Front edge of the slab under the rim, then the rim, then the top. */
+        PA_Color rim = pa_hex(th->rim);
+        PA_Vec2 a = pj(-rw, H + rw, WALL_H), b = pj(W + rw, H + rw, WALL_H);
+        PA_Vec2 d = pj(W + rw, H + rw, -SLAB_T), e = pj(-rw, H + rw, -SLAB_T);
         PA_Paint fr = pa_linear(0, a.y, 0, d.y);
-        pa_stop(&fr, 0.0f, pa_hex(th->slab_front));
-        pa_stop(&fr, 1.0f, pa_shade(pa_hex(th->slab_front), -0.12f));
+        pa_stop(&fr, 0.0f, pa_shade(rim, -0.22f));
+        pa_stop(&fr, 1.0f, pa_shade(rim, -0.38f));
         quad_paint(c, a, b, d, e, &fr);
+        tile_quad(c, -rw, -rw, W + rw, H + rw, WALL_H, rim);
+        /* A fine lit edge where the rim meets the top. */
+        tile_quad(c, -rw * 0.25f, -rw * 0.25f, W + rw * 0.25f, H + rw * 0.25f, WALL_H, pa_shade(rim, 0.25f));
         tile_quad(c, 0, 0, W, H, WALL_H, top);
     }
     draw_floor(c, th, paint, flash);
@@ -1183,6 +1250,19 @@ static void draw_board(PA_Canvas *c, const Theme *th, PA_Color paint, float flas
     draw_tops(c, top);
     draw_ball(c, paint);
     draw_drops(c, 1);
+    for (int i = 0; i < MAX_SPARKS; i++) {
+        const Spark *k = &S.sparks[i];
+        if (k->life <= 0.0f) continue;
+        float t = k->age / k->life, a = 1.0f - t;
+        PA_Vec2 p = pj(k->u, k->v, 0.05f);
+        float r = k->size * P.tile * sinf(PA_PI * pa_clamp01(t * 1.6f + 0.15f)) * 0.75f, w = r * 0.22f;
+        PA_Vec2 v[4] = { { p.x, p.y - r }, { p.x + w, p.y }, { p.x, p.y + r }, { p.x - w, p.y } };
+        PA_Vec2 h[4] = { { p.x - r, p.y }, { p.x, p.y - w }, { p.x + r, p.y }, { p.x, p.y + w } };
+        PA_Color col = PA_RGBA(255, 255, 255, (int)(235.0f * a));
+        pa_fill_poly(c, v, 4, col);
+        pa_fill_poly(c, h, 4, col);
+        pa_fill_circle(c, p.x, p.y, w * 1.3f, PA_RGBA(255, 255, 255, (int)(255.0f * a)));
+    }
 }
 
 /* ------------------------------------------------------------------ HUD */
@@ -1326,33 +1406,41 @@ static void draw_celebration(PA_Canvas *c, PA_Color paint, float U) {
     float out = S.clear_t > 2.6f ? pa_clamp01((S.clear_t - 2.6f) / 0.3f) : 0.0f;
     sc *= 1.0f - out;
     if (sc <= 0.01f) return;
-    PA_Color badge = pa_shade(paint, -0.08f);
-    PA_Color ink = pa_shade(paint, -0.5f);
+    PA_Color dark = pa_shade(paint, -0.30f), light = pa_shade(paint, 0.06f);
+    PA_Color ink = pa_shade(paint, -0.55f);
     float cx = W * 0.5f, cy = H * 0.2f;
-    float ang = -0.14f;                        /* about 8 degrees, rising right */
+    float ang = -0.14f;                        /* -8 degrees: rising to the right */
     float ca = cosf(ang), sa = sinf(ang);
-    float line = U * 0.115f * sc;
+    float line = U * 0.12f * sc;
     static const char *PRAISE[3] = { "PERFECT!", "GREAT!", "NICE!" };
 
-    splat_blob(c, cx - U * 0.20f * sc, cy - U * 0.07f * sc, U * 0.11f * sc, 3u + (uint32_t)S.level, badge);
-    splat_blob(c, cx + U * 0.22f * sc, cy - U * 0.10f * sc, U * 0.10f * sc, 17u + (uint32_t)S.level, badge);
+    /* Two-tone splat: a dark burst behind, the lighter paint over it. */
+    for (int tone = 0; tone < 2; tone++) {
+        float k = tone ? 0.82f : 1.0f;
+        PA_Color col = tone ? light : dark;
+        float ox = tone ? -U * 0.01f : 0.0f, oy = tone ? -U * 0.012f : 0.0f;
+        splat_blob(c, cx - W * 0.25f * sc + ox, cy + W * 0.035f * sc + oy, W * 0.15f * sc * k, 3u + (uint32_t)S.level, col);
+        splat_blob(c, cx + W * 0.24f * sc + ox, cy - W * 0.03f * sc + oy, W * 0.14f * sc * k, 17u + (uint32_t)S.level, col);
+        splat_blob(c, cx + ox, cy + oy, W * 0.17f * sc * k, 29u + (uint32_t)S.level, col);
+    }
     char buf[32];
     snprintf(buf, sizeof(buf), "LEVEL %d", S.level + 1);
     const char *lines[3] = { buf, "COMPLETE", PRAISE[S.praise] };
-    float sizes[3] = { U * 0.068f, U * 0.074f, U * 0.058f };
+    float sizes[3] = { U * 0.072f, U * 0.084f, U * 0.062f };
+    float widths[3] = { 0.66f, 0.80f, 0.56f };
     for (int i = 0; i < 3; i++) {
-        float off = ((float)i - 0.5f) * line;
-        float lx = cx - sa * off * 0.0f + (float)i * U * 0.012f * sc, ly = cy + ca * off;
+        float off = ((float)i - 1.0f) * line;
+        float lx = cx - sa * off, ly = cy + ca * off;
         float ts = sizes[i] * sc;
-        float tw = pa_text_width(lines[i], ts, ts * 0.08f);
-        brush_banner(c, lx, ly, tw + U * 0.12f * sc, ts * 1.75f, ang, 40u + (uint32_t)i, badge);
+        brush_banner(c, lx + U * 0.006f, ly + U * 0.01f, W * widths[i] * sc, ts * 1.8f, ang, 40u + (uint32_t)i, dark);
+        brush_banner(c, lx, ly, W * widths[i] * sc, ts * 1.7f, ang, 50u + (uint32_t)i, light);
     }
     for (int i = 0; i < 3; i++) {
-        float off = ((float)i - 0.5f) * line;
-        float lx = cx + (float)i * U * 0.012f * sc, ly = cy + ca * off;
+        float off = ((float)i - 1.0f) * line;
+        float lx = cx - sa * off, ly = cy + ca * off;
         float ts = sizes[i] * sc;
         pa_text_bold(c, lines[i], lx, ly - ts * 0.5f, ts, PA_RGB(255, 255, 255), ink,
-                     PA_ALIGN_CENTER, ts * 0.08f, 1.5f);
+                     PA_ALIGN_CENTER, ts * 0.08f, 1.4f);
     }
     draw_confetti(c, 0, CONFETTI / 2);
 }
@@ -1384,12 +1472,17 @@ static void splat_render(PA_Canvas *c) {
     float bottom = H - U * 0.16f;
     fit_camera(c, top, bottom, slide);
     P.cy += sinf(S.time * 90.0f) * shake;
+    if (S.cleared) {
+        /* The finished board pulses to 1.05 and back. */
+        float pulse = 1.0f + 0.05f * sinf(PA_PI * pa_clamp01(S.clear_t / 0.4f));
+        PA_Vec2 mid = pj((float)S.w * 0.5f, (float)S.h * 0.5f, 0.0f);
+        P.k *= pulse;
+        P.cx = mid.x + (P.cx - mid.x) * pulse;
+        P.cy = mid.y + (P.cy - mid.y) * pulse;
+        P.tile *= pulse;
+    }
 
-    PA_Vec2 b0 = pj(0, 0, WALL_H), b1 = pj((float)S.w, (float)S.h, -SLAB_T);
-    PA_Vec2 b2 = pj((float)S.w, 0, WALL_H);
-    float bx0 = b0.x < pj(0, (float)S.h, 0).x ? b0.x : pj(0, (float)S.h, 0).x;
-    float bx1 = b2.x > b1.x ? b2.x : b1.x;
-    draw_props(c, th, U, pause_x, pause_y, pause_r, bx0 - slide * 0.0f, b0.y - slide, bx1, b1.y - slide);
+    draw_props(c, th, U, pause_x, pause_y, pause_r);
 
     float flash = S.cleared ? expf(-S.clear_t * 3.0f) : 0.0f;
     draw_board(c, th, paint, flash);
