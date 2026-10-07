@@ -8,7 +8,8 @@
   "Blind round 0: all six existing native games lost to their references. Six re-pass builders started on the critics' ranked gap lists.",
   "Block Storm re-pass merged; round 1 blind review started.",
   "Block Storm round 1: reference wins only slightly (was overwhelming); ours now wins on effects and juice. Round 2 started.",
-  "Helix Drop re-pass merged; round 1 blind review started."
+  "Helix Drop re-pass merged; round 1 blind review started.",
+  "Roller Splat re-pass merged; round 1 blind review started. Block Storm builder resumed on round 2."
  ],
  "engine": [
   {
@@ -64,10 +65,10 @@
    "id": "splat",
    "name": "Roller Splat",
    "ref": "Roller Splat!",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "Reference wins, overwhelming",
-   "gap": "Board small and flat-on, no paint spatter, no win celebration, shallow walls."
+   "gap": "Re-pass landed (tilted 3D board, wells, spatter, five themed worlds, splat win badge). Round 1 blind review running."
   },
   {
    "id": "voidmuncher",
