@@ -220,17 +220,17 @@ static void compute_layout(int w, int h) {
         L.hud_y = H * 0.07f;
         L.score_size = W * 0.09f;
         L.score_y = H * 0.137f;
-        L.tcell = W * 0.045f;
-        /* Three fixed slots centred at 0.2, 0.5 and 0.8 sw; a piece never
-           spans more than five 0.045 sw cells, so every piece shares one
-           tray scale and even the five-bar keeps a 0.09 sw margin. */
-        L.slot_w = W * 0.28f;
+        L.tcell = W * 0.06f;
+        /* Three fixed slots centred at 0.18, 0.5 and 0.82 sw, one 0.06 sw
+           tray cell for every piece; a five-bar spans 0.30 sw and still keeps
+           a 0.03 sw margin from the screen edge. */
+        L.slot_w = W * 0.31f;
         L.slot_h = tray_room * 0.92f;
-        L.piece_w = W * 0.23f;
-        L.piece_h = tray_room * 0.78f;
+        L.piece_w = W * 0.30f;
+        L.piece_h = tray_room * 0.80f;
         if (L.piece_h > W * 0.30f) L.piece_h = W * 0.30f;
         for (int i = 0; i < TRAY; i++) {
-            L.slot_cx[i] = W * 0.5f + (float)(i - 1) * W * 0.30f;
+            L.slot_cx[i] = W * 0.5f + (float)(i - 1) * W * 0.32f;
             L.slot_cy[i] = L.oy + side + tray_room * 0.45f;
         }
         L.strip_w = side;
@@ -573,6 +573,16 @@ static void place(int slot, int gx, int gy) {
         B.phase_t = 0.0f;
         B.res_new_best = B.score > B.best_start;
         B.toast_on = 0;            /* the results card says it instead */
+        /* Hub meta: XP, missions and stats. Stars are goals completed this
+           run, capped at three; the game has no coins. */
+        PA_RunReport rep;
+        memset(&rep, 0, sizeof(rep));
+        rep.score = B.score;
+        rep.coins = 0;
+        rep.won = 0;
+        rep.level = B.goal_level;
+        rep.stars = B.goal_level - 1 > 3 ? 3 : B.goal_level - 1;
+        pa_meta_report("blockstorm", &rep);
         save_best();
     }
 }
