@@ -31,10 +31,10 @@
 #define MAX_PROPS 8
 
 /* Camera and board geometry, in tiles. */
-#define TILT    0.56f
-#define WALL_H  0.72f
+#define TILT    0.61f            /* ~35 deg off top-down: a 55 deg pitch */
+#define WALL_H  0.62f
 #define SLAB_T  0.32f
-#define BALL_R  0.37f
+#define BALL_R  0.40f
 
 /* Right, left, down, up: the opposite of d is d ^ 1. */
 static const int DXS[4] = { 1, -1, 0, 0 }, DYS[4] = { 0, 0, 1, -1 };
@@ -82,7 +82,7 @@ typedef struct { int kind; float x, y, s, ang, sweep, phase; } Prop;
 typedef struct { float u, v, age, life, size; } Spark;
 
 typedef struct {
-    int   level, theme;
+    int   level, theme, shape;
     int   w, h;
     char  grid[MAX_H][MAX_W + 1];
     unsigned char painted[MAX_H][MAX_W];
@@ -122,7 +122,16 @@ static Splat S;
 
 static int walkable(int x, int y) {
     if (x < 0 || y < 0 || x >= S.w || y >= S.h) return 0;
-    return S.grid[y][x] != '#' && S.grid[y][x] != 0;
+    return S.grid[y][x] != '#' && S.grid[y][x] != ' ' && S.grid[y][x] != 0;
+}
+
+/** A raised wall tile (not a void tile cut out of the silhouette). */
+static int is_block(int x, int y) {
+    return x >= 0 && y >= 0 && x < S.w && y < S.h && S.grid[y][x] == '#';
+}
+
+static int is_solid(int x, int y) {
+    return x >= 0 && y >= 0 && x < S.w && y < S.h && S.grid[y][x] != ' ' && S.grid[y][x] != 0;
 }
 
 static int is_wall(int x, int y) { return !walkable(x, y); }
@@ -243,32 +252,65 @@ static int compute_par(void) {
 /*
  * Boards are built on a lattice: corridors run only along odd rows and odd
  * columns, so every corridor is exactly one tile wide and every wall is a
- * straight run or a clean rectangular block between corridors - the look of
- * the reference boards, not cave noise. Tiles at (odd, odd) are junction
- * nodes, tiles between two nodes are the links, and tiles at (even, even) are
- * always wall.
+ * straight run or a clean rectangular block between corridors. Tiles at
+ * (odd, odd) are junction nodes, tiles between two nodes are the links, and
+ * tiles at (even, even) are always wall.
  *
  * The carver rolls a virtual ball node to node and opens each roll, locking
  * the link past every stop as a wall, so its own sequence of rolls always
  * solves the board. Links are then opened one at a time (with their mirror
- * image on most boards, which gives them a deliberate, symbol-like symmetry),
- * each kept only if the board stays fair. Openings that would leave a lone
- * one-tile wall island are refused past two per board.
+ * image on most boards), each kept only if the board stays fair. Openings
+ * that would leave a lone one-tile wall island are refused past two.
+ *
+ * From level 10 the silhouette varies. A node mask restricts carving to a
+ * diagonal staircase band or a diamond, and the slab is cut to that
+ * shape; or the board is a floating path network, where only the walls that
+ * touch a path exist and the backdrop shows between the runs. Void tiles are
+ * ' ' in the grid.
  */
+enum { SHAPE_RECT, SHAPE_FLOAT, SHAPE_STAIR, SHAPE_DIAMOND };
+
+static int level_shape(int index) {
+    if (index < 9) return SHAPE_RECT;
+    static const int CYCLE[6] = { SHAPE_FLOAT, SHAPE_STAIR, SHAPE_RECT, SHAPE_DIAMOND, SHAPE_FLOAT, SHAPE_STAIR };
+    return CYCLE[(index - 9) % 6];
+}
+
 static void level_dims(int index, int *W, int *H, float *density) {
-    /* Whole-grid sizes including the rim wall: 9 to 13 columns. */
-    static const int TW[] = { 9, 9, 11, 11, 11, 11, 11, 13, 13, 13, 11, 13, 13, 13, 13 };
-    static const int TH[] = { 11, 13, 13, 15, 15, 17, 17, 17, 19, 19, 19, 19, 21, 21, 21 };
-    if (index < 15) {
+    /* Whole-grid sizes including the outer wall: 9 to 13 columns, and tall,
+       so the tilted board still fills well over half the screen height. */
+    static const int TW[] = { 9, 9, 9, 11, 11, 11, 11, 13, 13, 13 };
+    static const int TH[] = { 17, 17, 19, 19, 21, 21, 21, 23, 23, 23 };
+    if (index < 10) {
         *W = TW[index]; *H = TH[index];
     } else {
         PA_Rng r;
         pa_rng_seed(&r, (uint32_t)index * 131u + 7u);
-        *W = 13;
-        *H = 19 + 2 * pa_rng_int(&r, 0, 2);
+        *W = 11 + 2 * pa_rng_int(&r, 0, 1);
+        *H = *W + 10;
+        if (*H > MAX_H - 1) *H = MAX_H - 1;
     }
     float t = (float)(index < 14 ? index : 14) / 14.0f;
     *density = 0.72f + 0.14f * t;
+}
+
+static unsigned char g_mask[MAX_H][MAX_W];   /* node mask, indexed by node */
+
+static void build_mask(int shape, int nx, int ny) {
+    for (int j = 0; j < ny; j++)
+        for (int i = 0; i < nx; i++) {
+            float u = nx > 1 ? (float)i / (float)(nx - 1) : 0.5f;
+            float v = ny > 1 ? (float)j / (float)(ny - 1) : 0.5f;
+            int in = 1;
+            if (shape == SHAPE_STAIR) in = fabsf(u - v) <= 0.42f;
+            else if (shape == SHAPE_DIAMOND) in = fabsf(u - 0.5f) * 0.9f + fabsf(v - 0.5f) <= 0.78f;
+            g_mask[j][i] = (unsigned char)in;
+        }
+}
+
+static int node_ok(int x, int y) {
+    if (x < 1 || y < 1 || x > S.w - 2 || y > S.h - 2) return 0;
+    return g_mask[(y - 1) / 2][(x - 1) / 2];
 }
 
 static int is_island(int x, int y) {
@@ -289,11 +331,17 @@ static int carve_lattice(PA_Rng *r, int W, int H, int *sx, int *sy) {
     memset(S.grid, 0, sizeof(S.grid));
     S.w = W; S.h = H;
     for (int y = 0; y < H; y++) { memset(S.grid[y], '#', (size_t)W); S.grid[y][W] = 0; }
-    int nx = (W - 1) / 2, ny = (H - 1) / 2;
-    int x = 1 + 2 * pa_rng_int(r, 0, nx - 1), y = 1 + 2 * pa_rng_int(r, 0, ny - 1);
+    int nx = (W - 1) / 2, ny = (H - 1) / 2, x = 1, y = 1, total = 0;
+    for (int j = 0; j < ny; j++)
+        for (int i = 0; i < nx; i++) total += g_mask[j][i];
+    for (int k = 0; k < 200; k++) {
+        x = 1 + 2 * pa_rng_int(r, 0, nx - 1); y = 1 + 2 * pa_rng_int(r, 0, ny - 1);
+        if (node_ok(x, y)) break;
+    }
+    if (!node_ok(x, y)) return 0;
     *sx = x; *sy = y;
     S.grid[y][x] = '.';
-    int nodes = 1, target = (nx * ny * 3) / 4, last = -1, fails = 0;
+    int nodes = 1, target = (total * 3) / 4, last = -1, fails = 0;
     while (nodes < target && fails < 900) {
         int d = pa_rng_int(r, 0, 3);
         if (last >= 0 && ((d ^ 1) == last || d == last)) { fails++; continue; }
@@ -303,11 +351,14 @@ static int carve_lattice(PA_Rng *r, int W, int H, int *sx, int *sy) {
         for (int i = 1; i <= L; i++) {
             int cx = x + DXS[d] * i, cy = y + DYS[d] * i;
             if (cx < 1 || cy < 1 || cx > W - 2 || cy > H - 2 || lock[cy][cx]) { ok = 0; break; }
-            if ((i & 1) == 0 && S.grid[cy][cx] == '#') fresh++;
+            if ((i & 1) == 0) {
+                if (!node_ok(cx, cy)) { ok = 0; break; }
+                if (S.grid[cy][cx] == '#') fresh++;
+            }
         }
         if (!ok) { fails++; continue; }
         int ex = x + DXS[d] * (L + 1), ey = y + DYS[d] * (L + 1);
-        int border = ex < 1 || ey < 1 || ex > W - 2 || ey > H - 2;
+        int border = !node_ok(ex + DXS[d], ey + DYS[d]);
         if (!border && S.grid[ey][ex] != '#') { fails++; continue; }
         if (fresh == 0 && !pa_rng_chance(r, 0.3f)) { fails++; continue; }
         for (int i = 1; i <= L; i++) S.grid[y + DYS[d] * i][x + DXS[d] * i] = '.';
@@ -319,13 +370,19 @@ static int carve_lattice(PA_Rng *r, int W, int H, int *sx, int *sy) {
     return nodes >= target / 2;
 }
 
+/* The two nodes a link joins. */
+static void link_nodes(int lx, int ly, int *ax, int *ay, int *bx, int *by) {
+    int vert = (lx & 1);                /* odd x, even y: joins the nodes above and below */
+    *ax = vert ? lx : lx - 1; *ay = vert ? ly - 1 : ly;
+    *bx = vert ? lx : lx + 1; *by = vert ? ly + 1 : ly;
+}
+
 /* Open link (lx, ly) and any wall node at its ends; returns how many tiles. */
 static int open_link(int lx, int ly, int undo[][2]) {
-    int n = 0;
-    int vert = (lx & 1);                /* odd x, even y: joins the nodes above and below */
-    int cells[3][2] = { { lx, ly },
-                        { vert ? lx : lx - 1, vert ? ly - 1 : ly },
-                        { vert ? lx : lx + 1, vert ? ly + 1 : ly } };
+    int n = 0, ax, ay, bx, by;
+    link_nodes(lx, ly, &ax, &ay, &bx, &by);
+    if (!node_ok(ax, ay) || !node_ok(bx, by)) return 0;
+    int cells[3][2] = { { lx, ly }, { ax, ay }, { bx, by } };
     for (int i = 0; i < 3; i++) {
         int cx = cells[i][0], cy = cells[i][1];
         if (S.grid[cy][cx] == '#') { S.grid[cy][cx] = '.'; undo[n][0] = cx; undo[n][1] = cy; n++; }
@@ -333,14 +390,60 @@ static int open_link(int lx, int ly, int undo[][2]) {
     return n;
 }
 
+/** Cut the slab to its silhouette: a tile is solid when any node it touches
+    is in `keep`; everything else becomes void. */
+static void cut_silhouette(int shape) {
+    int nx = (S.w - 1) / 2, ny = (S.h - 1) / 2;
+    unsigned char keep[MAX_H][MAX_W];
+    memset(keep, 0, sizeof(keep));
+    for (int j = 0; j < ny; j++)
+        for (int i = 0; i < nx; i++)
+            keep[j][i] = (unsigned char)walkable(1 + 2 * i, 1 + 2 * j);
+    /* A shaped slab also keeps the unused nodes its paths wrap around, so it
+       reads as one cut slab; a floating network keeps only the paths. */
+    if (shape != SHAPE_FLOAT) {
+        unsigned char fill[MAX_H][MAX_W];
+        memcpy(fill, keep, sizeof(fill));
+        for (int j = 0; j < ny; j++)
+            for (int i = 0; i < nx; i++) {
+                if (keep[j][i] || !g_mask[j][i]) continue;
+                int n = (i > 0 && keep[j][i - 1]) + (i + 1 < nx && keep[j][i + 1]) +
+                        (j > 0 && keep[j - 1][i]) + (j + 1 < ny && keep[j + 1][i]);
+                fill[j][i] = n >= 2;
+            }
+        memcpy(keep, fill, sizeof(fill));
+    }
+    for (int y = 0; y < S.h; y++)
+        for (int x = 0; x < S.w; x++) {
+            int solid = 0;
+            for (int dy = -1; dy <= 1 && !solid; dy++)
+                for (int dx = -1; dx <= 1 && !solid; dx++) {
+                    int qx = x + dx, qy = y + dy;
+                    if (qx < 1 || qy < 1 || qx > S.w - 2 || qy > S.h - 2 || !(qx & 1) || !(qy & 1)) continue;
+                    solid = keep[(qy - 1) / 2][(qx - 1) / 2];
+                }
+            if (!solid) S.grid[y][x] = ' ';
+        }
+}
+
 static int generate_level(int index, int *sx, int *sy) {
     int W, H;
     float density;
     level_dims(index, &W, &H, &density);
+    int shape = level_shape(index);
+    if (shape == SHAPE_FLOAT) density = 0.62f;   /* leave gaps for the backdrop */
     PA_Rng r;
     pa_rng_seed(&r, (uint32_t)index * 7919u + 13u);
     int nx = (W - 1) / 2, ny = (H - 1) / 2;
-    int lattice = nx * ny + (nx - 1) * ny + nx * (ny - 1);
+    build_mask(shape, nx, ny);
+    int lattice = 0;
+    for (int j = 0; j < ny; j++)
+        for (int i = 0; i < nx; i++) {
+            if (!g_mask[j][i]) continue;
+            lattice++;
+            if (i + 1 < nx && g_mask[j][i + 1]) lattice++;
+            if (j + 1 < ny && g_mask[j + 1][i]) lattice++;
+        }
     /* Keep the densest fair board seen; stop early once one is dense enough. */
     static char best[MAX_H][MAX_W + 1];
     int best_open = -1, bsx = 0, bsy = 0;
@@ -360,11 +463,12 @@ static int generate_level(int index, int *sx, int *sy) {
             cand[i] = cand[j]; cand[j] = t;
         }
         int target = (int)((float)lattice * density);
-        int mirror = (index % 3) != 2;
+        int mirror = (index % 3) != 2 && shape != SHAPE_STAIR;
         for (int i = 0; i < nc && open < target; i++) {
             int lx = cand[i] % MAX_W, ly = cand[i] / MAX_W;
             if (S.grid[ly][lx] != '#') continue;
             int undo[6][2], n = open_link(lx, ly, undo);
+            if (!n) continue;
             int mx = W - 1 - lx;
             if (mirror && mx != lx && S.grid[ly][mx] == '#') n += open_link(mx, ly, undo + n);
             if (count_islands() > 2 || !level_is_fair(*sx, *sy)) {
@@ -373,26 +477,27 @@ static int generate_level(int index, int *sx, int *sy) {
             }
             open += n;
         }
-        /* The board must use its whole frame: an all-wall outer row or
-           column of nodes reads as a mistake. */
-        int ux0 = 0, ux1 = 0, uy0 = 0, uy1 = 0;
-        for (int k = 1; k < H - 1; k++) { ux0 |= walkable(1, k); ux1 |= walkable(W - 2, k); }
-        for (int k = 1; k < W - 1; k++) { uy0 |= walkable(k, 1); uy1 |= walkable(k, H - 2); }
-        if (!(ux0 && ux1 && uy0 && uy1)) continue;
-        if (open >= (int)((float)lattice * (density - 0.06f))) {
-            S.grid[*sy][*sx] = 'o';
-            return 1;
+        /* A rectangular board must use its whole frame: an all-wall outer
+           row or column of nodes reads as a mistake. */
+        if (shape == SHAPE_RECT || shape == SHAPE_FLOAT) {
+            int ux0 = 0, ux1 = 0, uy0 = 0, uy1 = 0;
+            for (int k = 1; k < H - 1; k++) { ux0 |= walkable(1, k); ux1 |= walkable(W - 2, k); }
+            for (int k = 1; k < W - 1; k++) { uy0 |= walkable(k, 1); uy1 |= walkable(k, H - 2); }
+            if (!(ux0 && ux1 && uy0 && uy1)) continue;
         }
-        if (open > best_open) {
-            best_open = open; bsx = *sx; bsy = *sy;
-            memcpy(best, S.grid, sizeof(best));
-        }
+        int done = open >= (int)((float)lattice * (density - 0.06f));
+        if (!done && open <= best_open) continue;
+        best_open = open; bsx = *sx; bsy = *sy;
+        memcpy(best, S.grid, sizeof(best));
+        if (done) break;
     }
     if (best_open < 0) return 0;
     memcpy(S.grid, best, sizeof(best));
     S.w = W; S.h = H;
     *sx = bsx; *sy = bsy;
+    if (shape != SHAPE_RECT) cut_silhouette(shape);
     S.grid[*sy][*sx] = 'o';
+    S.shape = shape;
     return 1;
 }
 
@@ -422,39 +527,36 @@ static void build_props(void) {
     float j = pa_rng_range(&r, -0.03f, 0.03f);
     switch (THEMES[S.theme].prop_kind) {
     case PROP_TUBE:
-        add_prop(PROP_TUBE, 0.14f + j, 0.21f, 0.19f, 3.3f, 1.9f, 0.0f);
-        add_prop(PROP_TUBE, 0.86f, 0.24f - j, 0.17f, 4.4f, 1.7f, 1.3f);
-        add_prop(PROP_TUBE, 0.14f, 0.88f, 0.21f, 3.6f, 2.0f, 2.1f);
-        add_prop(PROP_TUBE, 0.26f, 0.95f, 0.16f, 3.9f, 1.6f, 3.4f);
-        add_prop(PROP_TUBE, 0.80f + j, 0.93f, 0.22f, 3.5f, 1.8f, 4.0f);
+        add_prop(PROP_TUBE, 0.05f + j, 0.135f, 0.22f, 3.3f, 1.9f, 0.0f);
+        add_prop(PROP_TUBE, 0.98f, 0.17f - j, 0.13f, 4.4f, 1.7f, 1.3f);
+        add_prop(PROP_TUBE, 0.08f, 0.975f, 0.27f, 3.6f, 2.0f, 2.1f);
+        add_prop(PROP_TUBE, 0.86f + j, 0.985f, 0.18f, 3.5f, 1.8f, 4.0f);
         break;
     case PROP_LOG:
-        add_prop(PROP_LOG, 0.30f, 0.20f + j, 0.24f, -0.22f, 0.0f, 0.0f);
-        add_prop(PROP_LOG, 0.72f, 0.155f, 0.25f, -0.10f, 0.0f, 1.7f);
-        add_prop(PROP_LOG, 0.30f, 0.90f - j, 0.22f, 0.04f, 0.0f, 2.6f);
-        add_prop(PROP_LOG, 0.84f, 0.965f, 0.18f, -0.30f, 0.0f, 3.3f);
+        add_prop(PROP_LOG, 0.16f, 0.145f + j, 0.30f, -0.22f, 0.0f, 0.0f);
+        add_prop(PROP_LOG, 0.97f, 0.16f, 0.16f, -0.10f, 0.0f, 1.7f);
+        add_prop(PROP_LOG, 0.16f, 0.975f - j, 0.26f, 0.04f, 0.0f, 2.6f);
+        add_prop(PROP_LOG, 0.88f, 0.99f, 0.20f, -0.30f, 0.0f, 3.3f);
         break;
     case PROP_SHARD:
-        add_prop(PROP_SHARD, 0.16f, 0.29f, 0.62f, 0.38f, 0.22f, 0.0f);
-        add_prop(PROP_SHARD, 0.40f, 0.11f, 0.42f, 1.95f, 0.16f, 1.0f);
-        add_prop(PROP_SHARD, 0.86f, 0.44f, 0.62f, 3.45f, 0.20f, 2.0f);
-        add_prop(PROP_SHARD, 0.30f, 0.86f, 0.55f, -1.25f, 0.18f, 3.0f);
-        add_prop(PROP_SHARD, 0.80f, 0.83f, 0.48f, -2.05f, 0.16f, 4.0f);
-        add_prop(PROP_SHARD, 0.62f, 0.075f, 0.30f, 1.35f, 0.12f, 5.0f);
+        add_prop(PROP_SHARD, 0.10f, 0.23f, 0.70f, 0.38f, 0.22f, 0.0f);
+        add_prop(PROP_SHARD, 0.40f, 0.09f, 0.42f, 1.95f, 0.16f, 1.0f);
+        add_prop(PROP_SHARD, 0.93f, 0.40f, 0.62f, 3.45f, 0.20f, 2.0f);
+        add_prop(PROP_SHARD, 0.24f, 0.99f, 0.55f, -1.25f, 0.18f, 3.0f);
+        add_prop(PROP_SHARD, 0.84f, 0.97f, 0.48f, -2.05f, 0.16f, 4.0f);
         break;
     case PROP_BUSH:
-        add_prop(PROP_BUSH, 0.20f, 0.185f, 0.12f, 0.0f, 0.0f, 0.0f);
-        add_prop(PROP_BUSH, 0.78f, 0.17f + j, 0.13f, 0.0f, 1.0f, 1.2f);
-        add_prop(PROP_BUSH, 0.62f, 0.93f, 0.10f, 0.0f, 0.0f, 2.2f);
-        add_prop(PROP_ORB, 0.26f, 0.90f, 0.028f, 0.0f, 0.0f, 3.0f);
-        add_prop(PROP_ORB, 0.88f, 0.86f, 0.02f, 0.0f, 0.0f, 3.5f);
+        add_prop(PROP_BUSH, 0.07f, 0.15f, 0.15f, 0.0f, 0.0f, 0.0f);
+        add_prop(PROP_BUSH, 0.95f, 0.165f + j, 0.09f, 0.0f, 1.0f, 1.2f);
+        add_prop(PROP_BUSH, 0.12f, 0.975f, 0.12f, 0.0f, 1.0f, 2.2f);
+        add_prop(PROP_BUSH, 0.88f, 0.985f, 0.17f, 0.0f, 0.0f, 3.2f);
+        add_prop(PROP_ORB, 0.50f, 0.99f, 0.03f, 0.0f, 0.0f, 3.0f);
         break;
     default:
-        add_prop(PROP_RING, 0.16f, 0.20f, 0.10f, 0.4f, 0.0f, 0.0f);
-        add_prop(PROP_ORB, 0.84f, 0.22f + j, 0.065f, 0.0f, 0.0f, 1.0f);
-        add_prop(PROP_ORB, 0.20f, 0.90f, 0.08f, 0.0f, 1.0f, 2.0f);
-        add_prop(PROP_RING, 0.78f, 0.91f, 0.12f, -0.5f, 1.0f, 3.0f);
-        add_prop(PROP_ORB, 0.50f, 0.965f, 0.035f, 0.0f, 0.0f, 4.0f);
+        add_prop(PROP_RING, 0.07f, 0.15f, 0.12f, 0.4f, 0.0f, 0.0f);
+        add_prop(PROP_ORB, 0.94f, 0.18f + j, 0.06f, 0.0f, 0.0f, 1.0f);
+        add_prop(PROP_ORB, 0.12f, 0.98f, 0.09f, 0.0f, 1.0f, 2.0f);
+        add_prop(PROP_RING, 0.86f, 0.98f, 0.14f, -0.5f, 1.0f, 3.0f);
         break;
     }
 }
@@ -470,7 +572,7 @@ static void load_level(int index) {
     int sx = -1, sy = -1;
     if (!generate_level(index, &sx, &sy)) {
         memset(S.grid, 0, sizeof(S.grid));
-        S.h = 0; S.w = 0;
+        S.h = 0; S.w = 0; S.shape = SHAPE_RECT;
         for (int y = 0; FALLBACK[y]; y++) {
             int len = (int)strlen(FALLBACK[y]);
             memcpy(S.grid[y], FALLBACK[y], (size_t)len);
@@ -483,7 +585,7 @@ static void load_level(int index) {
     for (int y = 0; y < S.h; y++)
         for (int x = 0; x < S.w; x++) {
             char c = S.grid[y][x];
-            if (c == '#' || c == 0) continue;
+            if (c == '#' || c == ' ' || c == 0) continue;
             S.total++;
             if (c == 'o') { S.tx = x; S.ty = y; }
         }
@@ -614,10 +716,10 @@ static void burst_confetti(void) {
     float aspect = S.view_h / (S.view_w > 1.0f ? S.view_w : 1.0f);
     for (int i = 0; i < CONFETTI; i++) {
         Bit *b = &S.bits[i];
-        int g5 = i % 5, group = g5 <= 1 ? 0 : g5 <= 3 ? 1 : 2;
+        int g5 = i % 5, group = g5 <= 3 ? 0 : 2;
         if (group == 0) {
             /* Blown out from behind the badge. */
-            float a = pa_rng_range(&S.rng, 0.0f, PA_TAU), sp = pa_rng_range(&S.rng, 0.3f, 1.3f);
+            float a = pa_rng_range(&S.rng, 0.0f, PA_TAU), sp = pa_rng_range(&S.rng, 0.35f, 1.6f);
             b->x = 0.5f + pa_rng_range(&S.rng, -0.3f, 0.3f);
             b->y = aspect * 0.2f + pa_rng_range(&S.rng, -0.06f, 0.06f);
             b->vx = cosf(a) * sp;
@@ -640,7 +742,7 @@ static void burst_confetti(void) {
         b->vr = pa_rng_range(&S.rng, -7.0f, 7.0f);
         b->flip = pa_rng_range(&S.rng, 0.0f, PA_TAU);
         b->vflip = pa_rng_range(&S.rng, 4.0f, 11.0f);
-        b->size = pa_rng_range(&S.rng, 0.012f, 0.026f);
+        b->size = pa_rng_range(&S.rng, 0.015f, 0.030f);
         b->col = pa_hex(CONFETTI_COLS[i % 6]);
     }
 }
@@ -830,13 +932,15 @@ static void fit_camera(PA_Canvas *c, float top, float bottom, float slide) {
     P.hw = (float)S.w * 0.5f; P.hh = (float)S.h * 0.5f;
     float md = (float)(S.w > S.h ? S.w : S.h);
     P.st = sinf(TILT); P.ct = cosf(TILT);
-    P.D = md * 2.3f;
+    /* Far edge about 85% of the near edge's width. */
+    P.D = 12.3f * P.hh * P.st;
+    (void)md;
     P.hpx = 0.42f / P.hw;
     P.hpy = 0.10f / P.hh;
     P.cx = 0.0f; P.cy = 0.0f; P.k = 1.0f;
     float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
     /* The rim is about 0.035 of the screen width at the usual board size. */
-    P.rim = 0.045f * (float)S.w;
+    P.rim = S.shape == SHAPE_RECT ? 0.045f * (float)S.w : 0.0f;
     for (int i = 0; i < 8; i++) {
         PA_Vec2 p = pj((i & 1) ? (float)S.w + P.rim : -P.rim, (i & 2) ? (float)S.h + P.rim : -P.rim,
                        (i & 4) ? WALL_H : -SLAB_T);
@@ -845,7 +949,7 @@ static void fit_camera(PA_Canvas *c, float top, float bottom, float slide) {
         if (p.y < miny) miny = p.y;
         if (p.y > maxy) maxy = p.y;
     }
-    float avail_w = (float)c->w * 0.80f, avail_h = bottom - top;
+    float avail_w = (float)c->w * 0.92f, avail_h = bottom - top;
     float s = avail_w / (maxx - minx);
     if ((maxy - miny) * s > avail_h) s = avail_h / (maxy - miny);
     P.k = s;
@@ -1029,9 +1133,12 @@ static void draw_props(PA_Canvas *c, const Theme *th, float U, float pause_x, fl
 
 /* --------------------------------------------------------------- board */
 static PA_Color face_col(const Theme *th, int painted, int side, PA_Color paint) {
-    if (painted) return pa_shade(paint, side ? -0.30f : -0.40f);
-    PA_Color f = pa_hex(th->well_face);
-    return side ? pa_shade(f, -0.06f) : f;
+    /* side 0: a south face toward the camera; 1: an east face, turned from
+       the upper-left light; 2: a west face, turned into it. */
+    static const float PAINTED[3] = { -0.25f, -0.40f, -0.15f };
+    static const float BARE[3] = { 0.0f, -0.30f, 0.10f };
+    if (painted) return pa_shade(paint, PAINTED[side]);
+    return pa_shade(pa_hex(th->well_face), BARE[side]);
 }
 
 static uint32_t hash3(uint32_t a, uint32_t b, uint32_t c) {
@@ -1161,7 +1268,7 @@ static void draw_faces(PA_Canvas *c, const Theme *th, PA_Color paint) {
                 while (y1 < S.h && is_wall(x, y1) && walkable(nx, y1) && S.painted[y1][nx] == p) y1++;
                 float a = (float)y - 0.01f, b = (float)y1 + 0.01f;
                 face_quad(c, pj(fxp, a, WALL_H), pj(fxp, b, WALL_H), pj(fxp, b, 0), pj(fxp, a, 0),
-                          face_col(th, p, 1, paint));
+                          face_col(th, p, side ? 2 : 1, paint));
                 y = y1;
             }
         }
@@ -1172,9 +1279,9 @@ static void draw_tops(PA_Canvas *c, PA_Color top) {
     for (int y = 0; y < S.h; y++) {
         int x = 0;
         while (x < S.w) {
-            if (!is_wall(x, y)) { x++; continue; }
+            if (!is_block(x, y)) { x++; continue; }
             int x1 = x + 1;
-            while (x1 < S.w && is_wall(x1, y)) x1++;
+            while (x1 < S.w && is_block(x1, y)) x1++;
             tile_quad(c, (float)x - e, (float)y - e, (float)x1 + e, (float)y + 1 + e, WALL_H, top);
             x = x1;
         }
@@ -1197,9 +1304,14 @@ static void draw_drops(PA_Canvas *c, int high) {
 
 static void draw_ball(PA_Canvas *c, PA_Color paint) {
     float gx = S.bx + 0.5f, gy = S.by + 0.5f;
+    /* On impact: flattened to 0.8 x 1.2 for 80 ms, then springs back. */
     float sq = 0.0f;
-    if (S.squash_t < 1.0f) sq = S.squash_amp * expf(-S.squash_t * 9.0f) * cosf(S.squash_t * 30.0f);
-    float along = 1.0f - 0.16f * sq, across = 1.0f + 0.10f * sq;
+    if (S.squash_t < 0.08f) sq = S.squash_amp;
+    else if (S.squash_t < 1.0f) {
+        float t = S.squash_t - 0.08f;
+        sq = S.squash_amp * expf(-t * 14.0f) * cosf(t * 30.0f);
+    }
+    float along = 1.0f - 0.2f * sq, across = 1.0f + 0.2f * sq;
     if (S.rolling) { along = 1.06f; across = 0.97f; }
     PA_Vec2 foot = pj(gx, gy, 0.0f), mid = pj(gx, gy, BALL_R), edge = pj(gx + BALL_R, gy, BALL_R);
     float pr = edge.x - mid.x;
@@ -1227,36 +1339,85 @@ static void draw_ball(PA_Canvas *c, PA_Color paint) {
     pa_stop(&rim, 1.0f, pa_alpha(pa_shade(paint, 0.35f), 0.0f));
     pa_fill_ellipse_paint(c, mid.x + rx * 0.3f, mid.y + ry * 0.4f, rx * 0.5f, ry * 0.4f, &rim);
     pa_fill_ellipse(c, mid.x - rx * 0.36f, mid.y - ry * 0.40f, rx * 0.30f, ry * 0.20f, PA_RGBA(255, 255, 255, 90));
-    pa_fill_ellipse(c, mid.x - rx * 0.38f, mid.y - ry * 0.44f, rx * 0.15f, ry * 0.10f, PA_RGBA(255, 255, 255, 235));
+    pa_fill_ellipse(c, mid.x - rx * 0.36f, mid.y - ry * 0.40f, rx * 0.25f, ry * 0.21f, PA_RGBA(255, 255, 255, 245));
+}
+
+/** A slab cut to a silhouette, or a floating path network: shadow on the
+    backdrop, then the outer faces of the solid tiles, three-tone lit. Its
+    tops are drawn later with the walls. */
+static void draw_cut_slab(PA_Canvas *c, const Theme *th) {
+    PA_Color sh = pa_mix(pa_hex(th->bg), PA_RGB(0, 0, 0), 0.20f);
+    float o = P.shadow;
+    for (int y = 0; y < S.h; y++) {
+        int x = 0;
+        while (x < S.w) {
+            if (!is_solid(x, y)) { x++; continue; }
+            int x1 = x + 1;
+            while (x1 < S.w && is_solid(x1, y)) x1++;
+            PA_Vec2 q[4] = { pj((float)x, (float)y, -SLAB_T), pj((float)x1, (float)y, -SLAB_T),
+                             pj((float)x1, (float)y + 1.02f, -SLAB_T), pj((float)x, (float)y + 1.02f, -SLAB_T) };
+            for (int k = 0; k < 4; k++) { q[k].x += o; q[k].y += o; }
+            pa_fill_poly(c, q, 4, sh);
+            x = x1;
+        }
+    }
+    PA_Color base = pa_hex(th->slab_front);
+    for (int y = 0; y < S.h; y++)
+        for (int x = 0; x < S.w; x++) {
+            if (!is_solid(x, y)) continue;
+            float x0 = (float)x, y0 = (float)y, x1 = x0 + 1.0f, y1 = y0 + 1.0f;
+            if (!is_solid(x - 1, y) && x0 >= P.hw)
+                face_quad(c, pj(x0, y0, WALL_H), pj(x0, y1, WALL_H), pj(x0, y1, -SLAB_T), pj(x0, y0, -SLAB_T),
+                          pa_shade(base, 0.10f));
+            if (!is_solid(x + 1, y) && x1 <= P.hw)
+                face_quad(c, pj(x1, y0, WALL_H), pj(x1, y1, WALL_H), pj(x1, y1, -SLAB_T), pj(x1, y0, -SLAB_T),
+                          pa_shade(base, -0.30f));
+        }
+    /* Front faces in horizontal runs, so no seams show between tiles. */
+    for (int y = 0; y < S.h; y++) {
+        int x = 0;
+        while (x < S.w) {
+            if (!(is_solid(x, y) && !is_solid(x, y + 1))) { x++; continue; }
+            int x1 = x + 1;
+            while (x1 < S.w && is_solid(x1, y) && !is_solid(x1, y + 1)) x1++;
+            float a = (float)x - 0.01f, b = (float)x1 + 0.01f, yy = (float)(y + 1);
+            face_quad(c, pj(a, yy, WALL_H), pj(b, yy, WALL_H), pj(b, yy, -SLAB_T), pj(a, yy, -SLAB_T), base);
+            x = x1;
+        }
+    }
 }
 
 static void draw_board(PA_Canvas *c, const Theme *th, PA_Color paint, float flash) {
     PA_Color top = pa_hex(th->slab);
     float W = (float)S.w, H = (float)S.h, rw = P.rim;
-    {
-        /* Soft drop shadow, 30% black, offset about 0.02 of the screen width. */
-        PA_Vec2 q[4] = { pj(-rw, -rw, -SLAB_T), pj(W + rw, -rw, -SLAB_T),
-                         pj(W + rw, H + rw, -SLAB_T), pj(-rw, H + rw, -SLAB_T) };
-        for (int k = 0; k < 3; k++) {
-            float o = P.shadow, g = P.shadow * 0.35f * (float)(2 - k);
-            PA_Vec2 sq[4] = { { q[0].x + o - g, q[0].y + o - g }, { q[1].x + o + g, q[1].y + o - g },
-                              { q[2].x + o + g, q[2].y + o + g }, { q[3].x + o - g, q[3].y + o + g } };
-            pa_fill_poly(c, sq, 4, PA_RGBA(0, 0, 0, 26));
+    if (S.shape != SHAPE_RECT) {
+        draw_cut_slab(c, th);
+    } else {
+        {
+            /* Soft drop shadow, 30% black, offset about 0.02 of the screen width. */
+            PA_Vec2 q[4] = { pj(-rw, -rw, -SLAB_T), pj(W + rw, -rw, -SLAB_T),
+                             pj(W + rw, H + rw, -SLAB_T), pj(-rw, H + rw, -SLAB_T) };
+            for (int k = 0; k < 3; k++) {
+                float o = P.shadow, g = P.shadow * 0.35f * (float)(2 - k);
+                PA_Vec2 sq[4] = { { q[0].x + o - g, q[0].y + o - g }, { q[1].x + o + g, q[1].y + o - g },
+                                  { q[2].x + o + g, q[2].y + o + g }, { q[3].x + o - g, q[3].y + o + g } };
+                pa_fill_poly(c, sq, 4, PA_RGBA(0, 0, 0, 26));
+            }
         }
-    }
-    {
-        /* Front edge of the slab under the rim, then the rim, then the top. */
-        PA_Color rim = pa_hex(th->rim);
-        PA_Vec2 a = pj(-rw, H + rw, WALL_H), b = pj(W + rw, H + rw, WALL_H);
-        PA_Vec2 d = pj(W + rw, H + rw, -SLAB_T), e = pj(-rw, H + rw, -SLAB_T);
-        PA_Paint fr = pa_linear(0, a.y, 0, d.y);
-        pa_stop(&fr, 0.0f, pa_shade(rim, -0.22f));
-        pa_stop(&fr, 1.0f, pa_shade(rim, -0.38f));
-        quad_paint(c, a, b, d, e, &fr);
-        tile_quad(c, -rw, -rw, W + rw, H + rw, WALL_H, rim);
-        /* A fine lit edge where the rim meets the top. */
-        tile_quad(c, -rw * 0.25f, -rw * 0.25f, W + rw * 0.25f, H + rw * 0.25f, WALL_H, pa_shade(rim, 0.25f));
-        tile_quad(c, 0, 0, W, H, WALL_H, top);
+        {
+            /* Front edge of the slab under the rim, then the rim, then the top. */
+            PA_Color rim = pa_hex(th->rim);
+            PA_Vec2 a = pj(-rw, H + rw, WALL_H), b = pj(W + rw, H + rw, WALL_H);
+            PA_Vec2 d = pj(W + rw, H + rw, -SLAB_T), e = pj(-rw, H + rw, -SLAB_T);
+            PA_Paint fr = pa_linear(0, a.y, 0, d.y);
+            pa_stop(&fr, 0.0f, pa_shade(rim, -0.22f));
+            pa_stop(&fr, 1.0f, pa_shade(rim, -0.38f));
+            quad_paint(c, a, b, d, e, &fr);
+            tile_quad(c, -rw, -rw, W + rw, H + rw, WALL_H, rim);
+            /* A fine lit edge where the rim meets the top. */
+            tile_quad(c, -rw * 0.25f, -rw * 0.25f, W + rw * 0.25f, H + rw * 0.25f, WALL_H, pa_shade(rim, 0.25f));
+            tile_quad(c, 0, 0, W, H, WALL_H, top);
+        }
     }
     draw_floor(c, th, paint, flash);
 
@@ -1266,9 +1427,9 @@ static void draw_board(PA_Canvas *c, const Theme *th, PA_Color paint, float flas
     for (int y = 0; y < S.h; y++) {
         int x = 0;
         while (x < S.w) {
-            if (!is_wall(x, y)) { x++; continue; }
+            if (!is_block(x, y)) { x++; continue; }
             int x1 = x + 1;
-            while (x1 < S.w && is_wall(x1, y)) x1++;
+            while (x1 < S.w && is_block(x1, y)) x1++;
             float ox = 0.34f, oy = 0.30f;
             PA_Vec2 a = pj((float)x + ox, (float)y + oy, 0), b = pj((float)x1 + ox, (float)y + oy, 0);
             PA_Vec2 d = pj((float)x1 + ox, (float)y + 1 + oy, 0), e = pj((float)x + ox, (float)y + 1 + oy, 0);
@@ -1339,7 +1500,7 @@ static void draw_hud(PA_Canvas *c, const Theme *th, PA_Color paint, float U, flo
 
 static void draw_hint(PA_Canvas *c, const Theme *th, float U) {
     float W = (float)c->w, H = (float)c->h;
-    float y = H - U * 0.11f;
+    float y = H - U * 0.035f;
     PA_Color ink = pa_hex(th->ink);
     float t = pa_wrapf(S.time * 0.8f, 1.0f);
     float k = pa_smooth(pa_clamp01(t / 0.7f));
@@ -1467,6 +1628,9 @@ static void draw_celebration(PA_Canvas *c, PA_Color paint, float U) {
         float ts = sizes[i] * sc;
         brush_banner(c, lx + U * 0.006f, ly + U * 0.01f, W * widths[i] * sc, ts * 1.8f, ang, 40u + (uint32_t)i, dark);
         brush_banner(c, lx, ly, W * widths[i] * sc, ts * 1.7f, ang, 50u + (uint32_t)i, light);
+        /* A lit band along the top edge so the strip reads as a thick stroke. */
+        brush_banner(c, lx + sa * ts * 0.52f, ly - ca * ts * 0.52f, W * widths[i] * sc * 0.96f, ts * 0.32f, ang,
+                     60u + (uint32_t)i, pa_shade(light, 0.20f));
     }
     for (int i = 0; i < 3; i++) {
         float off = ((float)i - 1.0f) * line;
@@ -1501,8 +1665,9 @@ static void splat_render(PA_Canvas *c) {
     float pause_r = U * 0.048f;
     float pause_x = W - pause_r - U * 0.045f, pause_y = label_y;
 
-    float top = label_y + label_size * 0.95f + U * 0.1f;
-    float bottom = H - U * 0.16f;
+    /* The board takes the screen from about 22% down to the bottom margin. */
+    float top = fmaxf(H * 0.16f, label_y + label_size * 1.6f + U * 0.06f);
+    float bottom = H * 0.935f;
     fit_camera(c, top, bottom, slide);
     P.cy += sinf(S.time * 90.0f) * shake;
     if (S.cleared) {
