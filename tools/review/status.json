@@ -18,7 +18,8 @@
   "Roller Splat round 2: OURS WINS the blind comparison (slight).",
   "Pin Rescue port merged; round 1 lost clearly (flat 2D tubes and hairline pins). Road Hopper re-pass, Horde Arena and Rooftop Run ports merged and sent blind; Helix and Block Storm confirmation rounds started.",
   "Helix Drop CONFIRMED: second blind win (clear) against different reference shots. Block Storm lost its confirmation round narrowly. Road Hopper, Rooftop Run and Horde Arena lost round 1 clearly; all back with builders.",
-  "All 12 games now native (Avian Artillery port landed). Benchmarks show 26-91 ms per frame; performance builder started. Paper Territory lost round 1; Roller Splat lost its confirmation round. Five blind reviews running."
+  "All 12 games now native (Avian Artillery port landed). Benchmarks show 26-91 ms per frame; performance builder started. Paper Territory lost round 1; Roller Splat lost its confirmation round. Five blind reviews running.",
+  "Block Storm CONFIRMED: clear win against the reference set it had narrowly lost to. Mob Clash now loses clearly (was overwhelming); Avian Artillery lost round 1 overwhelmingly."
  ],
  "engine": [
   {
@@ -61,10 +62,10 @@
    "id": "blockstorm",
    "name": "Block Storm",
    "ref": "Block Blast",
-   "phase": "review",
-   "round": 3,
-   "verdict": "Reference wins, slight (after a clear win in round 2)",
-   "gap": "Layering fixes landed (confetti behind HUD, tighter praise text, sharp beams, consistent tray). Re-running against the set it lost to."
+   "phase": "won",
+   "round": 4,
+   "verdict": "Ours wins, clear (confirmed on both reference sets)",
+   "gap": "Won clearly against both reference sets. Done; only note is larger tray pieces."
   },
   {
    "id": "helix",
@@ -106,10 +107,10 @@
    "id": "mobclash",
    "name": "Mob Clash: Gate Siege",
    "ref": "Mob Control",
-   "phase": "review",
-   "round": 1,
-   "verdict": "Reference wins, overwhelming",
-   "gap": "Round 2 landed: low chase camera, glossy crowds, lit road, three environments, 3D gates, boss. Blind review running."
+   "phase": "fixing",
+   "round": 2,
+   "verdict": "Reference wins, clear (was overwhelming)",
+   "gap": "Crowds still tens not hundreds, empty lower road, small boss, single cannon. Ours wins HUD."
   },
   {
    "id": "paper",
@@ -151,10 +152,10 @@
    "id": "avian",
    "name": "Avian Artillery",
    "ref": "Angry Birds 2",
-   "phase": "review",
-   "round": 0,
-   "verdict": "",
-   "gap": "Native port landed: rigid-body physics, five bird powers, wood/ice/stone, 20 levels in 4 worlds, stars. Round 1 blind review running."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, overwhelming",
+   "gap": "Structures tiny and low with empty sky, flat one-fill blocks, thin parallax, blank small pigs, light impact effects."
   }
  ]
 }
