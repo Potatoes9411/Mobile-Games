@@ -9,7 +9,8 @@
   "Block Storm re-pass merged; round 1 blind review started.",
   "Block Storm round 1: reference wins only slightly (was overwhelming); ours now wins on effects and juice. Round 2 started.",
   "Helix Drop re-pass merged; round 1 blind review started.",
-  "Roller Splat re-pass merged; round 1 blind review started. Block Storm builder resumed on round 2."
+  "Roller Splat re-pass merged; round 1 blind review started. Block Storm builder resumed on round 2.",
+  "Helix Drop round 1: OURS WINS the blind comparison (slight). Confirmation round queued after the font upgrade."
  ],
  "engine": [
   {
@@ -56,10 +57,10 @@
    "id": "helix",
    "name": "Helix Drop",
    "ref": "Helix Jump",
-   "phase": "review",
-   "round": 0,
-   "verdict": "Reference wins, clear",
-   "gap": "Re-pass landed (shatter, fireball, 4 themes, boss levels, results flow). Round 1 blind review running."
+   "phase": "won",
+   "round": 1,
+   "verdict": "Ours wins, slight",
+   "gap": "Won on cleaner, more readable play. Reference still better on typography and meta screens (chest picks, level map). Confirmation round after the font upgrade."
   },
   {
    "id": "splat",
