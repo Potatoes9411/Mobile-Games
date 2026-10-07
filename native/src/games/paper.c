@@ -33,13 +33,16 @@
 #define SLAB_Z     0.82f            /* territory thickness, cells */
 #define VIEW_K     0.84f            /* ground foreshortening (camera tilt) */
 #define VIEW_Z     0.62f            /* height to screen */
-#define AV_HALF    1.32f            /* avatar half width, cells */
-#define AV_H       1.65f            /* avatar height, cells */
+#define AV_HALF    1.42f            /* avatar half width, cells */
+#define AV_H       1.60f            /* avatar height, cells */
+#define AV_K       0.62f            /* the mascots are seen a little more side-on */
+#define AV_ZK      0.80f
 #define TRAIL_W    2.00f            /* drawn trail width, cells */
 #define HOME_R     5.2f
 #define WHO_RIM    200
 #define MAXPART    520
 #define MAXFT      24
+#define REVEAL_T   2.3f
 
 enum { PH_TITLE, PH_PLAY, PH_DEAD, PH_WIN, PH_RESULTS };
 enum { AI_PLAN, AI_RETURN, AI_ATTACK };
@@ -56,16 +59,16 @@ typedef struct {
 } Skin;
 
 static const Skin SKINS[] = {
-    { "DONUT",    0xE9AE72, 0xF78DBE, 0xF9B1D3, 1,  0 },
-    { "CHICK",    0xF7B92C, 0xFFD443, 0xFFD54E, 2,  2 },
-    { "CAT",      0x27347F, 0x34449E, 0x3CC3F2, 0,  5 },
-    { "SANDWICH", 0xE58D45, 0xF0A458, 0xFFAA5E, 0,  8 },
-    { "FROG",     0x3FAF4B, 0x62CF5E, 0x86DC74, 2, 12 },
-    { "ROBOT",    0x7F90BC, 0xA6B5DA, 0xB2A1F4, 0, 18 },
-    { "BERRY",    0xD93A48, 0xF0545A, 0xFF8987, 0, 25 },
-    { "GRAPE",    0x7F45C8, 0x9F65E6, 0xD08EF2, 3, 35 },
-    { "SLIME",    0x22B49B, 0x48D8BE, 0x5DDFC8, 3, 50 },
-    { "PANDA",    0xDCE2EC, 0xFAFBFE, 0x98B4EA, 0, 75 },
+    { "DONUT",    0xEBA052, 0xFF6FAE, 0xFF84BB, 1,  0 },
+    { "CHICK",    0xF5A90A, 0xFFCF1F, 0xFFCC1F, 2,  2 },
+    { "CAT",      0x24307E, 0x33439F, 0x14BBFF, 0,  5 },
+    { "SANDWICH", 0xE5802E, 0xF29A42, 0xFF9A3A, 0,  8 },
+    { "FROG",     0x2FB043, 0x4FD24A, 0x5FD94C, 2, 12 },
+    { "ROBOT",    0x6F84C6, 0x9AAFEA, 0x9E82FF, 0, 18 },
+    { "BERRY",    0xDB2433, 0xF33A45, 0xFF6464, 0, 25 },
+    { "GRAPE",    0x7634CC, 0x974FF0, 0xCB6BFF, 3, 35 },
+    { "SLIME",    0x0FB396, 0x2CDDBC, 0x25DFC0, 3, 50 },
+    { "PANDA",    0xDCE2EE, 0xFFFFFF, 0x739DFF, 0, 75 },
 };
 #define SKIN_COUNT ((int)(sizeof(SKINS) / sizeof(SKINS[0])))
 
@@ -102,7 +105,7 @@ typedef struct {
     PA_Color col; int kind;
 } Part;
 
-typedef struct { float x, y, t; char text[16]; PA_Color col; float size; } FText;
+typedef struct { float x, y, t; char text[16]; PA_Color col; float size; int pill; } FText;
 
 static struct {
     int   phase; float t, pt;
@@ -115,7 +118,7 @@ static struct {
     int   dt_x0, dt_y0, dt_x1, dt_y1, dirty;
     uint8_t fld[MAXP][NCELL];
     uint8_t dom[NCELL], domv[NCELL];
-    uint8_t deco[NCELL];
+    uint8_t deco[NCELL], sand[NCELL];
     int   arena_cells, cnt[MAXP + 1];
     PA_Rng rng;
     int   budget, name_next;
@@ -135,6 +138,9 @@ static struct {
     struct { char name[12]; int skin; float pct; } res[MAXP];
     struct { float x, y, r; } isle[12]; int nisle;
     float res_btn_y;
+    struct { float x, y; uint8_t type, var; } props[480]; int nprops;
+    int   reward, confetti_done;
+    float last_ct;          /* last time any land was revealed */
 } S;
 
 static int   g_best;            /* best %, tenths */
@@ -142,6 +148,7 @@ static int   g_skin;
 static int   g_runs;
 static int   g_total_kills;
 static int   g_loaded;
+static int   g_stars;            /* reward currency */
 
 /* ------------------------------------------------------------------ helpers -- */
 static inline int cell_at(float x, float y) {
@@ -188,7 +195,7 @@ static void set_owner(int c, int o, float when) {
     S.own[c] = (uint8_t)o;
     int x = c % G, y = c / G;
     if (when <= S.t) {
-        S.vis[c] = (uint8_t)o; S.ct[c] = S.t; S.rev[c] = -1.0f;
+        S.vis[c] = (uint8_t)o; S.ct[c] = S.t; S.rev[c] = -1.0f; S.last_ct = S.t;
         mark_dirty(x, y);
         return;
     }
@@ -208,7 +215,7 @@ static void process_reveals(void) {
             int c = y * G + x;
             if (S.rev[c] < 0.0f) continue;
             if (S.rev[c] <= S.t) {
-                S.vis[c] = S.revo[c]; S.ct[c] = S.t; S.rev[c] = -1.0f;
+                S.vis[c] = S.revo[c]; S.ct[c] = S.t; S.rev[c] = -1.0f; S.last_ct = S.t;
                 mark_dirty(x, y);
             } else left++;
         }
@@ -228,15 +235,16 @@ static void add_part(float x, float y, float z, float vx, float vy, float vz,
     }
 }
 
-static void add_text(float x, float y, const char *txt, PA_Color col, float size) {
+static FText *add_text(float x, float y, const char *txt, PA_Color col, float size) {
     int slot = 0; float oldest = -1.0f;
     for (int i = 0; i < MAXFT; i++) {
         if (S.ft[i].t <= 0.0f) { slot = i; break; }
         if (S.ft[i].t > oldest) { oldest = S.ft[i].t; slot = i; }
     }
     FText *f = &S.ft[slot];
-    f->x = x; f->y = y; f->t = 1.3f; f->col = col; f->size = size;
+    f->x = x; f->y = y; f->t = 1.3f; f->col = col; f->size = size; f->pill = 0;
     snprintf(f->text, sizeof(f->text), "%s", txt);
+    return f;
 }
 
 static void burst(float x, float y, float z, int n, PA_Color a, PA_Color b, int kind, float speed) {
@@ -388,6 +396,56 @@ static void make_deco(void) {
     }
     for (int c = 0; c < NCELL; c++) S.deco[c] = (uint8_t)(acc[c] * 255.0f);
 
+    /* Sand: a few broad beaches against the rim. */
+    memset(acc, 0, sizeof(acc));
+    for (int b = 0; b < 6; b++) {
+        float ang = (float)b / 6.0f * PA_TAU + pa_rng_range(&S.rng, -0.3f, 0.3f);
+        for (int l = 0; l < 5; l++) {
+            float la = ang + pa_rng_range(&S.rng, -0.22f, 0.22f), ld = AR - pa_rng_range(&S.rng, 2.0f, 8.0f);
+            float r = pa_rng_range(&S.rng, 3.5f, 6.5f);
+            float lx = ACX + cosf(la) * ld, ly = ACY + sinf(la) * ld;
+            for (int y = (int)(ly - r - 1); y <= (int)(ly + r + 1); y++)
+                for (int x = (int)(lx - r - 1); x <= (int)(lx + r + 1); x++) {
+                    if (x < 0 || y < 0 || x >= G || y >= G) continue;
+                    float dx = (float)x + 0.5f - lx, dy = (float)y + 0.5f - ly;
+                    if (dx * dx + dy * dy < r * r) acc[y * G + x] = 1.0f;
+                }
+        }
+    }
+    for (int pass = 0; pass < 2; pass++) {
+        for (int y = 0; y < G; y++)
+            for (int x = 0; x < G; x++) {
+                float sm = 0; int n = 0;
+                for (int k = -1; k <= 1; k++) if (x + k >= 0 && x + k < G) { sm += acc[y * G + x + k]; n++; }
+                tmp[y * G + x] = sm / (float)n;
+            }
+        for (int y = 0; y < G; y++)
+            for (int x = 0; x < G; x++) {
+                float sm = 0; int n = 0;
+                for (int k = -1; k <= 1; k++) if (y + k >= 0 && y + k < G) { sm += tmp[(y + k) * G + x]; n++; }
+                acc[y * G + x] = sm / (float)n;
+            }
+    }
+    for (int c = 0; c < NCELL; c++) S.sand[c] = (uint8_t)(acc[c] * 255.0f);
+
+    /* Small props scattered over the ground: what grows where depends on
+       the terrain under it. */
+    S.nprops = 0;
+    for (int tries = 0; tries < 3000 && S.nprops < 480; tries++) {
+        float ang = pa_rng_range(&S.rng, 0, PA_TAU), rr = sqrtf(pa_rng_next(&S.rng)) * (AR - 1.5f);
+        float x = ACX + cosf(ang) * rr, y = ACY + sinf(ang) * rr;
+        int c = cell_at(x, y);
+        if (c < 0) continue;
+        int t;
+        float k = pa_rng_next(&S.rng);
+        if (S.sand[c] > 140) t = k < 0.55f ? 4 : 2;
+        else if (S.deco[c] > 140) t = k < 0.45f ? 3 : (k < 0.8f ? 0 : 5);
+        else t = k < 0.5f ? 0 : (k < 0.75f ? 2 : 3);
+        S.props[S.nprops].x = x; S.props[S.nprops].y = y;
+        S.props[S.nprops].type = (uint8_t)t; S.props[S.nprops].var = (uint8_t)pa_rng_int(&S.rng, 0, 255);
+        S.nprops++;
+    }
+
     S.nisle = 0;
     for (int k = 0; k < 10; k++) {
         float ang = (float)k / 10.0f * PA_TAU + pa_rng_range(&S.rng, -0.2f, 0.2f);
@@ -409,6 +467,7 @@ static void new_round(uint32_t seed) {
     memset(S.parts, 0, sizeof(S.parts));
     memset(S.ft, 0, sizeof(S.ft));
     for (int c = 0; c < NCELL; c++) { S.rev[c] = -1.0f; S.ct[c] = -10.0f; }
+    S.last_ct = -10.0f;
     S.rv_on = 0;
     pa_rng_seed(&S.rng, seed);
     S.t = 0.0f; S.pt = 0.0f;
@@ -493,6 +552,7 @@ static void claim(int i) {
     if (speed < 28.0f) speed = 28.0f;
     int gained = 0;
     float sx = 0, sy = 0;
+    float bx[40], by[40]; int nb = 0;
     for (int c = 0; c < NCELL; c++) {
         if (!S.arena[c] || seen[c] || S.own[c] == me) continue;
         float fx = (float)(c % G) + 0.5f, fy = (float)(c / G) + 0.5f;
@@ -500,6 +560,9 @@ static void claim(int i) {
         set_owner(c, me, S.t + d / speed);
         gained++;
         sx += fx; sy += fy;
+        /* Reservoir sample of claimed cells for the particle burst. */
+        if (nb < 40) { bx[nb] = fx; by[nb] = fy; nb++; }
+        else { int r = pa_rng_int(&S.rng, 0, gained - 1); if (r < 40) { bx[r] = fx; by[r] = fy; } }
         if (gained % 9 == 0 && i == 0)
             add_part(fx, fy, SLAB_Z, 0, 0, pa_rng_range(&S.rng, 2.0f, 5.0f), 0.7f + d / speed,
                      0.32f, PA_RGB(255, 255, 255), 2);
@@ -521,11 +584,23 @@ static void claim(int i) {
         if (S.cnt[k + 1] == 0) kill_player(k, i, CAUSE_LAND);
     }
 
+    {
+        /* Confetti and cubes in the owner's colour pop off the new land. */
+        PA_Color lc = pa_hex(SKINS[p->skin].land);
+        int np = i == 0 ? 34 : 14;
+        for (int k = 0; k < np && nb > 0; k++) {
+            int j = k % nb;
+            float ang = pa_rng_range(&S.rng, 0, PA_TAU), sp2 = pa_rng_range(&S.rng, 0.5f, 3.0f);
+            add_part(bx[j], by[j], SLAB_Z, cosf(ang) * sp2, sinf(ang) * sp2, pa_rng_range(&S.rng, 6.0f, 12.0f),
+                     pa_rng_range(&S.rng, 0.7f, 1.2f), pa_rng_range(&S.rng, 0.22f, 0.38f),
+                     (k % 3 == 0) ? pa_shade(lc, 0.45f) : lc, (k & 1) ? 1 : 0);
+        }
+    }
     if (i == 0 && gained > 0) {
         float gp = 100.0f * (float)(S.cnt[me] - before) / (float)S.arena_cells;
         char buf[16];
         snprintf(buf, sizeof(buf), "+%.1f%%", (double)gp);
-        add_text(p->x, p->y, buf, pa_hex(SKINS[p->skin].land), gp > 4.0f ? 34.0f : 26.0f);
+        add_text(p->x, p->y, buf, pa_hex(SKINS[p->skin].land), gp > 4.0f ? 30.0f : 25.0f)->pill = 1;
         float k = pa_clamp01(gp / 8.0f);
         pa_tone(520.0f + 200.0f * k, 1040.0f + 500.0f * k, 0.12f, 1, 0.12f);
         pa_tone(780.0f + 260.0f * k, 1560.0f + 400.0f * k, 0.18f, 0, 0.08f);
@@ -926,7 +1001,11 @@ static void end_round(int won) {
         if (SKINS[k].unlock * 10 > old_best && SKINS[k].unlock * 10 <= g_best) S.unlocked = k;
     g_total_kills += S.final_kills;
     g_runs++;
+    S.reward = 10 + (int)(S.final_pct * 3.0f) + S.final_kills * 15 + (S.rank == 1 ? 25 : 0);
+    g_stars += S.reward;
+    S.confetti_done = 0;
     if (!pa_demo_mode()) {
+        pa_save_set("paper.stars", g_stars);
         pa_save_set("paper.best", g_best);
         pa_save_set("paper.kills", g_total_kills);
         pa_save_set("paper.runs", g_runs);
@@ -943,6 +1022,7 @@ static void s_start(void) {
         g_skin = pa_save_get("paper.skin", 0);
         g_runs = pa_save_get("paper.runs", 0);
         g_total_kills = pa_save_get("paper.kills", 0);
+        g_stars = pa_save_get("paper.stars", 0);
         g_loaded = 1;
     }
     if (g_skin < 0 || g_skin >= SKIN_COUNT || SKINS[g_skin].unlock * 10 > g_best) g_skin = 0;
@@ -1168,7 +1248,27 @@ static void s_update(float dt, const PA_Input *in) {
     case PH_RESULTS: {
         float bx, by, bw, bh, my;
         results_buttons(g_vw, g_vh, &bx, &by, &bw, &bh, &my);
-        if (S.pt > 0.5f) {
+        if (S.pt < REVEAL_T) {
+            if (in->tapped && S.pt > 0.3f) S.pt = REVEAL_T;
+            if (S.confetti_done == 0 && S.pt > 0.85f) {
+                /* The chest pops: confetti out of it. */
+                S.confetti_done = 1;
+                pa_tone(400, 1200, 0.25f, 1, 0.14f);
+                pa_noise(0.15f, 0.12f);
+                for (int k = 0; k < 70; k++) {
+                    float an = pa_rng_range(&S.rng, PA_PI * 1.05f, PA_PI * 1.95f), sp2 = pa_rng_range(&S.rng, 0.25f, 0.8f);
+                    add_part(0.5f, 0.5f, 0, cosf(an) * sp2 * 0.7f, sinf(an) * sp2, 0, pa_rng_range(&S.rng, 2.5f, 4.0f), 0.4f,
+                             pa_hsl(pa_rng_next(&S.rng), 0.85f, 0.62f), 9);
+                }
+            }
+        } else if (S.confetti_done < 2) {
+            S.confetti_done = 2;
+            pa_sfx(S.rank == 1 ? "win" : "levelup");
+            for (int k = 0; k < 64; k++)
+                add_part(pa_rng_range(&S.rng, 0, 1), pa_rng_range(&S.rng, -0.3f, -0.02f), 0, pa_rng_range(&S.rng, -0.05f, 0.05f),
+                         pa_rng_range(&S.rng, 0.05f, 0.2f), 0, 5.0f, 0.4f, pa_hsl(pa_rng_next(&S.rng), 0.85f, 0.62f), 9);
+        }
+        if (S.pt > REVEAL_T + 0.5f) {
             int retry = in->key_pressed[PA_KEY_SPACE] || in->key_pressed[PA_KEY_ENTER];
             int menu = in->key_pressed[PA_KEY_ESC];
             if (in->tapped) {
@@ -1182,8 +1282,8 @@ static void s_update(float dt, const PA_Input *in) {
                 else { S.phase = PH_TITLE; S.pt = 0.0f; }
             }
         }
-        /* Confetti keeps falling behind the card. */
-        if (pa_rng_chance(&S.rng, 0.35f) && S.rank <= 3)
+        /* Confetti keeps falling. */
+        if (S.pt > REVEAL_T && pa_rng_chance(&S.rng, 0.3f))
             add_part(pa_rng_range(&S.rng, 0, 1), -0.05f, 0, pa_rng_range(&S.rng, -0.02f, 0.02f), 0.18f, 0,
                      4.0f, 0.4f, pa_hsl(pa_rng_next(&S.rng), 0.8f, 0.64f), 9);
         break;
@@ -1196,7 +1296,12 @@ static void s_update(float dt, const PA_Input *in) {
         if (p->life <= 0.0f) continue;
         p->life -= dt;
         p->rot += p->vr * dt;
-        if (p->kind == 9) { p->x += p->vx * dt; p->y += p->vy * dt; p->vx += sinf(p->rot) * 0.02f * dt; continue; }
+        if (p->kind == 9) {
+            p->x += p->vx * dt; p->y += p->vy * dt;
+            p->vx = p->vx * (1.0f - 1.2f * dt) + sinf(p->rot) * 0.02f * dt;
+            p->vy = p->vy * (1.0f - 1.2f * dt) + 0.32f * dt;
+            continue;
+        }
         p->x += p->vx * dt; p->y += p->vy * dt; p->z += p->vz * dt;
         p->vz -= 22.0f * dt;
         p->vx *= 1.0f - 1.5f * dt; p->vy *= 1.0f - 1.5f * dt;
@@ -1223,7 +1328,8 @@ static void s_update(float dt, const PA_Input *in) {
 /* ================================================================ drawing == */
 static float g_s = 20.0f, g_ax, g_ay;
 static float g_foff[MAXP + 1];
-static uint32_t g_top[MAXP + 1], g_side[MAXP + 1];
+static uint32_t g_top[MAXP + 1], g_side[MAXP + 1], g_lip[MAXP + 1];
+static float g_aa = 50.0f;
 
 static inline PA_Vec2 proj(float x, float y, float z) {
     PA_Vec2 o;
@@ -1316,19 +1422,19 @@ static inline float land_sample(float wx, float wy, int *who) {
     return best;
 }
 
-static inline float deco_sample(float wx, float wy) {
+static inline float field_sample(const uint8_t *fd, float wx, float wy) {
     float u = wx - 0.5f, w = wy - 0.5f;
     if (u < 0.0f || w < 0.0f) return 0.0f;
     int i0 = (int)u, j0 = (int)w;
     if (i0 >= G - 1 || j0 >= G - 1) return 0.0f;
     int c = j0 * G + i0;
-    int d0 = S.deco[c], d1 = S.deco[c + 1], d2 = S.deco[c + G], d3 = S.deco[c + G + 1];
+    int d0 = fd[c], d1 = fd[c + 1], d2 = fd[c + G], d3 = fd[c + G + 1];
     /* Away from a splat edge all four corners agree: skip the blend. */
     if (d0 < 100 && d1 < 100 && d2 < 100 && d3 < 100) return 0.0f;
     if (d0 > 170 && d1 > 170 && d2 > 170 && d3 > 170) return 1.0f;
     float fx = u - (float)i0, fy = w - (float)j0;
-    float a = (float)S.deco[c] + ((float)S.deco[c + 1] - (float)S.deco[c]) * fx;
-    float b = (float)S.deco[c + G] + ((float)S.deco[c + G + 1] - (float)S.deco[c + G]) * fx;
+    float a = (float)d0 + ((float)d1 - (float)d0) * fx;
+    float b = (float)d2 + ((float)d3 - (float)d2) * fx;
     return (a + (b - a) * fy) * (1.0f / 255.0f);
 }
 
@@ -1338,25 +1444,46 @@ static int   g_base_cap;
 static uint8_t *g_tb;
 static int   g_tb_cap;
 
-#define C_MINT     0xE7FCF4
-#define C_SPLAT    0xD3F6E6
-#define C_WATER    0x2EB4F0
-#define C_WATER2   0x7ADCFB
-#define C_RIM_TOP  0x6DE6DD
-#define C_RIM_SIDE 0x2FB7C5
-#define C_GRASS    0xA4DB3F
+#define C_MINT     0xCFF7E4
+#define C_SPLAT    0xB8F0D2
+#define C_WATER    0x10A8F5
+#define C_WATER2   0x56D6FF
+#define C_RIM_TOP  0x4FE8DC
+#define C_RIM_SIDE 0x14AFC4
+#define C_GRASS    0x9BDB26
 #define C_GRASS_D  0x86C23A
 #define C_NAVY     0x1D2A86
+#define C_MEADOW   0xB2F0A0
+#define C_MEADOW_D 0x9AE38C
+#define C_SAND     0xFFEBA8
+#define C_SAND_D   0xF2D27C
 
 static uint32_t ground_colour(float wx, float wy, float d) {
     if (d < AR + 0.2f) {
-        float v = deco_sample(wx, wy);
-        int t = (int)((v - 0.45f) * 6.0f * 256.0f);
-        return mixc(C_MINT, C_SPLAT, t);
+        /* Three grounds: mint, meadow and sand, each edge a soft step. */
+        uint32_t col = C_MINT;
+        float v = field_sample(S.deco, wx, wy);
+        if (v > 0.3f) {
+            col = mixc(col, C_MEADOW_D, (int)((v - 0.38f) * 12.0f * 256.0f));
+            col = mixc(col, C_MEADOW, (int)((v - 0.5f) * 12.0f * 256.0f));
+        }
+        float sd = field_sample(S.sand, wx, wy);
+        if (sd > 0.3f) {
+            col = mixc(col, C_SAND_D, (int)((sd - 0.38f) * 12.0f * 256.0f));
+            col = mixc(col, C_SAND, (int)((sd - 0.5f) * 12.0f * 256.0f));
+        }
+        return col;
     }
     float out = d - (AR + RIM_W);
     uint32_t col = mixc(C_WATER2, C_WATER, (int)(pa_clamp01(out / 5.0f) * 256.0f));
     if (out < 0.7f) col = mixc(col, 0xE8FBFF, (int)((1.0f - pa_clamp01(out / 0.7f)) * 200.0f));
+    else if (out < 16.0f) {
+        /* Swell lines rolling in toward the rim. */
+        float f = out * 0.42f + S.t * 0.55f + 0.15f * sinf(atan2f(wy - ACY, wx - ACX) * 7.0f);
+        float fr = f - floorf(f);
+        float k = 1.0f - fabsf(fr - 0.12f) / 0.12f;
+        if (k > 0.0f) col = mixc(col, 0x7FE6FF, (int)(pa_clamp01(k * 2.0f) * (1.0f - out / 16.0f) * 230.0f));
+    }
     for (int k = 0; k < S.nisle; k++) {
         float ex = wx - S.isle[k].x, ey = wy - S.isle[k].y;
         float e2 = ex * ex + ey * ey, r = S.isle[k].r;
@@ -1435,22 +1562,26 @@ static uint32_t top_colour(int who, float v, float wx, float wy) {
            bilinearly so the glow front is a smooth curve, not cell steps. */
         float u = wx - 0.5f, w = wy - 0.5f;
         int i0 = (int)floorf(u), j0 = (int)floorf(w);
-        if (i0 >= 0 && j0 >= 0 && i0 < G - 1 && j0 < G - 1) {
+        if (S.t - S.last_ct < 0.55f && i0 >= 0 && j0 >= 0 && i0 < G - 1 && j0 < G - 1) {
             int c = j0 * G + i0;
             float fx = u - (float)i0, fy = w - (float)j0;
-            float g0 = pa_clamp01(1.0f - (S.t - S.ct[c]) / 0.5f), g1 = pa_clamp01(1.0f - (S.t - S.ct[c + 1]) / 0.5f);
-            float g2 = pa_clamp01(1.0f - (S.t - S.ct[c + G]) / 0.5f), g3 = pa_clamp01(1.0f - (S.t - S.ct[c + G + 1]) / 0.5f);
+            /* 120 ms of hard white flash, then a quick fade. */
+            #define GLOW(t0) (S.t - (t0) < 0.12f ? 1.0f : pa_clamp01(1.0f - (S.t - (t0) - 0.12f) / 0.4f))
+            float g0 = GLOW(S.ct[c]), g1 = GLOW(S.ct[c + 1]), g2 = GLOW(S.ct[c + G]), g3 = GLOW(S.ct[c + G + 1]);
+            #undef GLOW
             if (g0 + g1 + g2 + g3 > 0.0f) {
                 float a = g0 + (g1 - g0) * fx, b = g2 + (g3 - g2) * fx;
-                float gl = a + (b - a) * fy;
-                col = mixc(col, 0xFFFFFF, (int)(gl * gl * 140.0f));
+                float gl = pa_clamp01(a + (b - a) * fy);
+                col = mixc(col, 0xFFFFFF, (int)(pa_smooth(gl) * 200.0f));
             }
         }
     }
     if (p->dying) col = mixc(col, 0xFFFFFF, (int)(p->fade * 160.0f));
     /* Glossy lip along the top edge, as on the plates' slabs. */
-    float lip = 1.0f - pa_clamp01((v - 0.5f) / 0.075f);
-    if (lip > 0.0f) col = mixc(col, 0xFFFFFF, (int)(lip * 120.0f));
+    /* A crisp 2 px white line inside the edge, then a soft bevel glow. */
+    float e = (v - 0.5f) * g_aa;
+    if (e < 2.4f) col = mixc(col, 0xFFFFFF, 112);
+    else if (e < 10.0f) col = mixc(col, 0xFFFFFF, (int)(40.0f * (1.0f - (e - 2.4f) / 7.6f)));
     return col;
 }
 
@@ -1459,6 +1590,7 @@ static void draw_world(PA_Canvas *c) {
     int HP = (int)(SLAB_Z * g_s * VIEW_Z + 0.5f);
     int SH = (int)(g_s * 0.32f);
     if (HP < 2) HP = 2;
+    int lip_rows = HP * 45 / 100 < 2 ? 2 : HP * 45 / 100;
     int rows = H + HP + SH + 1;
     if (g_base_cap < rows * W) {
         free(g_base);
@@ -1470,6 +1602,7 @@ static void draw_world(PA_Canvas *c) {
     if (W > 4096) return;
     for (int x = 0; x < W; x++) colx[x] = S.cam_x + ((float)x + 0.5f - g_ax) / g_s;
     float aa = g_s * 2.6f;
+    g_aa = aa;
     float inv_k = 1.0f / (g_s * VIEW_K);
 
     for (int r = 0; r < rows; r++) {
@@ -1543,17 +1676,18 @@ static void draw_world(PA_Canvas *c) {
             /* Soft drop shadow under every slab. */
             int sv = srow[x].v;
             if (sv > 30 && grow[x].cov < 255) {
-                int k = (sv - 30) * 64 / 225;
-                col = mixc(col, srow[x].who == WHO_RIM ? 0x1B7FB0 : 0x6B9C92, k);
+                int k = (sv - 30) * 96 / 225;
+                col = mixc(col, srow[x].who == WHO_RIM ? 0x0E70B0 : 0x4FBF98, k);
             }
             int side = -1, scov = 0;
             if (lfull[x] >= y) { side = lfull[x]; scov = 256; }
             else if (lany[x] >= y) { side = lany[x]; scov = g_base[(size_t)(side + SH) * (size_t)W + x].cov; }
             if (side >= 0) {
                 int who = g_base[(size_t)(side + SH) * (size_t)W + x].who;
-                uint32_t sc = who == WHO_RIM ? C_RIM_SIDE : g_side[who];
                 int t = side - y;
-                sc = mixc(sc, 0x000000, (HP - 1 - t) * 34 / HP);
+                /* Darker lower lip on every slab wall. */
+                uint32_t sc = who == WHO_RIM ? C_RIM_SIDE : (t < lip_rows ? g_lip[who] : g_side[who]);
+                if (who == WHO_RIM && t < lip_rows) sc = mixc(sc, 0x000000, 60);
                 col = mixc(col, sc, scov);
             }
             if (tb->cov) col = mixc(col, top_colour(tb->who, (float)tb->v / 255.0f, colx[x], wy_top), tb->cov + 1);
@@ -1644,42 +1778,80 @@ static void draw_trail(PA_Canvas *c, const PA_Vec2 *pts, int n, float hx, float 
 }
 
 /* ---------------------------------------------------------------- avatar -- */
-typedef struct { float gx, gy, s, ch, sh, z0, scale; } AvView;
+/* The mascots are chunky boxes that face the camera, the way the plates
+   show them: a big glossy pair of eyes on the front, the skin's ears, hat or
+   prop on top, a dark ink outline round the whole silhouette and a soft
+   contact shadow. They lean into the direction of travel and their pupils
+   look where they are going. */
+#define C_INK 0x2A1F5C
+
+typedef struct { float gx, gy, s, z0, scale, hgt, lnx, lny, ow; } AvView;
 
 static PA_Vec2 av_pt(const AvView *v, float lx, float ly, float z) {
+    float k = v->hgt > 0.0f ? z / v->hgt : 0.0f;
     PA_Vec2 o;
-    float wx = (lx * v->ch - ly * v->sh) * v->scale, wy = (lx * v->sh + ly * v->ch) * v->scale;
+    float wx = (lx + v->lnx * k) * v->scale, wy = (ly + v->lny * k) * v->scale;
     o.x = v->gx + wx * v->s;
-    o.y = v->gy + wy * v->s * VIEW_K - (v->z0 + z * v->scale) * v->s * VIEW_Z;
+    o.y = v->gy + wy * v->s * AV_K - v->z0 * v->s * VIEW_Z - z * v->scale * v->s * AV_ZK;
     return o;
 }
 
-static void av_ellipse(PA_Canvas *c, const AvView *v, float lx, float ly, float z, float r, PA_Color col) {
-    PA_Vec2 p = av_pt(v, lx, ly, z);
-    pa_fill_ellipse(c, p.x, p.y, r * v->s * v->scale, r * v->s * v->scale * VIEW_K, col);
+static float av_px(const AvView *v, float cells) { return cells * v->s * v->scale; }
+
+/* Filled shape with the ink outline under it. */
+static void inked_poly(PA_Canvas *c, const AvView *v, const PA_Vec2 *p, int n, PA_Color col) {
+    pa_stroke_poly(c, p, n, 1, v->ow * 2.0f, pa_hex(C_INK));
+    pa_fill_poly(c, p, n, pa_hex(C_INK));
+    pa_fill_poly(c, p, n, col);
 }
 
-static void av_eye(PA_Canvas *c, const AvView *v, float lx, float ly, float z, float r, PA_Color iris) {
-    av_ellipse(c, v, lx, ly, z, r * 1.18f, pa_hex(0x1D2050));
-    av_ellipse(c, v, lx, ly, z, r, PA_RGB(255, 255, 255));
-    av_ellipse(c, v, lx + r * 0.25f, ly, z, r * 0.62f, iris);
-    av_ellipse(c, v, lx + r * 0.32f, ly, z, r * 0.36f, pa_hex(0x141836));
-    av_ellipse(c, v, lx + r * 0.05f, ly - r * 0.25f, z, r * 0.2f, PA_RGB(255, 255, 255));
+static void inked_circle(PA_Canvas *c, const AvView *v, float x, float y, float r, PA_Color col) {
+    pa_fill_circle(c, x, y, r + v->ow, pa_hex(C_INK));
+    pa_fill_circle(c, x, y, r, col);
 }
 
-static void av_tri(PA_Canvas *c, PA_Vec2 a, PA_Vec2 b, PA_Vec2 d, PA_Color col) {
-    PA_Vec2 t[3] = { a, b, d };
-    pa_fill_poly(c, t, 3, col);
+/* A big cartoon eye: ink ring, white, dark pupil looking along the heading,
+   two highlights. */
+static void glossy_eye(PA_Canvas *c, const AvView *v, float x, float y, float r, float lx, float ly,
+                       PA_Color iris) {
+    pa_fill_ellipse(c, x, y, r + v->ow, r * 1.08f + v->ow, pa_hex(C_INK));
+    pa_fill_ellipse(c, x, y, r, r * 1.08f, PA_RGB(255, 255, 255));
+    float px = x + lx * r * 0.28f, py = y + ly * r * 0.22f + r * 0.08f;
+    if (PA_A(iris) > 0) pa_fill_circle(c, px, py, r * 0.62f, iris);
+    pa_fill_circle(c, px, py, r * 0.46f, pa_hex(0x1A1A40));
+    pa_fill_circle(c, px - r * 0.2f, py - r * 0.22f, r * 0.2f, PA_RGB(255, 255, 255));
+    pa_fill_circle(c, px + r * 0.18f, py + r * 0.18f, r * 0.09f, PA_RGB(255, 255, 255));
 }
 
-/* A rounded cube with the skin's bands down its sides and its face on top. */
+static int hull2d(PA_Vec2 *p, int n, PA_Vec2 *out) {
+    for (int i = 1; i < n; i++) {
+        PA_Vec2 t = p[i]; int j = i - 1;
+        while (j >= 0 && (p[j].x > t.x || (p[j].x == t.x && p[j].y > t.y))) { p[j + 1] = p[j]; j--; }
+        p[j + 1] = t;
+    }
+    int k = 0;
+    for (int i = 0; i < n; i++) {
+        while (k >= 2 && (out[k - 1].x - out[k - 2].x) * (p[i].y - out[k - 2].y) -
+                         (out[k - 1].y - out[k - 2].y) * (p[i].x - out[k - 2].x) <= 0) k--;
+        out[k++] = p[i];
+    }
+    for (int i = n - 2, t = k + 1; i >= 0; i--) {
+        while (k >= t && (out[k - 1].x - out[k - 2].x) * (p[i].y - out[k - 2].y) -
+                         (out[k - 1].y - out[k - 2].y) * (p[i].x - out[k - 2].x) <= 0) k--;
+        out[k++] = p[i];
+    }
+    return k - 1;
+}
+
 static void draw_avatar(PA_Canvas *c, int skin, float gx, float gy, float s, float head,
-                        float z0, float scale, float squash, float shadow) {
+                        float z0, float scale, float squash, float shadow, float lean) {
     const Skin *sk = &SKINS[skin];
-    AvView v = { gx, gy, s, cosf(head), sinf(head), z0, scale };
-    float a = AV_HALF, rc = a * 0.38f;
-    float hgt = AV_H * (1.0f - 0.22f * squash);
-    float wide = 1.0f + 0.12f * squash;
+    float a = AV_HALF, rc = a * 0.36f;
+    float hgt = AV_H * (1.0f - 0.24f * squash);
+    float wide = 1.0f + 0.14f * squash;
+    float hx = cosf(head), hy = sinf(head);
+    AvView v = { gx, gy, s, z0, scale, hgt, hx * lean * 0.22f, hy * lean * 0.22f, 0.0f };
+    v.ow = fmaxf(1.4f, s * scale * 0.11f);
     PA_Vec2 fp[24]; int n = 0;
     static const float CX[4] = { 1, -1, -1, 1 }, CY[4] = { 1, 1, -1, -1 };
     for (int k = 0; k < 4; k++) {
@@ -1691,36 +1863,69 @@ static void draw_avatar(PA_Canvas *c, int skin, float gx, float gy, float s, flo
     }
     if (shadow > 0.0f) {
         PA_Vec2 g = av_pt(&v, 0, 0, 0);
-        PA_Vec2 g0 = { g.x, g.y + v.z0 * s * VIEW_Z };
-        (void)g0;
-        pa_shadow(c, g.x + s * 0.12f, g.y + s * 0.20f, a * s * scale * 1.35f, a * s * scale * 0.95f * VIEW_K, shadow);
+        pa_shadow(c, g.x + s * 0.08f, g.y + s * 0.22f + v.z0 * s * VIEW_Z * 0.0f,
+                  a * s * scale * 1.35f, a * s * scale * 1.0f * VIEW_K, shadow);
     }
 
-    /* Side bands, bottom to top: z fractions and colours. */
+    /* Ears and anything else that sits behind the top face. */
+    float z = hgt;
+    PA_Color body = pa_hex(sk->body), topc = pa_hex(sk->top);
+    if (skin == D_CAT || skin == D_PANDA) {
+        for (int sd = -1; sd <= 1; sd += 2) {
+            if (skin == D_CAT) {
+                PA_Vec2 b0 = av_pt(&v, (float)sd * 0.88f * a, -0.35f * a, z), b1 = av_pt(&v, (float)sd * 0.22f * a, -0.35f * a, z);
+                PA_Vec2 tp = av_pt(&v, (float)sd * 0.66f * a, -0.42f * a, z + 1.05f);
+                PA_Vec2 e[3] = { b0, tp, b1 };
+                inked_poly(c, &v, e, 3, topc);
+                PA_Vec2 c0 = av_pt(&v, (float)sd * 0.76f * a, -0.35f * a, z + 0.05f), c1 = av_pt(&v, (float)sd * 0.38f * a, -0.35f * a, z + 0.05f);
+                PA_Vec2 ct = av_pt(&v, (float)sd * 0.63f * a, -0.4f * a, z + 0.72f);
+                PA_Vec2 e2[3] = { c0, ct, c1 };
+                pa_fill_poly(c, e2, 3, pa_hex(0xFF8AC0));
+            } else {
+                PA_Vec2 e = av_pt(&v, (float)sd * 0.72f * a, -0.45f * a, z + 0.35f);
+                inked_circle(c, &v, e.x, e.y, av_px(&v, 0.42f), pa_hex(0x2A2D3E));
+            }
+        }
+    }
+
+    /* Ink silhouette of the body. */
+    {
+        PA_Vec2 pts[48], hl[50];
+        for (int i = 0; i < n; i++) { pts[i] = av_pt(&v, fp[i].x, fp[i].y, 0); pts[n + i] = av_pt(&v, fp[i].x, fp[i].y, hgt); }
+        int hn = hull2d(pts, n * 2, hl);
+        float cx = 0, cy = 0;
+        for (int i = 0; i < hn; i++) { cx += hl[i].x; cy += hl[i].y; }
+        cx /= (float)hn; cy /= (float)hn;
+        for (int i = 0; i < hn; i++) {
+            float dx = hl[i].x - cx, dy = hl[i].y - cy, L = sqrtf(dx * dx + dy * dy);
+            if (L > 0.001f) { hl[i].x += dx / L * v.ow; hl[i].y += dy / L * v.ow; }
+        }
+        pa_fill_poly(c, hl, hn, pa_hex(C_INK));
+    }
+
+    /* Side bands, bottom to top. */
     float bz[5]; uint32_t bc[4]; int nb;
     if (skin == D_SANDWICH) {
         bz[0] = 0; bz[1] = 0.30f; bz[2] = 0.46f; bz[3] = 0.62f; bz[4] = 1.0f;
-        bc[0] = 0xD9853F; bc[1] = 0x55C24A; bc[2] = 0xFFD23C; bc[3] = 0xE99A50; nb = 4;
+        bc[0] = 0xD97A2E; bc[1] = 0x45C93A; bc[2] = 0xFFD21A; bc[3] = 0xEE9440; nb = 4;
     } else if (skin == D_DONUT) {
-        bz[0] = 0; bz[1] = 0.58f; bz[2] = 1.0f;
+        bz[0] = 0; bz[1] = 0.5f; bz[2] = 1.0f;
         bc[0] = sk->body; bc[1] = sk->top; nb = 2;
     } else if (skin == D_PANDA) {
         bz[0] = 0; bz[1] = 0.22f; bz[2] = 1.0f;
         bc[0] = 0x2A2D3E; bc[1] = sk->body; nb = 2;
     } else {
         bz[0] = 0; bz[1] = 0.16f; bz[2] = 1.0f;
-        bc[0] = (uint32_t)pa_shade(pa_hex(sk->body), -0.18f) & 0xFFFFFF; bc[1] = sk->body; nb = 2;
+        bc[0] = (uint32_t)pa_shade(body, -0.2f) & 0xFFFFFF; bc[1] = sk->body; nb = 2;
     }
     for (int i = 0; i < n; i++) {
         int j = (i + 1) % n;
         float ex = fp[j].x - fp[i].x, ey = fp[j].y - fp[i].y;
-        float nxl = ey, nyl = -ex;
-        float nwx = nxl * v.ch - nyl * v.sh, nwy = nxl * v.sh + nyl * v.ch;
-        float L = sqrtf(nwx * nwx + nwy * nwy);
+        float nx = ey, ny = -ex, L = sqrtf(nx * nx + ny * ny);
         if (L < 1e-6f) continue;
-        nwx /= L; nwy /= L;
-        if (nwy <= 0.0f) continue;
-        float shade = -0.04f - 0.16f * nwx - 0.06f * (1.0f - nwy);
+        nx /= L; ny /= L;
+        if (ny <= 0.0f) continue;
+        float shade = -0.02f - 0.18f * nx - 0.08f * (1.0f - ny);
         for (int b = 0; b < nb; b++) {
             PA_Vec2 q[4] = {
                 av_pt(&v, fp[i].x, fp[i].y, bz[b] * hgt), av_pt(&v, fp[j].x, fp[j].y, bz[b] * hgt),
@@ -1729,123 +1934,193 @@ static void draw_avatar(PA_Canvas *c, int skin, float gx, float gy, float s, flo
             pa_fill_poly(c, q, 4, pa_shade(pa_hex(bc[b]), shade));
         }
     }
-    /* Top: a pale lip, then the face colour just inside it. */
-    PA_Vec2 top[24], in[24];
+    /* Top face: pale lip, face colour, then a white gloss on the far half. */
+    PA_Vec2 top[24], in[24], gl[24];
     for (int i = 0; i < n; i++) {
         top[i] = av_pt(&v, fp[i].x, fp[i].y, hgt);
-        in[i] = av_pt(&v, fp[i].x * 0.9f, fp[i].y * 0.9f, hgt);
+        in[i] = av_pt(&v, fp[i].x * 0.88f, fp[i].y * 0.88f + 0.04f, hgt);
+        gl[i] = av_pt(&v, fp[i].x * 0.6f - 0.12f * a, fp[i].y * 0.34f - 0.42f * a, hgt);
     }
-    pa_fill_poly(c, top, n, pa_shade(pa_hex(sk->top), 0.22f));
-    pa_fill_poly(c, in, n, pa_hex(sk->top));
-    float z = hgt;
-    PA_Color navy = pa_hex(0x1D2050);
+    pa_fill_poly(c, top, n, pa_shade(topc, 0.28f));
+    pa_fill_poly(c, in, n, topc);
+    pa_fill_poly(c, gl, n, PA_RGBA(255, 255, 255, 84));
 
+    /* Front-face anchor: the plane at local y = +a. */
+    float fy = a * wide;
+    #define FRONT(lx, zf) av_pt(&v, (lx), fy, (zf) * hgt)
+
+    /* Top decorations. */
     switch (skin) {
     case D_DONUT: {
-        av_ellipse(c, &v, 0, 0, z, 0.34f, pa_hex(0xD06E98));
-        av_ellipse(c, &v, 0, 0.04f, z, 0.27f, pa_hex(0xB9814C));
-        static const float SP[10][3] = { { .62f, .2f, .3f }, { .5f, -.55f, 1.2f }, { -.1f, .66f, 2.0f },
-            { -.62f, -.3f, .7f }, { .1f, -.7f, 2.6f }, { -.5f, .45f, 1.6f }, { .7f, -.15f, 2.2f },
-            { -.2f, -.55f, .2f }, { .35f, .62f, 1.0f }, { -.72f, .1f, 2.9f } };
-        for (int k = 0; k < 10; k++) {
+        PA_Vec2 h = av_pt(&v, 0, -0.1f * a, z);
+        pa_fill_ellipse(c, h.x, h.y, av_px(&v, 0.36f), av_px(&v, 0.36f) * VIEW_K, pa_hex(0xD04F8A));
+        pa_fill_ellipse(c, h.x, h.y + 1, av_px(&v, 0.28f), av_px(&v, 0.28f) * VIEW_K, pa_hex(0xB5743A));
+        static const float SP[9][3] = { { .62f, .2f, .3f }, { .5f, -.55f, 1.2f }, { -.1f, .6f, 2.0f },
+            { -.62f, -.3f, .7f }, { .1f, -.75f, 2.6f }, { -.55f, .42f, 1.6f }, { .72f, -.15f, 2.2f },
+            { -.25f, -.6f, .2f }, { .4f, .55f, 1.0f } };
+        for (int k = 0; k < 9; k++) {
             float lx = SP[k][0] * a, ly = SP[k][1] * a, an = SP[k][2];
-            PA_Vec2 p0 = av_pt(&v, lx - cosf(an) * 0.13f, ly - sinf(an) * 0.13f, z);
-            PA_Vec2 p1 = av_pt(&v, lx + cosf(an) * 0.13f, ly + sinf(an) * 0.13f, z);
-            pa_line(c, p0.x, p0.y, p1.x, p1.y, 0.11f * s * scale, pa_hex(SPRINKLE[k % 6]));
+            PA_Vec2 p0 = av_pt(&v, lx - cosf(an) * 0.14f, ly - sinf(an) * 0.14f, z);
+            PA_Vec2 p1 = av_pt(&v, lx + cosf(an) * 0.14f, ly + sinf(an) * 0.14f, z);
+            pa_line(c, p0.x, p0.y, p1.x, p1.y, av_px(&v, 0.12f), pa_hex(SPRINKLE[k % 6]));
         }
+        /* Icing drips over the front edge. */
+        for (int k = 0; k < 4; k++) {
+            float lx = (-0.72f + 0.48f * (float)k) * a;
+            PA_Vec2 d = FRONT(lx, 0.86f - 0.08f * (float)(k & 1));
+            pa_fill_circle(c, d.x, d.y, av_px(&v, 0.2f), topc);
+        }
+        PA_Vec2 l0 = FRONT(-a * 0.95f, 1.0f), l1 = FRONT(a * 0.95f, 1.0f), l2 = FRONT(a * 0.95f, 0.84f), l3 = FRONT(-a * 0.95f, 0.84f);
+        PA_Vec2 band[4] = { l0, l1, l2, l3 };
+        pa_fill_poly(c, band, 4, topc);
         break;
     }
     case D_CHICK: {
-        av_eye(c, &v, 0.32f * a, -0.42f * a, z, 0.27f, pa_hex(0x2B6DE8));
-        av_eye(c, &v, 0.32f * a, 0.42f * a, z, 0.27f, pa_hex(0x2B6DE8));
-        av_tri(c, av_pt(&v, 0.66f * a, -0.18f * a, z), av_pt(&v, 0.66f * a, 0.18f * a, z),
-               av_pt(&v, 1.12f * a, 0, z - 0.1f), pa_hex(0xFF8A1E));
-        av_ellipse(c, &v, -0.55f * a, 0, z + 0.12f, 0.16f, pa_hex(0xFFC21E));
-        break;
-    }
-    case D_CAT: {
-        for (int sd = -1; sd <= 1; sd += 2) {
-            float ly0 = (float)sd * 0.82f * a, ly1 = (float)sd * 0.22f * a;
-            PA_Vec2 b0 = av_pt(&v, -0.5f * a, ly0, z), b1 = av_pt(&v, -0.5f * a, ly1, z);
-            PA_Vec2 tp = av_pt(&v, -0.6f * a, (ly0 + ly1) * 0.6f, z + 0.75f);
-            av_tri(c, b0, b1, tp, pa_hex(sk->body));
-            PA_Vec2 c0 = av_pt(&v, -0.5f * a, ly0 * 0.85f + ly1 * 0.15f, z), c1 = av_pt(&v, -0.5f * a, ly1 * 0.8f + ly0 * 0.2f, z);
-            PA_Vec2 ct = av_pt(&v, -0.58f * a, (ly0 + ly1) * 0.58f, z + 0.5f);
-            av_tri(c, c0, c1, ct, pa_hex(0xF59AC0));
+        for (int k = -1; k <= 1; k++) {
+            PA_Vec2 b0 = av_pt(&v, (float)k * 0.2f * a - 0.08f, -0.2f * a, z), b1 = av_pt(&v, (float)k * 0.2f * a + 0.08f, -0.2f * a, z);
+            PA_Vec2 tp = av_pt(&v, (float)k * 0.38f * a, -0.3f * a, z + 0.62f - 0.15f * (float)(k * k));
+            PA_Vec2 f[3] = { b0, tp, b1 };
+            inked_poly(c, &v, f, 3, pa_hex(0xFFB000));
         }
-        av_eye(c, &v, 0.3f * a, -0.42f * a, z, 0.26f, pa_hex(0x7BE04A));
-        av_eye(c, &v, 0.3f * a, 0.42f * a, z, 0.26f, pa_hex(0x7BE04A));
-        av_ellipse(c, &v, 0.72f * a, 0, z, 0.1f, pa_hex(0xF59AC0));
         break;
     }
     case D_SANDWICH: {
-        static const float SE[7][2] = { { .5f, .3f }, { -.2f, .55f }, { -.6f, -.2f }, { .1f, -.5f }, { .55f, -.45f }, { -.5f, .5f }, { 0, 0 } };
-        for (int k = 0; k < 7; k++) av_ellipse(c, &v, SE[k][0] * a, SE[k][1] * a, z, 0.07f, pa_hex(0xFFF3D6));
-        av_eye(c, &v, 0.55f * a, -0.32f * a, z, 0.17f, pa_hex(0x3A2A20));
-        av_eye(c, &v, 0.55f * a, 0.32f * a, z, 0.17f, pa_hex(0x3A2A20));
+        PA_Vec2 b = av_pt(&v, 0.2f * a, -0.2f * a, z), t = av_pt(&v, 0.2f * a, -0.2f * a, z + 1.2f);
+        pa_line(c, b.x, b.y, t.x, t.y, av_px(&v, 0.1f) + v.ow, pa_hex(C_INK));
+        pa_line(c, b.x, b.y, t.x, t.y, av_px(&v, 0.1f), pa_hex(0xF4DDB0));
+        PA_Vec2 f[3] = { t, { t.x + av_px(&v, 0.7f), t.y + av_px(&v, 0.18f) }, { t.x, t.y + av_px(&v, 0.4f) } };
+        inked_poly(c, &v, f, 3, pa_hex(0xFF3B4E));
+        static const float SE[6][2] = { { .5f, .3f }, { -.25f, .5f }, { -.6f, -.2f }, { .1f, -.55f }, { .62f, -.4f }, { -.5f, .55f } };
+        for (int k = 0; k < 6; k++) {
+            PA_Vec2 p = av_pt(&v, SE[k][0] * a, SE[k][1] * a, z);
+            pa_fill_ellipse(c, p.x, p.y, av_px(&v, 0.09f), av_px(&v, 0.06f), pa_hex(0xFFF3D6));
+        }
         break;
     }
     case D_FROG: {
-        for (int sd = -1; sd <= 1; sd += 2) {
-            av_ellipse(c, &v, 0.42f * a, (float)sd * 0.45f * a, z + 0.18f, 0.34f, pa_hex(sk->body));
-            av_eye(c, &v, 0.42f * a, (float)sd * 0.45f * a, z + 0.28f, 0.25f, pa_hex(0x6B3A1A));
-        }
-        PA_Vec2 m0 = av_pt(&v, 0.8f * a, -0.35f * a, z), m1 = av_pt(&v, 0.86f * a, 0, z), m2 = av_pt(&v, 0.8f * a, 0.35f * a, z);
-        PA_Vec2 ml[3] = { m0, m1, m2 };
-        pa_stroke_poly(c, ml, 3, 0, 0.07f * s * scale, navy);
+        /* A little gold crown. */
+        PA_Vec2 cb = av_pt(&v, 0, -0.25f * a, z);
+        float cw = av_px(&v, 0.62f), ch = av_px(&v, 0.55f);
+        PA_Vec2 cr[7] = { { cb.x - cw, cb.y }, { cb.x - cw, cb.y - ch }, { cb.x - cw * 0.5f, cb.y - ch * 0.55f },
+                          { cb.x, cb.y - ch * 1.15f }, { cb.x + cw * 0.5f, cb.y - ch * 0.55f }, { cb.x + cw, cb.y - ch },
+                          { cb.x + cw, cb.y } };
+        inked_poly(c, &v, cr, 7, pa_hex(0xFFC21A));
+        pa_fill_circle(c, cb.x, cb.y - ch * 0.4f, av_px(&v, 0.1f), pa_hex(0xFF3B6A));
         break;
     }
     case D_ROBOT: {
-        PA_Vec2 q[4] = { av_pt(&v, 0.15f * a, -0.72f * a, z), av_pt(&v, 0.15f * a, 0.72f * a, z),
-                         av_pt(&v, 0.78f * a, 0.72f * a, z), av_pt(&v, 0.78f * a, -0.72f * a, z) };
-        pa_fill_poly(c, q, 4, pa_hex(0x22284A));
-        av_ellipse(c, &v, 0.46f * a, -0.38f * a, z, 0.15f, pa_hex(0x5CF2FF));
-        av_ellipse(c, &v, 0.46f * a, 0.38f * a, z, 0.15f, pa_hex(0x5CF2FF));
-        PA_Vec2 b = av_pt(&v, -0.4f * a, 0, z), t = av_pt(&v, -0.4f * a, 0, z + 0.7f);
-        pa_line(c, b.x, b.y, t.x, t.y, 0.08f * s * scale, pa_hex(0x55607E));
-        pa_fill_circle(c, t.x, t.y, 0.16f * s * scale, pa_hex(0xFF4F5E));
+        PA_Vec2 b = av_pt(&v, 0, -0.2f * a, z), t = av_pt(&v, 0, -0.2f * a, z + 1.0f);
+        pa_line(c, b.x, b.y, t.x, t.y, av_px(&v, 0.1f) + v.ow, pa_hex(C_INK));
+        pa_line(c, b.x, b.y, t.x, t.y, av_px(&v, 0.1f), pa_hex(0x55607E));
+        inked_circle(c, &v, t.x, t.y, av_px(&v, 0.2f), pa_hex(0xFF4F5E));
+        for (int sd = -1; sd <= 1; sd += 2) {
+            PA_Vec2 bo = av_pt(&v, (float)sd * 0.65f * a, -0.6f * a, z);
+            pa_fill_circle(c, bo.x, bo.y, av_px(&v, 0.08f), pa_hex(0x55607E));
+        }
         break;
     }
     case D_BERRY: {
-        static const float SE[9][2] = { { .6f, .5f }, { -.2f, .6f }, { -.6f, -.1f }, { .1f, -.6f }, { .6f, -.55f },
-                                        { -.55f, .55f }, { -.6f, -.6f }, { .7f, 0 }, { 0, .3f } };
-        for (int k = 0; k < 9; k++) av_ellipse(c, &v, SE[k][0] * a, SE[k][1] * a, z, 0.06f, pa_hex(0xFFE27A));
         for (int k = 0; k < 5; k++) {
-            float an = (float)k / 5.0f * PA_TAU;
-            av_tri(c, av_pt(&v, -0.35f * a, 0, z + 0.05f),
-                   av_pt(&v, -0.35f * a + cosf(an - 0.35f) * 0.28f, sinf(an - 0.35f) * 0.28f, z + 0.05f),
-                   av_pt(&v, -0.35f * a + cosf(an) * 0.6f, sinf(an) * 0.6f, z + 0.1f), pa_hex(0x3DB04A));
+            float an = (float)k / 5.0f * PA_TAU + 0.3f;
+            PA_Vec2 o = av_pt(&v, 0, -0.15f * a, z + 0.05f);
+            PA_Vec2 l1 = av_pt(&v, cosf(an - 0.4f) * 0.3f, -0.15f * a + sinf(an - 0.4f) * 0.3f, z + 0.1f);
+            PA_Vec2 l2 = av_pt(&v, cosf(an) * 0.75f, -0.15f * a + sinf(an) * 0.75f, z + 0.18f);
+            PA_Vec2 l3 = av_pt(&v, cosf(an + 0.4f) * 0.3f, -0.15f * a + sinf(an + 0.4f) * 0.3f, z + 0.1f);
+            PA_Vec2 lf[4] = { o, l1, l2, l3 };
+            inked_poly(c, &v, lf, 4, pa_hex(0x34C24A));
         }
-        av_eye(c, &v, 0.42f * a, -0.38f * a, z, 0.2f, pa_hex(0x3A2A20));
-        av_eye(c, &v, 0.42f * a, 0.38f * a, z, 0.2f, pa_hex(0x3A2A20));
+        PA_Vec2 st = av_pt(&v, 0, -0.15f * a, z + 0.55f);
+        PA_Vec2 sb = av_pt(&v, 0, -0.15f * a, z + 0.1f);
+        pa_line(c, sb.x, sb.y, st.x, st.y, av_px(&v, 0.12f), pa_hex(0x2E8F3A));
         break;
     }
     case D_GRAPE: {
-        av_ellipse(c, &v, -0.35f * a, -0.35f * a, z, 0.2f, pa_shade(pa_hex(sk->top), 0.18f));
-        av_eye(c, &v, 0.36f * a, -0.4f * a, z, 0.25f, pa_hex(0xFF5FA8));
-        av_eye(c, &v, 0.36f * a, 0.4f * a, z, 0.25f, pa_hex(0xFF5FA8));
-        av_tri(c, av_pt(&v, -0.5f * a, 0.1f, z), av_pt(&v, -0.5f * a, 0.5f, z),
-               av_pt(&v, -0.9f * a, 0.5f, z + 0.3f), pa_hex(0x52C34A));
+        /* Party hat. */
+        PA_Vec2 hb = av_pt(&v, 0, -0.2f * a, z);
+        float hw = av_px(&v, 0.55f), hh = av_px(&v, 1.25f);
+        PA_Vec2 cone[3] = { { hb.x - hw, hb.y }, { hb.x + hw * 0.15f, hb.y - hh }, { hb.x + hw, hb.y } };
+        inked_poly(c, &v, cone, 3, pa_hex(0x3FD0FF));
+        for (int k = 1; k <= 2; k++) {
+            float t0 = (float)k * 0.3f, t1 = t0 + 0.13f;
+            PA_Vec2 st[4] = {
+                { hb.x - hw * (1 - t0) + hw * 0.15f * t0, hb.y - hh * t0 }, { hb.x + hw * (1 - t0) + hw * 0.15f * t0, hb.y - hh * t0 },
+                { hb.x + hw * (1 - t1) + hw * 0.15f * t1, hb.y - hh * t1 }, { hb.x - hw * (1 - t1) + hw * 0.15f * t1, hb.y - hh * t1 } };
+            pa_fill_poly(c, st, 4, pa_hex(0xFFE04A));
+        }
+        inked_circle(c, &v, hb.x + hw * 0.15f, hb.y - hh, av_px(&v, 0.17f), pa_hex(0xFF5FA8));
         break;
     }
     case D_SLIME: {
-        av_ellipse(c, &v, -0.45f * a, -0.45f * a, z, 0.18f, pa_hex(0xC9FFF3));
-        av_ellipse(c, &v, -0.2f * a, -0.62f * a, z, 0.08f, pa_hex(0xC9FFF3));
-        av_eye(c, &v, 0.38f * a, -0.36f * a, z, 0.24f, pa_hex(0x1E7A68));
-        av_eye(c, &v, 0.38f * a, 0.36f * a, z, 0.24f, pa_hex(0x1E7A68));
+        PA_Vec2 bw = av_pt(&v, 0.35f * a, -0.35f * a, z + 0.25f);
+        float r = av_px(&v, 0.32f);
+        PA_Vec2 l[3] = { bw, { bw.x - r * 1.5f, bw.y - r }, { bw.x - r * 1.5f, bw.y + r } };
+        PA_Vec2 rr[3] = { bw, { bw.x + r * 1.5f, bw.y - r }, { bw.x + r * 1.5f, bw.y + r } };
+        inked_poly(c, &v, l, 3, pa_hex(0xFF5FA8));
+        inked_poly(c, &v, rr, 3, pa_hex(0xFF5FA8));
+        inked_circle(c, &v, bw.x, bw.y, r * 0.42f, pa_hex(0xFF8AC0));
         break;
     }
-    case D_PANDA: {
-        av_ellipse(c, &v, -0.62f * a, -0.62f * a, z + 0.12f, 0.26f, pa_hex(0x2A2D3E));
-        av_ellipse(c, &v, -0.62f * a, 0.62f * a, z + 0.12f, 0.26f, pa_hex(0x2A2D3E));
-        av_ellipse(c, &v, 0.32f * a, -0.42f * a, z, 0.3f, pa_hex(0x2A2D3E));
-        av_ellipse(c, &v, 0.32f * a, 0.42f * a, z, 0.3f, pa_hex(0x2A2D3E));
-        av_ellipse(c, &v, 0.38f * a, -0.4f * a, z, 0.12f, PA_RGB(255, 255, 255));
-        av_ellipse(c, &v, 0.38f * a, 0.4f * a, z, 0.12f, PA_RGB(255, 255, 255));
-        av_ellipse(c, &v, 0.8f * a, 0, z, 0.1f, pa_hex(0x2A2D3E));
-        break;
+    default: break;
     }
+
+    /* Face on the front. */
+    float er = av_px(&v, (skin == D_FROG ? 0.34f : 0.31f) * a);
+    float ez = skin == D_FROG ? 1.0f : 0.62f;
+    PA_Color iris = PA_RGBA(0, 0, 0, 0);
+    if (skin == D_CAT) iris = pa_hex(0x8BE84A);
+    if (skin == D_CHICK || skin == D_SLIME) iris = pa_hex(0x2B6DE8);
+    PA_Vec2 eL = FRONT(-0.42f * a, ez), eR = FRONT(0.42f * a, ez);
+    if (skin == D_PANDA) {
+        pa_fill_ellipse(c, eL.x, eL.y + er * 0.2f, er * 1.45f, er * 1.35f, pa_hex(0x2A2D3E));
+        pa_fill_ellipse(c, eR.x, eR.y + er * 0.2f, er * 1.45f, er * 1.35f, pa_hex(0x2A2D3E));
     }
+    if (skin == D_ROBOT) {
+        PA_Vec2 v0 = FRONT(-0.85f * a, 0.98f), v1 = FRONT(0.85f * a, 0.98f), v2 = FRONT(0.85f * a, 0.5f), v3 = FRONT(-0.85f * a, 0.5f);
+        PA_Vec2 vis[4] = { v0, v1, v2, v3 };
+        pa_fill_poly(c, vis, 4, pa_hex(0x1E2444));
+        float g = av_px(&v, 0.2f);
+        pa_round_rect(c, eL.x - g, eL.y - g * 0.6f, g * 2, g * 1.4f, g * 0.5f, pa_hex(0x5CF2FF));
+        pa_round_rect(c, eR.x - g, eR.y - g * 0.6f, g * 2, g * 1.4f, g * 0.5f, pa_hex(0x5CF2FF));
+    } else {
+        glossy_eye(c, &v, eL.x, eL.y, er, hx, hy, iris);
+        glossy_eye(c, &v, eR.x, eR.y, er, hx, hy, iris);
+    }
+    PA_Vec2 m = FRONT(0, 0.42f);
+    float mr = av_px(&v, 0.16f);
+    if (skin == D_CHICK) {
+        PA_Vec2 bk[3] = { { m.x - mr * 1.3f, m.y - mr * 0.6f }, { m.x + mr * 1.3f, m.y - mr * 0.6f }, { m.x, m.y + mr * 1.2f } };
+        inked_poly(c, &v, bk, 3, pa_hex(0xFF7A12));
+    } else if (skin == D_CAT) {
+        PA_Vec2 ns[3] = { { m.x - mr * 0.6f, m.y - mr * 0.6f }, { m.x + mr * 0.6f, m.y - mr * 0.6f }, { m.x, m.y } };
+        pa_fill_poly(c, ns, 3, pa_hex(0xFF7AB0));
+        for (int sd = -1; sd <= 1; sd += 2) {
+            pa_line(c, m.x + (float)sd * mr * 1.6f, m.y - mr * 0.2f, m.x + (float)sd * mr * 4.0f, m.y - mr * 0.6f, 1.6f, pa_hex(0xC8D0FF));
+            pa_line(c, m.x + (float)sd * mr * 1.6f, m.y + mr * 0.3f, m.x + (float)sd * mr * 4.0f, m.y + mr * 0.5f, 1.6f, pa_hex(0xC8D0FF));
+        }
+    } else if (skin != D_ROBOT) {
+        /* Smile. */
+        PA_Vec2 sm[7];
+        float w2 = skin == D_FROG ? mr * 3.2f : mr * 1.4f;
+        for (int k = 0; k < 7; k++) {
+            float t = (float)k / 6.0f;
+            sm[k].x = m.x - w2 + 2.0f * w2 * t;
+            sm[k].y = m.y + sinf(t * PA_PI) * mr * 0.9f;
+        }
+        pa_stroke_poly(c, sm, 7, 0, fmaxf(1.6f, v.ow * 0.8f), pa_hex(C_INK));
+    }
+    if (skin != D_ROBOT && skin != D_PANDA) {
+        PA_Vec2 bl = FRONT(-0.78f * a, 0.5f), br = FRONT(0.78f * a, 0.5f);
+        pa_fill_ellipse(c, bl.x, bl.y, er * 0.42f, er * 0.26f, PA_RGBA(255, 90, 140, 110));
+        pa_fill_ellipse(c, br.x, br.y, er * 0.42f, er * 0.26f, PA_RGBA(255, 90, 140, 110));
+    }
+    if (skin == D_BERRY) {
+        static const float SE[5][2] = { { -.7f, .25f }, { .7f, .2f }, { -.3f, .18f }, { .35f, .12f }, { 0, .2f } };
+        for (int k = 0; k < 5; k++) {
+            PA_Vec2 p = FRONT(SE[k][0] * a, SE[k][1] + 0.05f);
+            pa_fill_ellipse(c, p.x, p.y, av_px(&v, 0.05f), av_px(&v, 0.08f), pa_hex(0xFFE27A));
+        }
+    }
+    #undef FRONT
 }
 
 /* ------------------------------------------------------------- HUD bits -- */
@@ -1899,12 +2174,18 @@ static void progress_bar(PA_Canvas *c, float pct) {
     float x0 = 74.0f, x1 = (float)c->w - 22.0f, y = 26.0f, bh = 38.0f, bw = x1 - x0;
     pa_round_rect(c, x0 - 6, y - 6, bw + 12, bh + 12, (bh + 12) * 0.5f, pa_hex(0x8FE6FF));
     pa_round_rect(c, x0 - 3.5f, y - 3.5f, bw + 7, bh + 7, (bh + 7) * 0.5f, PA_RGB(255, 255, 255));
-    pa_round_rect(c, x0, y, bw, bh, bh * 0.5f, pa_hex(0x1C2C9E));
+    PA_Paint bg = pa_linear(0, y, 0, y + bh);
+    pa_stop(&bg, 0.0f, pa_hex(0x14208A));
+    pa_stop(&bg, 1.0f, pa_hex(0x2D44D8));
+    pa_round_rect_paint(c, x0, y, bw, bh, bh * 0.5f, &bg);
     float f = pa_clamp01(pct / 100.0f);
     PA_Color land = pa_hex(SKINS[S.pl[0].skin].land);
     float fw = (bw - 8.0f) * f;
     if (fw < bh - 8.0f) fw = bh - 8.0f;
-    pa_round_rect(c, x0 + 4, y + 4, fw, bh - 8, (bh - 8) * 0.5f, land);
+    PA_Paint fg = pa_linear(x0, 0, x0 + fw, 0);
+    pa_stop(&fg, 0.0f, pa_shade(land, 0.35f));
+    pa_stop(&fg, 1.0f, land);
+    pa_round_rect_paint(c, x0 + 4, y + 4, fw, bh - 8, (bh - 8) * 0.5f, &fg);
     pa_round_rect(c, x0 + 10, y + 7, fw - 12 > 4 ? fw - 12 : 4, (bh - 8) * 0.32f, (bh - 8) * 0.16f, pa_shade(land, 0.45f));
     char buf[16];
     if (pct < 10.0f) snprintf(buf, sizeof(buf), "%.1f%%", (double)pct);
@@ -1986,6 +2267,90 @@ static void leaderboard(PA_Canvas *c) {
 /* ------------------------------------------------------------- world pass -- */
 typedef struct { float y; int i; } Sort;
 
+/* Flowers, pebbles, grass tufts, shells and mushrooms on open ground. */
+static void draw_props(PA_Canvas *c) {
+    float u = g_s;
+    for (int i = 0; i < S.nprops; i++) {
+        float x = S.props[i].x, y = S.props[i].y;
+        PA_Vec2 q = proj(x, y, 0);
+        if (q.x < -20 || q.x > (float)c->w + 20 || q.y < -20 || q.y > (float)c->h + 20) continue;
+        int who;
+        if (land_sample(x, y, &who) > 0.25f) continue;
+        int t = S.props[i].type, var = S.props[i].var;
+        float k = 0.8f + 0.4f * (float)(var & 15) / 15.0f;
+        switch (t) {
+        case 0: {   /* flower */
+            static const uint32_t PET[4] = { 0xFFFFFF, 0xFFE14A, 0xFF8AC8, 0xB59BFF };
+            uint32_t pc = PET[var & 3];
+            float r = u * 0.17f * k;
+            pa_fill_ellipse(c, q.x + 1, q.y + r * 1.4f, r * 2.2f, r * 0.9f, PA_RGBA(40, 120, 90, 50));
+            for (int j = 0; j < 5; j++) {
+                float an = (float)j / 5.0f * PA_TAU + (float)var;
+                pa_fill_circle(c, q.x + cosf(an) * r * 1.15f, q.y + sinf(an) * r * 1.0f, r * 0.85f, pa_hex(pc));
+            }
+            pa_fill_circle(c, q.x, q.y, r * 0.75f, pa_hex((var & 3) == 1 ? 0xFF9A1A : 0xFFC81E));
+            break;
+        }
+        case 2: {   /* pebble */
+            float r = u * 0.22f * k;
+            pa_fill_ellipse(c, q.x + 1, q.y + r * 0.5f, r * 1.3f, r * 0.7f, PA_RGBA(40, 90, 80, 60));
+            pa_fill_ellipse(c, q.x, q.y, r * 1.2f, r * 0.75f, pa_hex(0xA9B8C4));
+            pa_fill_ellipse(c, q.x - r * 0.3f, q.y - r * 0.25f, r * 0.55f, r * 0.3f, pa_hex(0xD8E4EC));
+            break;
+        }
+        case 3: {   /* grass tuft */
+            float h = u * 0.45f * k, w = u * 0.1f;
+            for (int j = -1; j <= 1; j++) {
+                PA_Vec2 b[3] = { { q.x + (float)j * w * 1.5f - w, q.y }, { q.x + (float)j * w * 1.5f + w, q.y },
+                                 { q.x + (float)j * w * 3.2f, q.y - h * (j ? 0.8f : 1.0f) } };
+                pa_fill_poly(c, b, 3, pa_hex(j ? 0x45B83C : 0x5ACC48));
+            }
+            break;
+        }
+        case 4: {   /* shell */
+            float r = u * 0.26f * k;
+            PA_Vec2 f[9];
+            f[0].x = q.x; f[0].y = q.y + r * 0.4f;
+            for (int j = 0; j < 8; j++) {
+                float an = PA_PI + (float)j / 7.0f * PA_PI;
+                f[j + 1].x = q.x + cosf(an) * r; f[j + 1].y = q.y + sinf(an) * r * 0.8f;
+            }
+            pa_fill_poly(c, f, 9, pa_hex((var & 1) ? 0xFFB59A : 0xFFD6E4));
+            for (int j = 1; j < 4; j++) {
+                float an = PA_PI + (float)j / 4.0f * PA_PI;
+                pa_line(c, q.x, q.y + r * 0.3f, q.x + cosf(an) * r * 0.85f, q.y + sinf(an) * r * 0.7f, 1.2f, pa_hex(0xE58A70));
+            }
+            break;
+        }
+        case 5: {   /* mushroom */
+            float r = u * 0.24f * k;
+            pa_fill_rect(c, q.x - r * 0.35f, q.y - r * 0.9f, r * 0.7f, r * 0.9f, pa_hex(0xFFF4E0));
+            pa_fill_ellipse(c, q.x, q.y - r * 0.9f, r * 1.1f, r * 0.7f, pa_hex(0xFF4A5A));
+            pa_fill_circle(c, q.x - r * 0.4f, q.y - r * 1.05f, r * 0.18f, PA_RGB(255, 255, 255));
+            pa_fill_circle(c, q.x + r * 0.35f, q.y - r * 0.85f, r * 0.14f, PA_RGB(255, 255, 255));
+            break;
+        }
+        default: break;
+        }
+    }
+}
+
+/* About a 10% darkening toward the corners. */
+static void vignette(PA_Canvas *c) {
+    static int vx[4096], vy[4096];
+    int W = c->w, H = c->h;
+    if (W > 4096 || H > 4096) return;
+    for (int x = 0; x < W; x++) { float n = ((float)x - (float)W * 0.5f) / ((float)W * 0.5f); vx[x] = (int)(n * n * 18.0f); }
+    for (int y = 0; y < H; y++) { float n = ((float)y - (float)H * 0.5f) / ((float)H * 0.5f); vy[y] = (int)(n * n * 16.0f); }
+    for (int y = 0; y < H; y++) {
+        uint32_t *px = c->px + (size_t)y * (size_t)W;
+        for (int x = 0; x < W; x++) {
+            int k = vx[x] + vy[y] - 4;
+            if (k > 0) px[x] = mixc(px[x], 0x0B2A4A, k);
+        }
+    }
+}
+
 static void draw_scene(PA_Canvas *c) {
     int W = c->w, H = c->h;
     float sx = 0, sy = 0;
@@ -1995,7 +2360,7 @@ static void draw_scene(PA_Canvas *c) {
     }
     /* The view opens out a little as your land grows. */
     float grow = pa_clamp01(pct_of(0) / 30.0f);
-    g_s = fminf((float)W / 26.0f, (float)H / 30.0f) * (1.0f - 0.18f * grow);
+    g_s = fminf((float)W / 21.0f, (float)H / 26.0f) * (1.0f - 0.15f * grow);
     g_ax = (float)W * 0.5f + sx;
     g_ay = (float)H * 0.56f + sy;
 
@@ -2004,11 +2369,13 @@ static void draw_scene(PA_Canvas *c) {
         Player *p = &S.pl[i];
         const Skin *sk = &SKINS[p->skin];
         g_top[i + 1] = sk->land;
-        g_side[i + 1] = (uint32_t)pa_shade(pa_hex(sk->land), -0.24f) & 0xFFFFFF;
+        g_side[i + 1] = (uint32_t)pa_shade(pa_hex(sk->land), -0.2f) & 0xFFFFFF;
+        g_lip[i + 1] = (uint32_t)pa_shade(pa_hex(sk->land), -0.42f) & 0xFFFFFF;
         if (p->dying) g_foff[i + 1] = p->fade * 0.55f;
     }
     reblur();
     draw_world(c);
+    draw_props(c);
 
     trail_ensure(W, H);
     for (int i = 0; i < MAXP; i++) {
@@ -2040,7 +2407,7 @@ static void draw_scene(PA_Canvas *c) {
         if (p->human && S.phase == PH_TITLE) hop = fabsf(sinf(S.t * 3.2f)) * 0.55f;
         else hop = fabsf(sinf(p->hop * 9.0f)) * 0.07f;
         float head = p->head;
-        if (p->human && S.phase == PH_TITLE) { head = PA_PI * 0.5f + 0.42f + S.nudge * 0.6f; sc *= 1.5f; }
+        if (p->human && S.phase == PH_TITLE) { head = PA_PI * 0.5f + S.nudge * 0.9f; sc *= 1.45f; }
         if (p->human && S.phase != PH_TITLE) {
             /* The soft halo the plates put around your cube. */
             PA_Vec2 gz = proj(p->x, p->y, p->z);
@@ -2051,7 +2418,8 @@ static void draw_scene(PA_Canvas *c) {
             pa_stop(&halo, 1.0f, PA_RGBA(255, 255, 255, 0));
             pa_fill_ellipse_paint(c, gz.x, gz.y, rr, rr * VIEW_K, &halo);
         }
-        draw_avatar(c, p->skin, g.x, g.y, g_s, head, p->z + hop, sc, p->squash, 0.32f * sc);
+        draw_avatar(c, p->skin, g.x, g.y, g_s, head, p->z + hop, sc, p->squash, 0.38f * sc,
+                    (p->human && S.phase == PH_TITLE) ? 0.0f : 1.0f);
     }
     for (int k = 0; k < n; k++) {
         Player *p = &S.pl[order[k].i];
@@ -2107,6 +2475,8 @@ static void draw_scene(PA_Canvas *c) {
         }
     }
 
+    vignette(c);
+
     /* Floating score text: pops, rises, then cuts. */
     for (int i = 0; i < MAXFT; i++) {
         FText *f = &S.ft[i];
@@ -2115,6 +2485,25 @@ static void draw_scene(PA_Canvas *c) {
         PA_Vec2 q = proj(f->x, f->y, AV_H + 6.0f + age * 2.4f);
         float pop = age < 0.12f ? 0.6f + age / 0.12f * 0.6f : (age < 0.24f ? 1.2f - (age - 0.12f) / 0.12f * 0.2f : 1.0f);
         if (f->t < 0.12f) continue;
+        if (f->pill) {
+            /* "+x%" in a pill badge that pops in at 1.3x and settles. */
+            float sc2 = age < 0.07f ? 0.5f + age / 0.07f * 0.8f : (age < 0.25f ? 1.3f - (age - 0.07f) / 0.18f * 0.3f : 1.0f);
+            float sz = f->size * sc2;
+            PA_TextStyle st = pa_text_style(PA_FACE_DISPLAY, PA_RGB(255, 255, 255));
+            st.outline = 2.5f * sc2; st.outline_col = pa_shade(f->col, -0.55f);
+            st.align = PA_ALIGN_CENTER;
+            PA_TextExtent ex = pa_text_measure(f->text, sz, &st);
+            float pw = ex.width + sz * 1.3f, ph = sz * 1.55f;
+            float px = q.x - pw * 0.5f, py = q.y - ph * 0.5f;
+            pa_round_rect(c, px - 3, py - 3, pw + 6, ph + 9, ph * 0.5f + 3, pa_hex(C_INK));
+            PA_Paint pp = pa_linear(0, py, 0, py + ph);
+            pa_stop(&pp, 0.0f, pa_shade(f->col, 0.25f));
+            pa_stop(&pp, 1.0f, pa_shade(f->col, -0.15f));
+            pa_round_rect_paint(c, px, py, pw, ph, ph * 0.5f, &pp);
+            pa_round_rect(c, px + ph * 0.3f, py + 3, pw - ph * 0.6f, ph * 0.26f, ph * 0.13f, PA_RGBA(255, 255, 255, 110));
+            pa_text_ex(c, f->text, q.x, py + (ph - sz) * 0.5f + 1.0f, sz, &st);
+            continue;
+        }
         pa_text_bold(c, f->text, q.x, q.y - f->size * pop * 0.5f, f->size * pop, PA_RGB(255, 255, 255),
                      pa_shade(f->col, -0.45f), PA_ALIGN_CENTER, 1.5f, 1.7f);
     }
@@ -2135,9 +2524,44 @@ static void draw_banner(PA_Canvas *c) {
     float age = 1.6f - S.banner_t;
     if (S.banner_t < 0.15f) return;
     float pop = age < 0.1f ? 0.5f + age * 8.0f : (age < 0.22f ? 1.3f - (age - 0.1f) * 2.5f : 1.0f);
-    float size = 46.0f * pop;
-    float y = (float)c->h * 0.27f;
-    headline(c, S.banner, (float)c->w * 0.5f, y - size * 0.5f, size, S.banner_col);
+    float size = 44.0f * pop;
+    float y = (float)c->h * 0.31f, cx = (float)c->w * 0.5f;
+    /* Star badge with a gold gradient, a skull, and eight sparkles round it. */
+    float sy = y - size * 0.5f - 52.0f * pop, r = 44.0f * pop;
+    float spin = age * 1.6f;
+    for (int k = 0; k < 8; k++) {
+        float an = (float)k / 8.0f * PA_TAU + spin;
+        float d = r * (1.45f + 0.15f * sinf(age * 9.0f + (float)k));
+        float sr = r * (k & 1 ? 0.16f : 0.24f) * (0.7f + 0.3f * sinf(age * 12.0f + (float)k * 2.0f));
+        PA_Vec2 sp[8];
+        for (int j = 0; j < 8; j++) {
+            float a2 = (float)j * PA_PI / 4.0f;
+            float l = (j & 1) ? sr * 0.28f : sr;
+            sp[j].x = cx + cosf(an) * d + cosf(a2) * l; sp[j].y = sy + sinf(an) * d * 0.8f + sinf(a2) * l;
+        }
+        pa_fill_poly(c, sp, 8, (k & 1) ? pa_hex(0xFFF3A0) : PA_RGB(255, 255, 255));
+    }
+    star_poly(c, cx, sy + 4, r * 1.14f, 0.56f, pa_hex(C_INK));
+    PA_Vec2 st[10];
+    for (int k = 0; k < 10; k++) {
+        float an = -PA_PI * 0.5f + (float)k * PA_PI / 5.0f;
+        float rr = (k & 1) ? r * 0.56f : r;
+        st[k].x = cx + cosf(an) * rr; st[k].y = sy + sinf(an) * rr;
+    }
+    PA_Paint gp = pa_linear(cx, sy - r, cx, sy + r);
+    pa_stop(&gp, 0.0f, pa_hex(0xFFD23F));
+    pa_stop(&gp, 1.0f, pa_hex(0xFF8A00));
+    pa_fill_poly_paint(c, st, 10, &gp);
+    star_poly(c, cx, sy - r * 0.05f, r * 0.6f, 0.56f, PA_RGBA(255, 255, 255, 70));
+    skull(c, cx, sy + r * 0.02f, r * 0.27f, PA_RGB(255, 255, 255), pa_hex(0xE07000));
+    PA_TextStyle ts = pa_text_style(PA_FACE_DISPLAY, pa_hex(0xFFD23F));
+    ts.fill_bottom = pa_hex(0xFF8A00);
+    ts.outline = 4.5f * pop; ts.outline_col = pa_hex(C_INK);
+    ts.shadow_dy = 5.0f; ts.shadow_col = pa_hex(C_INK);
+    ts.align = PA_ALIGN_CENTER; ts.tracking = 2.0f;
+    PA_TextExtent ex = pa_text_measure(S.banner, size, &ts);
+    if (ex.width > (float)c->w - 40.0f) size *= ((float)c->w - 40.0f) / ex.width;
+    pa_text_ex(c, S.banner, cx, y - size * 0.5f, size, &ts);
 }
 
 static void button(PA_Canvas *c, float x, float y, float w, float h, const char *label, PA_Color top, PA_Color side, float size) {
@@ -2164,6 +2588,12 @@ static void draw_title(PA_Canvas *c) {
     big_star(c, bx + 22, by + 18, 13.0f);
     snprintf(buf, sizeof(buf), "BEST %.1f%%", (double)g_best / 10.0);
     pa_text_bold(c, buf, bx + bw * 0.5f + 14, by + 10, 16.0f, PA_RGB(255, 255, 255), pa_hex(0x101A6A), PA_ALIGN_CENTER, 1.5f, 1.2f);
+
+    /* Stars wallet, top right. */
+    snprintf(buf, sizeof(buf), "%d", g_stars);
+    pa_round_rect(c, w - 128, 22, 110, 38, 19, PA_RGBA(20, 34, 120, 220));
+    big_star(c, w - 108, 41, 14.0f);
+    pa_text_bold(c, buf, w - 54, 31, 18.0f, PA_RGB(255, 255, 255), pa_hex(0x101A6A), PA_ALIGN_CENTER, 1.0f, 1.2f);
 
     /* Skin picker around your cube. */
     float lx, rx, ay, r;
@@ -2195,7 +2625,7 @@ static void draw_title(PA_Canvas *c) {
         pa_stop(&cp, 0.0f, lk ? pa_hex(0xB9C3DC) : pa_hex(0x6FD0FF));
         pa_stop(&cp, 1.0f, lk ? pa_hex(0x8E9AB8) : pa_hex(0x3D7BF0));
         pa_round_rect_paint(c, cx, cy, cs, cs, 13, &cp);
-        mini_face(c, cx + cs * 0.5f, cy + cs * 0.5f, cs * 0.3f, k);
+        draw_avatar(c, k, cx + cs * 0.5f, cy + cs * 0.78f, cs * 0.26f, PA_PI * 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f);
         if (lk) {
             pa_round_rect(c, cx, cy, cs, cs, 13, PA_RGBA(60, 66, 100, 120));
             float lx2 = cx + cs * 0.5f, ly2 = cy + cs * 0.56f;
@@ -2245,9 +2675,112 @@ static void podium(PA_Canvas *c, float cx, float base, float w, float hgt, PA_Co
     pa_text_bold(c, buf, cx, my - 9, 18.0f, PA_RGB(255, 255, 255), pa_shade(col, -0.5f), PA_ALIGN_CENTER, 0.0f, 1.2f);
 }
 
+/* Light rays fanning out from a point. */
+static void rays(PA_Canvas *c, float cx, float cy, float rot, PA_Color col) {
+    float R = (float)(c->w + c->h);
+    for (int k = 0; k < 14; k++) {
+        float a0 = rot + (float)k / 14.0f * PA_TAU, a1 = a0 + PA_TAU / 28.0f;
+        PA_Vec2 t[3] = { { cx, cy }, { cx + cosf(a0) * R, cy + sinf(a0) * R }, { cx + cosf(a1) * R, cy + sinf(a1) * R } };
+        pa_fill_poly(c, t, 3, col);
+    }
+}
+
+/* A rounded card with the skin's cube standing in it. */
+static void portrait(PA_Canvas *c, float x, float y, float r, int skin) {
+    const Skin *sk = &SKINS[skin];
+    pa_round_rect(c, x - r - 2.5f, y - r - 2.5f, r * 2 + 5, r * 2 + 7, r * 0.42f, pa_hex(C_INK));
+    PA_Paint g = pa_linear(0, y - r, 0, y + r);
+    pa_stop(&g, 0.0f, pa_shade(pa_hex(sk->land), 0.45f));
+    pa_stop(&g, 1.0f, pa_hex(sk->land));
+    pa_round_rect_paint(c, x - r, y - r, r * 2, r * 2, r * 0.38f, &g);
+    draw_avatar(c, skin, x, y + r * 0.62f, r * 0.5f, PA_PI * 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f);
+}
+
+/* Before the standings: a chest shakes, pops and shows what the run earned. */
+static void draw_reveal(PA_Canvas *c) {
+    float w = (float)c->w, h = (float)c->h, T = S.pt;
+    PA_Paint bg = pa_linear(0, 0, 0, h);
+    pa_stop(&bg, 0.0f, pa_hex(0xB04BEA));
+    pa_stop(&bg, 0.45f, pa_hex(0x6A5CF5));
+    pa_stop(&bg, 1.0f, pa_hex(0x2FA8F5));
+    pa_fill_rect_paint(c, 0, 0, w, h, &bg);
+    float cx = w * 0.5f, cy = h * 0.5f;
+    float open = pa_clamp01((T - 0.85f) * 6.0f);
+    rays(c, cx, cy - 40.0f, S.t * 0.35f, PA_RGBA(255, 255, 255, (int)(28 + 40 * open)));
+    if (open > 0.0f) {
+        PA_Paint gl = pa_radial(cx, cy - 40, 10.0f, 260.0f);
+        pa_stop(&gl, 0.0f, PA_RGBA(255, 255, 230, (int)(230 * open)));
+        pa_stop(&gl, 1.0f, PA_RGBA(255, 220, 120, 0));
+        pa_fill_rect_paint(c, cx - 260, cy - 300, 520, 520, &gl);
+    }
+    headline(c, open <= 0.0f ? "OPENING..." : S.unlocked >= 0 ? "NEW SKIN!" : "REWARD!", cx, h * 0.1f, 46.0f,
+             pa_hex(0xFFE04A));
+
+    /* Chest. */
+    float shake = T < 0.85f ? sinf(T * 60.0f) * 6.0f * T : 0.0f;
+    float bw = 190.0f, bh = 118.0f, bx = cx - bw * 0.5f + shake, by = cy + 40.0f;
+    pa_shadow(c, cx, by + bh + 6, bw * 0.6f, 18.0f, 0.4f);
+    pa_round_rect(c, bx - 4, by - 4, bw + 8, bh + 8, 20, pa_hex(C_INK));
+    PA_Paint cg = pa_linear(0, by, 0, by + bh);
+    pa_stop(&cg, 0.0f, pa_hex(0xFFC21E));
+    pa_stop(&cg, 1.0f, pa_hex(0xF07A00));
+    pa_round_rect_paint(c, bx, by, bw, bh, 16, &cg);
+    pa_fill_rect(c, bx + bw * 0.18f, by, 22, bh, pa_hex(0x7A3BE0));
+    pa_fill_rect(c, bx + bw * 0.82f - 22, by, 22, bh, pa_hex(0x7A3BE0));
+    pa_round_rect(c, cx - 18 + shake, by + 18, 36, 40, 8, pa_hex(C_INK));
+    pa_round_rect(c, cx - 14 + shake, by + 22, 28, 32, 6, pa_hex(0xFFE9A0));
+    float lid_y = by - 64.0f - open * 160.0f, lid_a = 1.0f - open;
+    if (lid_a > 0.02f) {
+        pa_round_rect(c, bx - 10, lid_y - 4, bw + 20, 72, 30, pa_alpha(pa_hex(C_INK), lid_a));
+        pa_round_rect(c, bx - 6, lid_y, bw + 12, 64, 28, pa_alpha(pa_hex(0xFFD23F), lid_a));
+        pa_fill_rect(c, bx + bw * 0.18f, lid_y, 22, 64, pa_alpha(pa_hex(0x7A3BE0), lid_a));
+        pa_fill_rect(c, bx + bw * 0.82f - 22, lid_y, 22, 64, pa_alpha(pa_hex(0x7A3BE0), lid_a));
+    }
+    /* The card rises out of it. */
+    float rise = pa_smooth(pa_clamp01((T - 0.9f) / 0.5f));
+    if (rise > 0.0f) {
+        float sc = 0.3f + 0.7f * rise;
+        float cw2 = 200.0f * sc, ch2 = 250.0f * sc;
+        float kx = cx - cw2 * 0.5f, ky = by - 40.0f - rise * 210.0f - ch2 * 0.5f;
+        pa_round_rect(c, kx - 5, ky - 5, cw2 + 10, ch2 + 14, 26 * sc, pa_hex(C_INK));
+        PA_Paint kg = pa_linear(0, ky, 0, ky + ch2);
+        pa_stop(&kg, 0.0f, pa_hex(0x7FE6FF));
+        pa_stop(&kg, 1.0f, pa_hex(0x3D7BF0));
+        pa_round_rect_paint(c, kx, ky, cw2, ch2, 22 * sc, &kg);
+        pa_round_rect(c, kx + 10 * sc, ky + 8 * sc, cw2 - 20 * sc, 26 * sc, 12 * sc, PA_RGBA(255, 255, 255, 90));
+        char buf[24];
+        if (S.unlocked >= 0) {
+            draw_avatar(c, S.unlocked, cx, ky + ch2 * 0.6f, 30.0f * sc, PA_PI * 0.5f,
+                        0.15f * fabsf(sinf(S.t * 4.0f)), 1.0f, 0.0f, 0.3f, 0.0f);
+            snprintf(buf, sizeof(buf), "%s", SKINS[S.unlocked].name);
+        } else {
+            big_star(c, cx, ky + ch2 * 0.42f, 62.0f * sc);
+            snprintf(buf, sizeof(buf), "+%d", S.reward);
+        }
+        headline(c, buf, cx, ky + ch2 * 0.74f, 32.0f * sc, pa_hex(0xFFE04A));
+        for (int k = 0; k < 8; k++) {
+            float an = (float)k / 8.0f * PA_TAU + S.t * 1.2f;
+            float d = cw2 * 0.75f + 10.0f * sinf(S.t * 6.0f + (float)k);
+            star_poly(c, cx + cosf(an) * d, ky + ch2 * 0.5f + sinf(an) * d, 7.0f * sc + 3.0f * (float)(k & 1), 0.4f,
+                      (k & 1) ? pa_hex(0xFFF3A0) : PA_RGB(255, 255, 255));
+        }
+    }
+    if (T > 1.5f) pa_text_bold(c, "TAP TO CONTINUE", cx, h * 0.86f, 16.0f, PA_RGB(255, 255, 255), pa_hex(C_INK),
+                               PA_ALIGN_CENTER, 2.0f, 1.2f);
+    for (int i = 0; i < MAXPART; i++) {
+        Part *q = &S.parts[i];
+        if (q->life <= 0.0f || q->kind != 9) continue;
+        float x = q->x * w, y = q->y * h, r = 7.0f;
+        float ca = cosf(q->rot) * r, sa = sinf(q->rot) * r * 0.5f;
+        PA_Vec2 qq[4] = { { x + ca, y + sa }, { x - sa, y + ca * 0.5f }, { x - ca, y - sa }, { x + sa, y - ca * 0.5f } };
+        pa_fill_poly(c, qq, 4, q->col);
+    }
+}
+
 static void draw_results(PA_Canvas *c) {
     float w = (float)c->w, h = (float)c->h;
-    float a = pa_smooth(pa_clamp01(S.pt * 3.0f));
+    float T = S.pt - REVEAL_T;
+    float a = pa_smooth(pa_clamp01(T * 3.0f));
     PA_Paint bg = pa_linear(0, 0, 0, h);
     pa_stop(&bg, 0.0f, pa_hex(0x9A4BEA));
     pa_stop(&bg, 0.30f, pa_hex(0x5B6FF2));
@@ -2264,6 +2797,7 @@ static void draw_results(PA_Canvas *c) {
         pa_stop(&g, 1.0f, PA_RGBA(160, 120, 255, 0));
         pa_fill_rect_paint(c, lx - 130, h * 0.07f - 130, 260, 260, &g);
     }
+    rays(c, w * 0.5f, h * 0.30f, S.t * 0.15f, PA_RGBA(255, 255, 255, 34));
     pa_fill_ellipse(c, w * 0.5f, h * 0.53f, w * 0.75f, h * 0.06f, pa_hex(0xF2FFFB));
 
     /* Title. */
@@ -2284,13 +2818,20 @@ static void draw_results(PA_Canvas *c) {
     {
         /* Ribbons for a new best and a skin it unlocked. */
         float ry = ty + 92.0f;
-        int nr = S.new_best + (S.unlocked >= 0);
+        int nr = S.new_best + 1;
         float rx = w * 0.5f - (nr == 2 ? 110.0f : 0.0f);
         float pop = 1.0f + 0.06f * sinf(S.t * 7.0f);
         if (S.new_best) {
             pa_round_rect(c, rx - 90 * pop, ry, 180 * pop, 34, 17, pa_hex(0xFFD23A));
             pa_text_bold(c, "NEW BEST!", rx, ry + 9, 17.0f, PA_RGB(255, 255, 255), pa_hex(0xC2570C), PA_ALIGN_CENTER, 2.0f, 1.3f);
             rx += 220.0f;
+        }
+        if (S.unlocked < 0) {
+            snprintf(buf, sizeof(buf), "+%d STARS", S.reward);
+            float bw2 = pa_text_width(buf, 14.0f, 1.0f) + 44.0f;
+            pa_round_rect(c, rx - bw2 * 0.5f, ry, bw2, 34, 17, pa_hex(0x6A3BE0));
+            big_star(c, rx - bw2 * 0.5f + 18, ry + 17, 11.0f);
+            pa_text_bold(c, buf, rx + 10, ry + 10, 14.0f, PA_RGB(255, 255, 255), pa_hex(0x2A1A70), PA_ALIGN_CENTER, 1.0f, 1.2f);
         }
         if (S.unlocked >= 0) {
             snprintf(buf, sizeof(buf), "NEW SKIN: %s", SKINS[S.unlocked].name);
@@ -2310,12 +2851,12 @@ static void draw_results(PA_Canvas *c) {
         int k = order[oi];
         if (k >= S.res_n) continue;
         float cx = w * 0.5f + PX[k] * w * 0.28f;
-        float rise = pa_smooth(pa_clamp01(S.pt * 2.5f - (float)k * 0.25f));
+        float rise = pa_smooth(pa_clamp01(T * 2.5f - (float)k * 0.25f));
         float ph = PH[k] * rise;
         podium(c, cx, base, w * 0.25f, ph, pa_hex(PC[k]), k + 1);
         if (rise > 0.3f) {
             float bob = fabsf(sinf(S.t * 3.0f + (float)k)) * (k == 0 ? 0.6f : 0.25f);
-            draw_avatar(c, S.res[k].skin, cx, base - ph - 6.0f, 34.0f, PA_PI * 0.5f + 0.3f, bob, 1.0f, 0.0f, 0.0f);
+            draw_avatar(c, S.res[k].skin, cx, base - ph - 6.0f, 34.0f, PA_PI * 0.5f, bob, 1.0f, 0.0f, 0.0f, 0.0f);
             pa_text_bold(c, S.res[k].name, cx, base - ph - 96.0f - bob * 20.0f, 14.0f, PA_RGB(255, 255, 255),
                          pa_hex(0x1D2A86), PA_ALIGN_CENTER, 1.0f, 1.2f);
         }
@@ -2344,7 +2885,7 @@ static void draw_results(PA_Canvas *c) {
         pa_fill_circle(c, mx, my, 14, k < 3 ? pa_shade(pa_hex(MEDAL[k]), 0.25f) : pa_hex(0xA9BCE6));
         snprintf(buf, sizeof(buf), "%d", k + 1);
         pa_text_bold(c, buf, mx, my - 8, 16.0f, PA_RGB(255, 255, 255), pa_hex(0x6A4A10), PA_ALIGN_CENTER, 0.0f, 1.1f);
-        mini_face(c, cx + 90, my, 17.0f, S.res[k].skin);
+        portrait(c, cx + 92, my, 21.0f, S.res[k].skin);
         pa_text(c, S.res[k].name, cx + 120, my - 9, 18.0f, pa_hex(C_NAVY), PA_ALIGN_LEFT, 1.5f);
         snprintf(buf, sizeof(buf), "%.1f%%", (double)S.res[k].pct);
         float pw = 98.0f, px = cx + cw - 24 - pw - 8;
@@ -2383,7 +2924,8 @@ static void s_render(PA_Canvas *c) {
     g_vw = c->w; g_vh = c->h;
     if (S.phase == PH_RESULTS) {
         pa_hub_hide_pause();
-        draw_results(c);
+        if (S.pt < REVEAL_T) draw_reveal(c);
+        else draw_results(c);
         return;
     }
     draw_scene(c);
@@ -2457,7 +2999,7 @@ static void s_thumb(PA_Canvas *c, float x, float y, float w, float h, float t) {
         pts[k].y = y + h * 0.40f + sinf(a2) * h * 0.14f;
     }
     pa_stroke_poly(c, pts, 24, 0, w * 0.09f, pa_hex(0xFBD0E3));
-    draw_avatar(c, D_DONUT, bx, by + h * 0.04f, w * 0.06f, ang + PA_PI * 0.5f, 0.0f, 1.0f, 0.0f, 0.3f);
+    draw_avatar(c, D_DONUT, bx, by + h * 0.04f, w * 0.06f, ang + PA_PI * 0.5f, 0.0f, 1.0f, 0.0f, 0.3f, 1.0f);
 }
 
 const PA_Game PA_GAME_PAPER = {

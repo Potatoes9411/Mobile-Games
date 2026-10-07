@@ -8,8 +8,9 @@
 #   04_claim.png    the signature moment: a loop closing and the fill sweeping in
 #   05_kill.png     cutting a rival's trail: KILL banner, debris, shock ring
 #   06_cutoff.png   your own trail cut by a rival
-#   07_results.png  results: podium, leaderboard with %, rank, best, retry
-#   08_motion.png   motion strip, six frames 0.08 s apart across a claim
+#   07_reward.png   reward reveal: the chest pops and shows what the run earned
+#   08_results.png  results: podium, leaderboard with %, rank, best, retry
+#   09_motion.png   motion strip, six frames 0.08 s apart across a claim
 # Every run is deterministic: the --demo modes self-drive from a fixed seed and
 # never touch the save file.
 #   demo 1: your cube self-drives and expands (rivals leave your land alone)
@@ -27,10 +28,10 @@ shots() {   # name demo times
     (cd "$tmp" && python3 "$here/tools/shots.py" render paper "$tmp/$1" --demo "$2" --shots "$3" >/dev/null)
 }
 
-shots a 1 "0.6,3.0,30.0,40.2"
-shots k 3 "8.78"
-shots d 2 "19.32,21.9"
-shots m 1 "40.00,40.08,40.16,40.24,40.32,40.40"
+shots a 1 "0.6,3.0,30.0,39.95"
+shots k 3 "7.36"
+shots d 2 "15.45,18.35,20.45"
+shots m 1 "39.79,39.87,39.95,40.03,40.11,40.19"
 
 cp "$tmp/a/paper_00.png" "$out/01_title.png"
 cp "$tmp/a/paper_01.png" "$out/02_early.png"
@@ -38,6 +39,7 @@ cp "$tmp/a/paper_02.png" "$out/03_busy.png"
 cp "$tmp/a/paper_03.png" "$out/04_claim.png"
 cp "$tmp/k/paper_00.png" "$out/05_kill.png"
 cp "$tmp/d/paper_00.png" "$out/06_cutoff.png"
-cp "$tmp/d/paper_01.png" "$out/07_results.png"
-python3 "$here/tools/shots.py" sheet "$out/08_motion.png" "$tmp"/m/paper_0*.png --height 900 >/dev/null
+cp "$tmp/d/paper_01.png" "$out/07_reward.png"
+cp "$tmp/d/paper_02.png" "$out/08_results.png"
+python3 "$here/tools/shots.py" sheet "$out/09_motion.png" "$tmp"/m/paper_0*.png --height 900 >/dev/null
 ls "$out"
