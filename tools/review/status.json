@@ -22,7 +22,8 @@
   "Block Storm CONFIRMED: clear win against the reference set it had narrowly lost to. Mob Clash now loses clearly (was overwhelming); Avian Artillery lost round 1 overwhelmingly.",
   "Chrome Rush round 1 lost clearly (was overwhelming); Pin Rescue round 2 lost clearly. Both back with builders.",
   "New hub lobby and meta layer merged; exe and APK rebuilt. Horde Arena r2, Void Muncher re-pass and Roller Splat r4 sent to blind critics.",
-  "Roller Splat wins round 4 clearly; confirmation against the other reference set running. Horde Arena now loses only slightly; Void Muncher clearly (was overwhelming)."
+  "Roller Splat wins round 4 clearly; confirmation against the other reference set running. Horde Arena now loses only slightly; Void Muncher clearly (was overwhelming).",
+  "Roller Splat split the reference sets (won set 2 clearly, lost set 1 slightly). New rule: a game is done only when one build beats both reference sets."
  ],
  "engine": [
   {
@@ -83,10 +84,10 @@
    "id": "splat",
    "name": "Roller Splat",
    "ref": "Roller Splat!",
-   "phase": "review",
-   "round": 4,
-   "verdict": "Ours wins, clear (against the set it had lost to)",
-   "gap": "Won round 4 clearly; re-confirming against the first reference set after the board and camera changes."
+   "phase": "fixing",
+   "round": 5,
+   "verdict": "Split: wins set 2 clearly, loses set 1 slightly",
+   "gap": "Needs the steep tilt and tall shaded walls set 1 rewards while keeping the big board set 2 rewards. Done only when one build beats both."
   },
   {
    "id": "voidmuncher",
