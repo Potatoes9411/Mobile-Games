@@ -12,7 +12,8 @@
   "Roller Splat re-pass merged; round 1 blind review started. Block Storm builder resumed on round 2.",
   "Helix Drop round 1: OURS WINS the blind comparison (slight). Confirmation round queued after the font upgrade.",
   "Roller Splat round 1: reference wins clearly (was overwhelming). Builder resumed on round 2.",
-  "Typography upgrade merged into every game. Mob Clash native port merged; round 1 blind review started. Hub builder started."
+  "Typography upgrade merged into every game. Mob Clash native port merged; round 1 blind review started. Hub builder started.",
+  "Mob Clash round 1: reference wins overwhelmingly (crowd mass, lighting, camera). Builder resumed on round 2."
  ],
  "engine": [
   {
@@ -95,10 +96,10 @@
    "id": "mobclash",
    "name": "Mob Clash: Gate Siege",
    "ref": "Mob Control",
-   "phase": "review",
-   "round": 0,
-   "verdict": "",
-   "gap": "Native port landed: cannon, gates, crowds, castle, champion, upgrades, win/fail. Round 1 blind review running."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, overwhelming",
+   "gap": "Crowd is a thin trickle, not a mass; flat unlit scene; weak boss; camera too high; thin gates; tiny impact effects."
   },
   {
    "id": "paper",
