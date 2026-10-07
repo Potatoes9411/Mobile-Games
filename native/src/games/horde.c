@@ -26,7 +26,7 @@
 
 /* ------------------------------------------------------------- tunables -- */
 #define RUN_LEN       480.0f     /* eight minutes, the final boss lands here */
-#define MAX_ENEMIES   640
+#define MAX_ENEMIES   960
 #define MAX_PROJ      360
 #define MAX_ZONES     96
 #define MAX_GEMS      1100
@@ -173,6 +173,8 @@ static Sprite g_spr[SPR_SETS][ANIM_FRAMES];
 static Sprite g_gem_spr[G_KINDS];
 static Sprite g_flame[ANIM_FRAMES];
 static Sprite g_spark;
+static void spr_blit(PA_Canvas *c, const Sprite *s, float x, float y, int flip, uint32_t tint, int amt, int alpha);
+static void flame_ring(PA_Canvas *c, float x, float y, float r, int n, float spin, int alpha);
 /* Additive glow falloff, sampled at any radius. Cheaper than a radial paint
    and it lights rather than paints over. */
 #define GLOW_N 64
@@ -400,6 +402,15 @@ static void fast_disc(PA_Canvas *c, float cx, float cy, float r, uint32_t rgb, i
         if (span <= 0.0f) continue;
         float hw = sqrtf(span);
         fast_rect(c, cx - hw, (float)y, hw * 2.0f, 1.0f, rgb, alpha);
+    }
+}
+
+static void flame_ring(PA_Canvas *c, float x, float y, float r, int n, float spin, int alpha) {
+    int fl = (int)(S.clock * 30.0f) & 1;   /* two-frame flicker */
+    for (int i = 0; i < n; i++) {
+        float a = (float)i / (float)n * PA_TAU + spin;
+        float fx = x + cosf(a) * r, fy = y + sinf(a) * r + 8.0f * L.s;
+        spr_blit(c, &g_flame[(i + fl * 2 + (int)(S.clock * 12.0f)) & 3], fx, fy, (i + fl) & 1, 0, 0, alpha);
     }
 }
 
@@ -936,7 +947,7 @@ static float cd_mul(void)    { return 1.0f - 0.07f * (float)S.plv[P_CUBE]; }
 static float speed_mul(void) { return 1.0f + 0.08f * (float)S.plv[P_SHOES]; }
 static float pickup_r(void)  { return 62.0f * (1.0f + 0.15f * (float)S.plv[P_FUEL]); }
 
-static int xp_need(int lv) { return 3 + lv * 3 + lv * lv / 4; }
+static int xp_need(int lv) { return 4 + lv * 4 + lv * lv / 3; }
 
 static float hp_mul(float t) {
     float q = t / 240.0f;
@@ -1119,13 +1130,23 @@ static int alive_count(void) {
     return n;
 }
 
-static void surge(int type, int count) {
-    float rad = sqrtf(view_hw() * view_hw() + view_hh() * view_hh()) * 0.62f + 40.0f;
-    for (int i = 0; i < count; i++) {
-        float a = (float)i / (float)count * PA_TAU;
-        int k = spawn_enemy(type, S.px + cosf(a) * rad * 1.15f, S.py + sinf(a) * rad);
-        if (k >= 0) g_en[k].speed *= 1.1f;
+/** A tight ring hugging the screen edge that closes on the hero from every
+    side at once: the Survivor!.io encirclement. `rows` concentric bands. */
+static void ring_wave(int type, int count, int rows, float speedup) {
+    float rx = view_hw() + 30.0f, ry = view_hh() + 30.0f;
+    for (int r = 0; r < rows; r++) {
+        float k = 1.0f + 0.07f * (float)r;
+        for (int i = 0; i < count; i++) {
+            float a = ((float)i + 0.5f * (float)(r & 1)) / (float)count * PA_TAU;
+            int e = spawn_enemy(type, S.px + cosf(a) * rx * k, S.py + sinf(a) * ry * k);
+            if (e >= 0) g_en[e].speed *= speedup;
+        }
     }
+}
+
+static void surge(int type, int count) {
+    ring_wave(type, count / 2, 2, 1.1f);
+    ring_wave(E_ZOMBIE, count / 3, 1, 1.0f);
 }
 
 static void spawn_boss(int king) {
@@ -1175,7 +1196,7 @@ static void run_events(void) {
         switch (ev->kind) {
         case EV_SURGE:
             banner("ZOMBIES INCOMING", 0);
-            surge(ev->arg, 44 + (int)(S.t / 8.0f));
+            surge(ev->arg, 120 + (int)(S.t / 3.0f));
             break;
         case EV_ELITE:
             banner("ELITE INCOMING", 1);
@@ -1196,10 +1217,16 @@ static void run_events(void) {
 }
 
 static void spawner(float dt) {
-    float target = 44.0f + S.t * 0.9f;
-    if (target > 400.0f) target = 400.0f;
+    float target = 60.0f + S.t * 1.5f;
+    if (target > 720.0f) target = 720.0f;
     if (S.cage) target *= 0.45f;
-    float rate = 6.0f + S.t * 0.09f;
+    float rate = 9.0f + S.t * 0.16f;
+    /* Every 16 s a closing ring of the current mix, on top of the trickle. */
+    if (!S.cage && S.t > 24.0f && (int)(S.t / 16.0f) != (int)((S.t - dt) / 16.0f) && alive_count() < 820) {
+        int n = 28 + (int)(S.t * 0.22f);
+        if (n > 110) n = 110;
+        ring_wave(pick_type(), n, S.t > 150.0f ? 2 : 1, 1.05f);
+    }
     S.spawn_acc += dt * rate;
     int alive = alive_count();
     while (S.spawn_acc >= 1.0f) {
@@ -1365,9 +1392,9 @@ static int guardians_active(void) {
 }
 
 static float field_radius(void) {
-    static const float r[MAX_LV] = { 104, 104, 122, 122, 140 };
+    static const float r[MAX_LV] = { 128, 128, 148, 148, 168 };
     if (!S.wlv[W_FIELD]) return 0.0f;
-    return (S.evo[W_FIELD] ? 165.0f : r[S.wlv[W_FIELD] - 1]) * area_mul();
+    return (S.evo[W_FIELD] ? 190.0f : r[S.wlv[W_FIELD] - 1]) * area_mul();
 }
 
 static int drone_count(void) {
@@ -1543,7 +1570,7 @@ static void fire_weapons(float dt) {
     lv = S.wlv[W_FIELD];
     if (S.field_pulse > 0.0f) S.field_pulse -= dt * 3.0f;
     if (lv && S.cd[W_FIELD] <= 0.0f) {
-        static const float dmg[MAX_LV] = { 7, 9, 10, 13, 16 };
+        static const float dmg[MAX_LV] = { 6, 8, 9, 11, 14 };
         int ev = S.evo[W_FIELD];
         float r = field_radius();
         int hits[320];
@@ -1551,7 +1578,7 @@ static void fire_weapons(float dt) {
         for (int k = 0; k < n; k++) {
             Enemy *e = &g_en[hits[k]];
             float dx = e->x - S.px, dy = e->y - S.py, dl = sqrtf(dx * dx + dy * dy) + 0.01f;
-            hurt_enemy(hits[k], (ev ? 34.0f : dmg[lv - 1]) * dm, dx / dl * 60.0f, dy / dl * 60.0f, W_FIELD);
+            hurt_enemy(hits[k], (ev ? 28.0f : dmg[lv - 1]) * dm, dx / dl * 60.0f, dy / dl * 60.0f, W_FIELD);
             if (k < 10) part(e->x, e->y - 12.0f, frange(-30, 30), -60.0f, 0.45f, 6.0f, 0xFFFF8A1E, PT_FLAME);
         }
         S.cd[W_FIELD] = (ev ? 0.38f : (lv >= 4 ? 0.5f : 0.65f)) * cdm;
@@ -2142,6 +2169,7 @@ static void update_draft(float dt, const PA_Input *in) {
 static void open_chest(void) {
     static const int ring_n = 16;
     int count = (S.bosses_down > 0 && S.cage == 0 && S.boss_idx < 0 && frand() < 0.5f) ? 3 : (frand() < 0.3f ? 3 : 1);
+    if (pa_demo_mode() == 5) count = 3;
     Pick wins[3];
     int n = build_picks(wins, count);
     S.chest_nwin = n;
@@ -2206,6 +2234,13 @@ static void finish(int won) {
     g_bank += S.reward;
     g_runs++;
     save_meta();
+    PA_RunReport rep = { 0 };
+    rep.score = secs;
+    rep.coins = S.reward;
+    rep.won = won;
+    rep.level = 1;
+    rep.stars = won ? 3 : secs >= 240 ? 2 : secs >= 120 ? 1 : 0;
+    pa_meta_report("horde", &rep);
 }
 
 static void over_buttons(float *rx, float *ry, float *rw, float *rh, float *hx, float *hy, float *hw, float *hh) {
@@ -2385,7 +2420,7 @@ static void demo_preload(int mode) {
     while (S.next_event < EVENT_COUNT && EVENTS[S.next_event].t <= t) S.next_event++;
     if (mode == 6) S.bosses_down = 1;
     /* A crowd already closing in. */
-    int crowd = mode == 2 ? 210 : mode == 3 ? 150 : mode == 4 ? 230 : mode == 5 ? 50 : 120;
+    int crowd = mode == 2 ? 330 : mode == 3 ? 260 : mode == 4 ? 300 : mode == 5 ? 60 : 260;
     for (int i = 0; i < crowd; i++) {
         float a = frand() * PA_TAU, r = mode == 4 ? frange(70.0f, 330.0f) : frange(170.0f, 640.0f);
         spawn_enemy(pick_type(), S.px + cosf(a) * r, S.py + sinf(a) * r * 1.3f);
@@ -2969,8 +3004,8 @@ static void draw_block(PA_Canvas *c, int bx, int by) {
     float ox = (float)bx * BLOCK, oy = (float)by * BLOCK;
     uint32_t h = hash2(bx, by);
     g_lcg = hash2(bx * 7 + 3, by * 13 + 5) | 1u;
-    PA_Color asphalt = pa_hex(0x4A4A5C), pave = pa_hex(0x8A8AA0), seam = pa_hex(0x76768C), dark_tile = pa_hex(0x828298);
-    PA_Color curb = pa_hex(0xB0AFC4), curb_d = pa_hex(0x34344A), paint = PA_RGBA(214, 212, 228, 225);
+    PA_Color asphalt = pa_hex(0x5A5560), pave = pa_hex(0x8E8898), seam = pa_hex(0x787284), dark_tile = pa_hex(0x857F90);
+    PA_Color curb = pa_hex(0xB6B0BE), curb_d = pa_hex(0x3A3440), paint = PA_RGBA(232, 226, 208, 235);
     pa_clear(c, asphalt);
     float px0 = ox + ROAD, py0 = oy + ROAD, ps = BLOCK - ROAD;
     /* oil and grime on the road */
@@ -3183,20 +3218,34 @@ static void glow(PA_Canvas *c, float cx, float cy, float rx, float ry, uint32_t 
 }
 
 /* ------------------------------------------------------------ world fx --- */
+/* Gore splats are baked: eight dot patterns, blitted with a fade. Three
+   times the kills means three times the splats, and per-dot fills cost more
+   than the swarm. */
+#define SPLATS 8
+static Sprite g_splat[SPLATS];
+static float  g_splat_s = -1.0f;
+static void art_splat(PA_Canvas *c, float x, float y, float k, int f) {
+    uint32_t h = (uint32_t)(f * 7919 + 13) * 2654435761u;
+    float r0 = 12.0f;
+    for (int i = 0; i < 6; i++) {
+        float ox = ((float)((h >> (i * 5)) & 31) - 15.5f) / 15.5f * r0 * 1.3f;
+        float oy = ((float)((h >> (i * 5 + 2)) & 31) - 15.5f) / 15.5f * r0 * 0.9f;
+        float r = (i == 0 ? 3.4f : 1.4f + (float)((h >> (i * 3)) & 3) * 0.6f) * k;
+        pa_fill_circle(c, x + ox * k, y + oy * k, r, pa_hex(0xCE1C2C));
+    }
+}
 static void draw_decals(PA_Canvas *c) {
+    if (fabsf(g_splat_s - L.s) > 0.001f) {
+        int sz = (int)ceilf(44.0f * L.s);
+        for (int f = 0; f < SPLATS; f++) spr_bake(&g_splat[f], sz, sz, (float)sz * 0.5f, (float)sz * 0.5f, L.s, f, art_splat);
+        g_splat_s = L.s;
+    }
     for (int i = 0; i < MAX_DECALS; i++) {
         const Decal *d = &g_dc[i];
         if (d->r <= 0.0f || d->age > 14.0f) continue;
         if (!on_screen(d->x, d->y, 30.0f)) continue;
         float a = d->age < 8.0f ? 1.0f : 1.0f - (d->age - 8.0f) / 6.0f;
-        int al = (int)(200.0f * a);
-        uint32_t h = (uint32_t)d->seed * 2654435761u;
-        for (int k = 0; k < 6; k++) {
-            float ox = ((float)((h >> (k * 5)) & 31) - 15.5f) / 15.5f * d->r * 1.3f;
-            float oy = ((float)((h >> (k * 5 + 2)) & 31) - 15.5f) / 15.5f * d->r * 0.9f;
-            float r = (k == 0 ? 3.2f : 1.4f + (float)((h >> (k * 3)) & 3) * 0.6f) * L.s;
-            fast_disc(c, SX(d->x + ox), SY(d->y + oy), r, 0xCE1C2C, al);
-        }
+        spr_blit(c, &g_splat[d->seed % SPLATS], SX(d->x), SY(d->y), d->seed & 1, 0, 0, (int)(200.0f * a));
     }
 }
 
@@ -3347,6 +3396,8 @@ static void draw_enemy(PA_Canvas *c, const Enemy *e) {
         float rr = (e->type == E_KING ? 84.0f : 76.0f) * s;
         int hot = e->bstate == 1 || e->bstate == 3;
         glow(c, x, y, rr * 1.2f, rr * 0.55f, 0xFF3020, (hot ? 0.55f : 0.25f) + 0.2f * pulse);
+        glow(c, x, y - 60.0f * s, 150.0f * s, 120.0f * s, 0xFF7A1F, 0.22f + 0.1f * pulse);
+        if (e->bstate == 3) flame_ring(c, x, y, 190.0f * s * (0.6f + 0.4f * land), 22, S.clock, 200);
         ring_ellipse(c, x, y, rr * (0.92f + 0.08f * pulse), rr * 0.4f * (0.92f + 0.08f * pulse), (hot ? 5.0f : 3.0f) * s,
                      PA_RGBA(255, 59, 47, (int)(150 + 90 * pulse)));
     } else if (e->type == E_ELITE) {
@@ -3417,8 +3468,12 @@ static void draw_projectiles(PA_Canvas *c) {
         float x = SX(p->x), y = SY(p->y), s = L.s;
         switch (p->kind) {
         case PJ_KUNAI: {
-            pa_line(c, x - p->vx * 0.05f * s, y - p->vy * 0.05f * s, x, y, (p->evo ? 6.0f : 3.5f) * s,
-                    p->evo ? PA_RGBA(170, 120, 255, 120) : PA_RGBA(255, 255, 255, 110));
+            /* ~0.04 sw cyan tracer with a white core, and a three-step trail */
+            pa_line(c, x - p->vx * 0.066f * s, y - p->vy * 0.066f * s, x - p->vx * 0.03f * s, y - p->vy * 0.03f * s, 3.5f * s,
+                    p->evo ? PA_RGBA(178, 120, 255, 90) : PA_RGBA(95, 227, 255, 90));
+            pa_line(c, x - p->vx * 0.035f * s, y - p->vy * 0.035f * s, x, y, 6.0f * s,
+                    p->evo ? PA_RGBA(178, 120, 255, 210) : PA_RGBA(95, 227, 255, 220));
+            pa_line(c, x - p->vx * 0.035f * s, y - p->vy * 0.035f * s, x, y, 2.2f * s, PA_RGBA(255, 255, 255, 230));
             spr_blit(c, dir_sprite(0, p->evo, atan2f(p->vy, p->vx)), x, y, 0, 0, 0, 255);
             break;
         }
@@ -3580,7 +3635,9 @@ static void draw_zones_over(PA_Canvas *c) {
             pa_stroke_circle(c, x, y, r * k, 9.0f * s * a + 1.0f, PA_RGBA(255, 240, 160, (int)(a * 230)));
         } else if (z->kind == Z_SLAM) {
             float rr = r * k;
-            glow(c, x, y, rr * 1.1f + 1.0f, rr * 0.8f + 1.0f, 0xFF4A2A, 0.45f * a);
+            glow(c, x, y, rr * 1.1f + 1.0f, rr * 0.9f + 1.0f, 0xFFD36B, 0.35f * a);
+            glow(c, x, y, rr * 1.3f + 1.0f, rr * 1.1f + 1.0f, 0xFF4A2A, 0.45f * a);
+            if (k > 0.1f) flame_ring(c, x, y, rr, 24, 0.0f, (int)(255 * a));
             pa_stroke_circle(c, x, y, rr, 14.0f * s * a + 2.0f, PA_RGBA(255, 90, 50, (int)(200 * a)));
             pa_stroke_circle(c, x, y, rr, 5.0f * s, PA_RGBA(255, 235, 200, (int)(240 * a)));
         } else if (z->kind == Z_FIRE) {
@@ -3600,21 +3657,23 @@ static void draw_zones_over(PA_Canvas *c) {
 /* The forcefield: a ring of hellfire round the hero, the screen-scale AoE of
    the reference. #FF3B2F at 35% inside, a 4px #FF7A3D rim, additive glow and
    flames riding the rim. */
+/* The forcefield at ~0.7 sw: three layers like the reference's hellfire aura.
+   #FF3B1F rim, #FF8A1F flame sprites riding it, #FFD36B additive core, with
+   a two-frame flicker in the light. */
 static void draw_field(PA_Canvas *c) {
     if (!S.wlv[W_FIELD] || S.phase == PH_TITLE) return;
     float s = L.s, r = field_radius() * s;
     float x = SX(S.px), y = SY(S.py - 10.0f);
     float pulse = pa_clamp01(S.field_pulse);
-    fast_disc(c, x, y, r, 0xFF3B2F, 89);
-    glow(c, x, y, r * 1.18f, r * 1.18f, 0xFF4A1A, 0.32f + 0.22f * pulse);
-    pa_stroke_circle(c, x, y, r, 4.0f * s, pa_hex(0xFF7A3D));
-    pa_stroke_circle(c, x, y, r * (1.0f - 0.35f * pulse), 3.0f * s, PA_RGBA(255, 210, 140, (int)(200 * pulse)));
-    int n = S.evo[W_FIELD] ? 22 : 15;
-    for (int i = 0; i < n; i++) {
-        float a = (float)i / (float)n * PA_TAU + S.clock * 0.7f;
-        float fx = x + cosf(a) * r, fy = y + sinf(a) * r + 8.0f * s;
-        spr_blit(c, &g_flame[(i + (int)(S.clock * 12.0f)) & 3], fx, fy, i & 1, 0, 0, 235);
-    }
+    float flick = ((int)(S.clock * 30.0f) & 1) ? 1.0f : 0.82f;
+    fast_disc(c, x, y, r, 0xFF3B1F, 64);
+    glow(c, x, y, r * 0.95f, r * 0.95f, 0xFFD36B, (0.30f + 0.16f * pulse) * flick);
+    glow(c, x, y, r * 1.22f, r * 1.22f, 0xFF6A1F, (0.26f + 0.12f * pulse) * flick);
+    pa_stroke_circle(c, x, y, r, 6.0f * s, pa_hex(0xFF3B1F));
+    pa_stroke_circle(c, x, y, r - 4.0f * s, 2.0f * s, PA_RGBA(255, 211, 107, 200));
+    pa_stroke_circle(c, x, y, r * (1.0f - 0.4f * pulse), 3.0f * s, PA_RGBA(255, 211, 107, (int)(200 * pulse)));
+    flame_ring(c, x, y, r, S.evo[W_FIELD] ? 34 : 26, S.clock * 0.7f, 240);
+    flame_ring(c, x, y, r * 0.86f, 10, -S.clock * 0.5f, 150);
 }
 
 static void draw_particles(PA_Canvas *c) {
@@ -3761,6 +3820,21 @@ static void draw_hud(PA_Canvas *c) {
     }
 }
 
+/* Outer 15% of the screen darkened by up to 25%, in flat bands. */
+static void edge_vignette(PA_Canvas *c) {
+    float mw = (float)L.w * 0.15f, mh = (float)L.h * 0.15f;
+    int bands = 8;
+    for (int i = 0; i < bands; i++) {
+        float t = (float)i / (float)bands;
+        int a = (int)(64.0f * (1.0f - t) * (1.0f - t));
+        float bw = mw / (float)bands + 1.0f, bh = mh / (float)bands + 1.0f;
+        fast_rect(c, mw * t, 0.0f, bw, (float)L.h, 0x100A18, a);
+        fast_rect(c, (float)L.w - mw * t - bw, 0.0f, bw, (float)L.h, 0x100A18, a);
+        fast_rect(c, 0.0f, mh * t, (float)L.w, bh, 0x100A18, a);
+        fast_rect(c, 0.0f, (float)L.h - mh * t - bh, (float)L.w, bh, 0x100A18, a);
+    }
+}
+
 static void draw_hero_hp(PA_Canvas *c) {
     float s = L.s;
     float x = SX(S.px), y = SY(S.py) + 8.0f * s;
@@ -3772,8 +3846,15 @@ static void draw_hero_hp(PA_Canvas *c) {
 }
 
 static void draw_joystick(PA_Canvas *c) {
-    if (!S.joy_on || S.phase != PH_PLAY) return;
+    if (S.phase != PH_PLAY) return;
     float s = L.s, R = 54.0f * s;
+    if (!S.joy_on) {
+        /* resting ring where the thumb usually lands */
+        float ox = (float)L.w * 0.5f, oy = (float)L.h * 0.80f;
+        pa_stroke_circle(c, ox, oy, R, 3.0f * s, PA_RGBA(255, 255, 255, 90));
+        pa_fill_circle(c, ox, oy, 22.0f * s, PA_RGBA(255, 255, 255, 70));
+        return;
+    }
     pa_fill_circle(c, S.joy_ox, S.joy_oy, R + 6.0f * s, PA_RGBA(20, 20, 40, 60));
     pa_fill_circle(c, S.joy_ox, S.joy_oy, R, PA_RGBA(255, 255, 255, 46));
     pa_stroke_circle(c, S.joy_ox, S.joy_oy, R, 3.0f * s, PA_RGBA(255, 255, 255, 150));
@@ -3873,8 +3954,8 @@ static void draw_card(PA_Canvas *c, int i, float appear) {
     }
     int is_new = (p->kind == 0 && !S.wlv[p->id]) || (p->kind == 1 && !S.plv[p->id]);
     /* rarity: evolution red-orange, new weapon pink, weapon gold, item blue */
-    PA_Color head = p->kind == 2 ? pa_hex(0xFF5A1E) : (is_new && p->kind == 0) ? pa_hex(0xF23C78)
-                  : p->kind == 1 ? pa_hex(0x3AA8F0) : p->kind >= 3 ? pa_hex(0x5ACB4A) : pa_hex(0xFFC21C);
+    PA_Color head = p->kind == 2 ? pa_hex(0x9B5BFF) : (is_new && p->kind == 0) ? pa_hex(0xFF4F8B)
+                  : p->kind == 1 ? pa_hex(0x4FA3FF) : p->kind >= 3 ? pa_hex(0x5ACB4A) : pa_hex(0xFFC21A);
     float pulse = 0.5f + 0.5f * sinf(S.clock * 6.0f);
     if (p->kind == 2 || is_new) {
         /* a pulsing gold halo, added rather than painted */
@@ -3898,8 +3979,14 @@ static void draw_card(PA_Canvas *c, int i, float appear) {
                      : p->kind == 3 ? "MEAT" : "GOLD";
     float ns = fit_size(name, w - 16.0f * s, 16.0f * s, 1.0f * s);
     pa_text_bold(c, name, x + w * 0.5f, y + hh * 0.5f - ns * 0.5f, ns, PA_RGB(255, 255, 255), OUTC(), PA_ALIGN_CENTER, 1.0f * s, 1.1f);
-    if (is_new) pa_text_bold(c, "NEW!", x + w - 6.0f * s, y - 24.0f * s, 15.0f * s * (1.0f + 0.08f * pulse), pa_hex(0xFFD23A), OUTC(),
-                             PA_ALIGN_RIGHT, 1.0f * s, 1.2f);
+    if (is_new) {
+        float sc = 1.0f + 0.12f * pulse;
+        float bw = 56.0f * s * sc, bh = 24.0f * s * sc, bx = x + w - bw + 6.0f * s, by = y - bh * 0.6f;
+        glow(c, bx + bw * 0.5f, by + bh * 0.5f, bw * 0.9f, bh * 1.1f, 0xFFD23A, 0.4f + 0.4f * pulse);
+        o_rrect(c, bx, by, bw, bh, bh * 0.5f, pa_hex(0xFF4F8B), 2.5f * s);
+        pa_text_bold(c, "NEW!", bx + bw * 0.5f, by + bh * 0.5f - 7.0f * s * sc, 14.0f * s * sc, PA_RGB(255, 255, 255), OUTC(),
+                     PA_ALIGN_CENTER, 1.0f * s, 1.1f);
+    }
     if (p->kind == 2) pa_text_bold(c, "EVOLVE!", x + w * 0.5f, y - 22.0f * s, 15.0f * s, pa_hex(0xFFD23A), OUTC(), PA_ALIGN_CENTER, 1.0f * s, 1.2f);
     /* icon over a faint crosshair */
     float icy = y + hh + (h - hh) * 0.23f;
@@ -3978,6 +4065,23 @@ static void draw_chest(PA_Canvas *c) {
     float ph = tile * 5.0f + 110.0f * s;
     float px = ((float)L.w - pw) * 0.5f, py = (float)L.h * 0.5f - ph * 0.5f;
     o_rrect(c, px, py, pw, ph, 14.0f * s, pa_hex(0x3D4357), 3.5f * s);
+    /* marquee bulbs chasing round the frame */
+    {
+        float per = 2.0f * (pw + ph);
+        int count = (int)(per / (26.0f * s));
+        for (int b = 0; b < count; b++) {
+            float d = (float)b / (float)count * per, bx, by;
+            if (d < pw) { bx = px + d; by = py; }
+            else if ((d -= pw) < ph) { bx = px + pw; by = py + d; }
+            else if ((d -= ph) < pw) { bx = px + pw - d; by = py + ph; }
+            else { d -= pw; bx = px; by = py + ph - d; }
+            int on = ((b + (int)(S.clock * (S.chest_stage == 0 ? 14.0f : 6.0f))) % 3) == 0;
+            PA_Color col = (b & 1) ? pa_hex(0xFF4F8B) : pa_hex(0xFFD23A);
+            if (on) glow(c, bx, by, 13.0f * s, 13.0f * s, col & 0xFFFFFFu, 0.9f);
+            o_circle(c, bx, by, 5.0f * s, on ? col : pa_shade(col, -0.55f), 1.5f * s);
+            if (on) pa_fill_circle(c, bx - 1.5f * s, by - 1.5f * s, 1.8f * s, PA_RGB(255, 255, 255));
+        }
+    }
     ribbon(c, "LUCKY CHEST", (float)L.w * 0.5f, py + 4.0f * s, pw * 0.72f, 54.0f * s, pa_hex(0xFFC21C), pa_hex(0xC97A10));
     float gx = px + 15.0f * s, gy = py + 42.0f * s;
     /* the ring of tiles walks clockwise round a 5x5 border */
@@ -3993,12 +4097,21 @@ static void draw_chest(PA_Canvas *c) {
         int lit = (S.chest_stage == 0 && i == cur);
         int won = 0;
         if (S.chest_stage == 1)
-            for (int w = 0; w < S.chest_nwin; w++) if (S.chest_win[w] == i && S.phase_t > 0.25f * (float)w) won = 1;
+            for (int w = 0; w < S.chest_nwin; w++) if (S.chest_win[w] == i && S.phase_t > 0.3f * (float)w) won = 1;
         PA_Color bg = won ? pa_hex(0xFFE04A) : lit ? pa_hex(0xFFF4B0) : pa_hex(0x2A2F3D);
         if (won) pa_round_rect(c, tx - 2.0f * s, ty - 2.0f * s, tile, tile, 10.0f * s, PA_RGBA(255, 230, 100, 160));
         o_rrect(c, tx + 3.0f * s, ty + 3.0f * s, tile - 6.0f * s, tile - 6.0f * s, 8.0f * s, bg, 2.0f * s);
-        if (won) pa_round_rect(c, tx + 8.0f * s, ty + 8.0f * s, tile - 16.0f * s, tile - 16.0f * s, 6.0f * s, pa_hex(0x9BE22A));
-        draw_icon(c, pick_icon(&S.chest_tiles[i]), tx + tile * 0.5f, ty + tile * 0.5f, tile * 0.7f, S.clock);
+        float pop = 1.0f;
+        if (won) {
+            pa_round_rect(c, tx + 8.0f * s, ty + 8.0f * s, tile - 16.0f * s, tile - 16.0f * s, 6.0f * s, pa_hex(0x9BE22A));
+            for (int w = 0; w < S.chest_nwin; w++)
+                if (S.chest_win[w] == i) {
+                    float since = S.phase_t - 0.3f * (float)w;
+                    pop = 1.0f + 0.35f * pa_clamp01(1.0f - since * 4.0f);
+                    if (since < 0.3f) glow(c, tx + tile * 0.5f, ty + tile * 0.5f, tile, tile, 0xFFE07A, 1.0f - since * 3.0f);
+                }
+        }
+        draw_icon(c, pick_icon(&S.chest_tiles[i]), tx + tile * 0.5f, ty + tile * 0.5f, tile * 0.7f * pop, S.clock);
     }
     /* centre window: the hero on a pile of gold */
     float wx = gx + tile + 3.0f * s, wy = gy + tile + 3.0f * s, ww = tile * 3.0f - 6.0f * s;
@@ -4032,14 +4145,23 @@ static void draw_chest(PA_Canvas *c) {
     char buf[24];
     snprintf(buf, sizeof(buf), "+%d", S.chest_stage == 1 ? S.chest_coins : (int)(S.chest_spin * 7.0f) % 90);
     pa_text_bold(c, buf, px + pw * 0.5f + 16.0f * s, fy + 8.0f * s, 20.0f * s, PA_RGB(255, 255, 255), OUTC(), PA_ALIGN_CENTER, 1.5f * s, 1.2f);
-    if (S.chest_stage == 1 && S.chest_nwin > 0) {
-        const Pick *w = &S.chest_tiles[S.chest_win[0]];
-        const char *nm = w->kind == 0 ? W_NAME[w->id] : w->kind == 1 ? P_NAME[w->id] : w->kind == 2 ? EVO_NAME[w->id] : "GOLD";
-        char line[64];
-        if (S.chest_nwin > 1) snprintf(line, sizeof(line), "%s +%d MORE", nm, S.chest_nwin - 1);
-        else snprintf(line, sizeof(line), "%s UP!", nm);
-        float ls2 = fit_size(line, pw - 40.0f * s, 18.0f * s, 1.5f * s);
-        pa_text_bold(c, line, (float)L.w * 0.5f, py - 64.0f * s, ls2, pa_hex(0x9BE22A), OUTC(), PA_ALIGN_CENTER, 1.5f * s, 1.3f);
+    if (S.chest_stage == 1) {
+        /* rewards land one by one, 0.3 s apart, above the machine */
+        float cw = 96.0f * s, gap = 10.0f * s;
+        float total = cw * (float)S.chest_nwin + gap * (float)(S.chest_nwin - 1);
+        for (int w = 0; w < S.chest_nwin; w++) {
+            float since = S.phase_t - 0.3f * (float)w;
+            if (since <= 0.0f) continue;
+            float pop = 1.0f + 0.4f * pa_clamp01(1.0f - since * 5.0f);
+            const Pick *pk = &S.chest_tiles[S.chest_win[w]];
+            const char *nm = pk->kind == 0 ? W_NAME[pk->id] : pk->kind == 1 ? P_NAME[pk->id] : pk->kind == 2 ? EVO_NAME[pk->id] : "GOLD";
+            float cx = ((float)L.w - total) * 0.5f + (float)w * (cw + gap) + cw * 0.5f, cy = py - 70.0f * s;
+            glow(c, cx, cy, cw * 0.7f * pop, cw * 0.6f * pop, 0xFFD36B, 0.5f);
+            o_rrect(c, cx - cw * 0.5f * pop, cy - 40.0f * s * pop, cw * pop, 80.0f * s * pop, 10.0f * s, pa_hex(0x2A2F3D), 2.5f * s);
+            draw_icon(c, pick_icon(pk), cx, cy - 10.0f * s * pop, 46.0f * s * pop, S.clock);
+            float ns = fit_size(nm, cw - 10.0f * s, 11.0f * s, 0.5f * s);
+            pa_text_bold(c, nm, cx, cy + 20.0f * s * pop, ns, pa_hex(0x9BE22A), OUTC(), PA_ALIGN_CENTER, 0.5f * s, 1.0f);
+        }
     }
     if (S.chest_stage == 1 && S.phase_t > 0.6f && ((int)(S.clock * 2.0f) & 1))
         pa_text_bold(c, "TAP TO CONTINUE", (float)L.w * 0.5f, py + ph + 18.0f * s, 14.0f * s, PA_RGB(255, 255, 255), OUTC(),
@@ -4110,8 +4232,9 @@ static void draw_results(PA_Canvas *c) {
     float tile = 62.0f * s;
     for (int i = 0; i < 3; i++) {
         float tx = px + 16.0f * s + (float)i * (tile + 10.0f * s), ty = ry2 + 22.0f * s;
-        float reveal = pa_clamp01((S.over_t - 0.5f - 0.15f * (float)i) * 4.0f);
+        float reveal = pa_clamp01((S.over_t - 0.5f - 0.3f * (float)i) * 4.0f);
         if (reveal <= 0.0f) continue;
+        if (reveal < 1.0f) glow(c, tx + tile * 0.5f, ty + tile * 0.5f, tile, tile, 0xFFD36B, 1.0f - reveal);
         PA_Color bg = i == 0 ? pa_hex(0x6A4AC8) : i == 1 ? pa_hex(0x3A8AE8) : pa_hex(0x38A858);
         o_rrect(c, tx, ty, tile, tile, 8.0f * s, bg, 2.0f * s);
         if (i == 0) {
@@ -4290,6 +4413,7 @@ static void s_render(PA_Canvas *c) {
     draw_muzzle(c);
     draw_numbers(c);
     if (S.phase == PH_PLAY || S.phase == PH_DYING) draw_hero_hp(c);
+    edge_vignette(c);
     draw_joystick(c);
     if (S.flash > 0.0f) {
         uint32_t fc = S.flash_col;

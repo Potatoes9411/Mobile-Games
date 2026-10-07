@@ -26,10 +26,10 @@ start_tap="1.0:tap:0.5f:0.88f"
 shot 01_title          1 0.6
 shot 02_early_play     1 12.0 "$start_tap"
 shot 03_swarm_midgame  2 4.0
-shot 04_skill_draft    2 6.9
+shot 04_skill_draft    2 6.0
 shot 05_zombies_incoming 2 14.4
 shot 06_boss_cage      3 20.0
-shot 07_lucky_chest    5 3.0
+shot 07_lucky_chest    5 3.9
 shot 08_defeated       4 4.0
 shot 09_victory        6 18.0
 

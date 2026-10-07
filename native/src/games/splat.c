@@ -23,17 +23,17 @@
 #include <stdio.h>
 
 #define MAX_W 16
-#define MAX_H 24
+#define MAX_H 28
 #define CELLS (MAX_W * MAX_H)
 #define MAX_DROPS 900
-#define CONFETTI 440
+#define CONFETTI 170
 #define MAX_SPARKS 120
 #define MAX_PROPS 8
 
 /* Camera and board geometry, in tiles. */
-#define TILT    0.61f            /* ~35 deg off top-down: a 55 deg pitch */
+#define TILT    0.65f            /* ~37 deg off vertical */
 #define WALL_H  0.62f
-#define SLAB_T  0.32f
+#define SLAB_T  0.50f            /* a thick plinth under the walls */
 #define BALL_R  0.40f
 
 /* Right, left, down, up: the opposite of d is d ^ 1. */
@@ -73,7 +73,7 @@ static const Theme THEMES[] = {
 #define THEME_COUNT ((int)(sizeof(THEMES) / sizeof(THEMES[0])))
 #define LEVELS_PER_THEME 5
 
-static const uint32_t CONFETTI_COLS[6] = { 0xFF1744, 0x00E676, 0xFFEA00, 0xD500F9, 0x2979FF, 0xFF9100 };
+static const uint32_t CONFETTI_COLS[5] = { 0xFF1744, 0x00E676, 0xFFEA00, 0xD500F9, 0x2979FF };
 
 /* ------------------------------------------------------------------ state */
 typedef struct { float u, v, h, vu, vv, vh, age, life, size; int stuck; PA_Color col; } Drop;
@@ -280,18 +280,18 @@ static void level_dims(int index, int *W, int *H, float *density) {
     /* Whole-grid sizes including the outer wall: 9 to 13 columns, and tall,
        so the tilted board still fills well over half the screen height. */
     static const int TW[] = { 9, 9, 9, 11, 11, 11, 11, 13, 13, 13 };
-    static const int TH[] = { 17, 17, 19, 19, 21, 21, 21, 23, 23, 23 };
+    static const int TH[] = { 21, 21, 21, 23, 25, 25, 25, 27, 27, 27 };
     if (index < 10) {
         *W = TW[index]; *H = TH[index];
     } else {
         PA_Rng r;
         pa_rng_seed(&r, (uint32_t)index * 131u + 7u);
         *W = 11 + 2 * pa_rng_int(&r, 0, 1);
-        *H = *W + 10;
+        *H = 2 * *W + 1;
         if (*H > MAX_H - 1) *H = MAX_H - 1;
     }
     float t = (float)(index < 14 ? index : 14) / 14.0f;
-    *density = 0.72f + 0.14f * t;
+    *density = index == 0 ? 0.62f : 0.72f + 0.14f * t;
 }
 
 static unsigned char g_mask[MAX_H][MAX_W];   /* node mask, indexed by node */
@@ -525,38 +525,41 @@ static void build_props(void) {
     pa_rng_seed(&r, (uint32_t)(S.level / LEVELS_PER_THEME) * 4099u + 11u);
     S.nprops = 0;
     float j = pa_rng_range(&r, -0.03f, 0.03f);
+    /* Large props kept inside the frame: one runs behind the board's far
+       edge so its ends show either side of it, the others sit in the open
+       space above the narrow far edge and below the board. */
     switch (THEMES[S.theme].prop_kind) {
     case PROP_TUBE:
-        add_prop(PROP_TUBE, 0.05f + j, 0.135f, 0.22f, 3.3f, 1.9f, 0.0f);
-        add_prop(PROP_TUBE, 0.98f, 0.17f - j, 0.13f, 4.4f, 1.7f, 1.3f);
-        add_prop(PROP_TUBE, 0.08f, 0.975f, 0.27f, 3.6f, 2.0f, 2.1f);
-        add_prop(PROP_TUBE, 0.86f + j, 0.985f, 0.18f, 3.5f, 1.8f, 4.0f);
+        add_prop(PROP_TUBE, 0.50f, 0.44f + j, 0.48f, 3.75f, 1.90f, 0.0f);   /* behind the board */
+        add_prop(PROP_TUBE, 0.17f, 0.16f, 0.13f, 3.3f, 2.2f, 1.3f);
+        add_prop(PROP_TUBE, 0.24f, 0.935f, 0.14f, 3.6f, 2.0f, 2.1f);
+        add_prop(PROP_TUBE, 0.76f, 0.945f, 0.15f, 3.5f, 1.9f, 4.0f);
         break;
     case PROP_LOG:
-        add_prop(PROP_LOG, 0.16f, 0.145f + j, 0.30f, -0.22f, 0.0f, 0.0f);
-        add_prop(PROP_LOG, 0.97f, 0.16f, 0.16f, -0.10f, 0.0f, 1.7f);
-        add_prop(PROP_LOG, 0.16f, 0.975f - j, 0.26f, 0.04f, 0.0f, 2.6f);
-        add_prop(PROP_LOG, 0.88f, 0.99f, 0.20f, -0.30f, 0.0f, 3.3f);
+        add_prop(PROP_LOG, 0.50f, 0.235f, 0.42f, -0.07f, 0.0f, 0.0f);       /* behind the board */
+        add_prop(PROP_LOG, 0.22f, 0.135f + j, 0.16f, -0.22f, 0.0f, 1.7f);
+        add_prop(PROP_LOG, 0.27f, 0.935f, 0.17f, 0.05f, 0.0f, 2.6f);
+        add_prop(PROP_LOG, 0.75f, 0.95f, 0.15f, -0.25f, 0.0f, 3.3f);
         break;
     case PROP_SHARD:
-        add_prop(PROP_SHARD, 0.10f, 0.23f, 0.70f, 0.38f, 0.22f, 0.0f);
-        add_prop(PROP_SHARD, 0.40f, 0.09f, 0.42f, 1.95f, 0.16f, 1.0f);
-        add_prop(PROP_SHARD, 0.93f, 0.40f, 0.62f, 3.45f, 0.20f, 2.0f);
-        add_prop(PROP_SHARD, 0.24f, 0.99f, 0.55f, -1.25f, 0.18f, 3.0f);
-        add_prop(PROP_SHARD, 0.84f, 0.97f, 0.48f, -2.05f, 0.16f, 4.0f);
+        add_prop(PROP_SHARD, 0.18f, 0.24f, 0.60f, 0.45f, 0.22f, 0.0f);
+        add_prop(PROP_SHARD, 0.50f, 0.20f, 0.36f, 1.57f, 0.18f, 1.0f);       /* behind the board */
+        add_prop(PROP_SHARD, 0.86f, 0.36f, 0.55f, 3.35f, 0.20f, 2.0f);
+        add_prop(PROP_SHARD, 0.30f, 0.97f, 0.45f, -1.25f, 0.18f, 3.0f);
+        add_prop(PROP_SHARD, 0.78f, 0.96f, 0.42f, -2.05f, 0.16f, 4.0f);
         break;
     case PROP_BUSH:
-        add_prop(PROP_BUSH, 0.07f, 0.15f, 0.15f, 0.0f, 0.0f, 0.0f);
-        add_prop(PROP_BUSH, 0.95f, 0.165f + j, 0.09f, 0.0f, 1.0f, 1.2f);
-        add_prop(PROP_BUSH, 0.12f, 0.975f, 0.12f, 0.0f, 1.0f, 2.2f);
-        add_prop(PROP_BUSH, 0.88f, 0.985f, 0.17f, 0.0f, 0.0f, 3.2f);
-        add_prop(PROP_ORB, 0.50f, 0.99f, 0.03f, 0.0f, 0.0f, 3.0f);
+        add_prop(PROP_BUSH, 0.50f, 0.215f, 0.15f, 0.0f, 1.0f, 0.0f);        /* behind the board */
+        add_prop(PROP_BUSH, 0.16f, 0.16f, 0.12f, 0.0f, 0.0f, 1.2f);
+        add_prop(PROP_BUSH, 0.22f, 0.925f, 0.10f, 0.0f, 1.0f, 2.2f);
+        add_prop(PROP_BUSH, 0.78f, 0.93f, 0.12f, 0.0f, 0.0f, 3.2f);
+        add_prop(PROP_ORB, 0.88f, 0.21f + j, 0.035f, 0.0f, 0.0f, 3.0f);
         break;
     default:
-        add_prop(PROP_RING, 0.07f, 0.15f, 0.12f, 0.4f, 0.0f, 0.0f);
-        add_prop(PROP_ORB, 0.94f, 0.18f + j, 0.06f, 0.0f, 0.0f, 1.0f);
-        add_prop(PROP_ORB, 0.12f, 0.98f, 0.09f, 0.0f, 1.0f, 2.0f);
-        add_prop(PROP_RING, 0.86f, 0.98f, 0.14f, -0.5f, 1.0f, 3.0f);
+        add_prop(PROP_RING, 0.50f, 0.215f, 0.20f, 0.4f, 0.0f, 0.0f);        /* behind the board */
+        add_prop(PROP_ORB, 0.15f, 0.15f, 0.065f, 0.0f, 0.0f, 1.0f);
+        add_prop(PROP_ORB, 0.22f, 0.935f, 0.075f, 0.0f, 1.0f, 2.0f);
+        add_prop(PROP_RING, 0.78f, 0.935f, 0.10f, -0.5f, 1.0f, 3.0f);
         break;
     }
 }
@@ -743,7 +746,7 @@ static void burst_confetti(void) {
         b->flip = pa_rng_range(&S.rng, 0.0f, PA_TAU);
         b->vflip = pa_rng_range(&S.rng, 4.0f, 11.0f);
         b->size = pa_rng_range(&S.rng, 0.015f, 0.030f);
-        b->col = pa_hex(CONFETTI_COLS[i % 6]);
+        b->col = pa_hex(CONFETTI_COLS[i % 5]);
     }
 }
 
@@ -932,15 +935,15 @@ static void fit_camera(PA_Canvas *c, float top, float bottom, float slide) {
     P.hw = (float)S.w * 0.5f; P.hh = (float)S.h * 0.5f;
     float md = (float)(S.w > S.h ? S.w : S.h);
     P.st = sinf(TILT); P.ct = cosf(TILT);
-    /* Far edge about 85% of the near edge's width. */
-    P.D = 12.3f * P.hh * P.st;
+    /* Far edge about 70% of the near edge's width. */
+    P.D = 5.67f * P.hh * P.st;
     (void)md;
     P.hpx = 0.42f / P.hw;
     P.hpy = 0.10f / P.hh;
     P.cx = 0.0f; P.cy = 0.0f; P.k = 1.0f;
     float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
     /* The rim is about 0.035 of the screen width at the usual board size. */
-    P.rim = S.shape == SHAPE_RECT ? 0.045f * (float)S.w : 0.0f;
+    P.rim = S.shape == SHAPE_RECT ? 0.30f : 0.0f;
     for (int i = 0; i < 8; i++) {
         PA_Vec2 p = pj((i & 1) ? (float)S.w + P.rim : -P.rim, (i & 2) ? (float)S.h + P.rim : -P.rim,
                        (i & 4) ? WALL_H : -SLAB_T);
@@ -949,7 +952,7 @@ static void fit_camera(PA_Canvas *c, float top, float bottom, float slide) {
         if (p.y < miny) miny = p.y;
         if (p.y > maxy) maxy = p.y;
     }
-    float avail_w = (float)c->w * 0.92f, avail_h = bottom - top;
+    float avail_w = (float)c->w * 0.86f, avail_h = bottom - top;
     float s = avail_w / (maxx - minx);
     if ((maxy - miny) * s > avail_h) s = avail_h / (maxy - miny);
     P.k = s;
@@ -957,7 +960,7 @@ static void fit_camera(PA_Canvas *c, float top, float bottom, float slide) {
     P.cy = top + (avail_h - (maxy - miny) * s) * 0.5f - miny * s + slide;
     PA_Vec2 a = pj(P.hw, P.hh, 0.0f), b = pj(P.hw + 1.0f, P.hh, 0.0f);
     P.tile = b.x - a.x;
-    P.shadow = (float)c->w * 0.02f;
+    P.shadow = (float)c->w * 0.025f;
 }
 
 /* ------------------------------------------------------------ prop art */
@@ -980,22 +983,42 @@ static void glossy_sphere(PA_Canvas *c, float x, float y, float r, PA_Color col)
     pa_stop(&g, 0.75f, col);
     pa_stop(&g, 1.0f, pa_shade(col, -0.35f));
     pa_fill_ellipse_paint(c, x, y, r, r, &g);
+    PA_Paint rim = pa_radial(x + r * 0.55f, y + r * 0.6f, 0.0f, r * 0.7f);
+    pa_stop(&rim, 0.0f, pa_alpha(pa_shade(col, 0.30f), 0.6f));
+    pa_stop(&rim, 1.0f, pa_alpha(pa_shade(col, 0.30f), 0.0f));
+    pa_fill_ellipse_paint(c, x + r * 0.42f, y + r * 0.46f, r * 0.45f, r * 0.42f, &rim);
+}
+
+/** A soft clay blob: lit from the upper left with a rim light low right. */
+static void clay_blob(PA_Canvas *c, float x, float y, float rx, float ry, PA_Color col) {
+    float r = rx > ry ? rx : ry;
+    PA_Paint g = pa_radial(x - rx * 0.4f, y - ry * 0.5f, r * 0.05f, r * 1.4f);
+    pa_stop(&g, 0.0f, pa_shade(col, 0.35f));
+    pa_stop(&g, 0.5f, col);
+    pa_stop(&g, 1.0f, pa_shade(col, -0.32f));
+    pa_fill_ellipse_paint(c, x, y, rx, ry, &g);
+    PA_Paint rim = pa_radial(x + rx * 0.6f, y + ry * 0.55f, 0.0f, r * 0.6f);
+    pa_stop(&rim, 0.0f, pa_alpha(pa_shade(col, 0.25f), 0.55f));
+    pa_stop(&rim, 1.0f, pa_alpha(pa_shade(col, 0.25f), 0.0f));
+    pa_fill_ellipse_paint(c, x + rx * 0.45f, y + ry * 0.45f, rx * 0.45f, ry * 0.4f, &rim);
 }
 
 /** A soft 3D tube bent along an arc: cast shadow, dark underside, lit body,
     highlight and a specular streak, each swept as overlapping discs. */
 static void tube_arc(PA_Canvas *c, float cx, float cy, float R, float T, float a0, float sweep,
                      PA_Color col, PA_Color shadow) {
-    enum { N = 40 };
-    static const float OX[5] = { 0.30f, 0.0f, -0.07f, -0.13f, -0.17f };
-    static const float OY[5] = { 0.55f, 0.0f, -0.10f, -0.20f, -0.26f };
-    static const float RR[5] = { 0.50f, 0.50f, 0.42f, 0.24f, 0.08f };
-    PA_Color cols[5] = { shadow, pa_shade(col, -0.30f), col, pa_shade(col, 0.30f),
-                         pa_alpha(pa_shade(col, 0.75f), 0.8f) };
-    for (int pass = 0; pass < 5; pass++) {
+    enum { N = 48 };
+    /* Cast shadow, dark underside, body, rim light along the lower edge,
+       highlight, specular streak: soft clay shading. */
+    static const float OX[6] = { 0.30f, 0.0f, -0.07f, 0.16f, -0.13f, -0.17f };
+    static const float OY[6] = { 0.55f, 0.0f, -0.10f, 0.22f, -0.20f, -0.26f };
+    static const float RR[6] = { 0.50f, 0.50f, 0.42f, 0.14f, 0.24f, 0.08f };
+    PA_Color cols[6] = { shadow, pa_shade(col, -0.30f), col, pa_alpha(pa_shade(col, 0.28f), 0.75f),
+                         pa_shade(col, 0.30f), pa_alpha(pa_shade(col, 0.75f), 0.8f) };
+    for (int pass = 0; pass < 6; pass++) {
         for (int i = 0; i <= N; i++) {
             float t = (float)i / (float)N;
-            if (pass == 4 && (t < 0.2f || t > 0.75f)) continue;
+            if (pass == 5 && (t < 0.2f || t > 0.75f)) continue;
             float a = a0 + sweep * t;
             /* Taper the ends so the tube reads as rounded, not cut off. */
             float taper = 0.82f + 0.18f * sinf(t * PA_PI);
@@ -1039,16 +1062,8 @@ static void bush_prop(PA_Canvas *c, float x, float y, float s, int variant, cons
     PA_Color sh = pa_alpha(pa_shade(pa_hex(th->bg), -0.28f), 0.55f);
     pa_fill_ellipse(c, x - s * 0.55f, y + s * 0.62f, s * 1.25f, s * 0.42f, sh);
     float tall = variant ? 1.05f : 0.85f;
-    PA_Paint g = pa_radial(x - s * 0.55f, y - s * 0.75f, s * 0.05f, s * 1.3f);
-    pa_stop(&g, 0.0f, pa_shade(col, 0.35f));
-    pa_stop(&g, 0.5f, col);
-    pa_stop(&g, 1.0f, pa_shade(col, -0.30f));
-    pa_fill_ellipse_paint(c, x - s * 0.3f, y - s * 0.25f, s * 0.55f, s * tall, &g);
-    PA_Paint g2 = pa_radial(x + s * 0.2f, y - s * 0.15f, s * 0.05f, s * 0.95f);
-    pa_stop(&g2, 0.0f, pa_shade(col, 0.30f));
-    pa_stop(&g2, 0.5f, col);
-    pa_stop(&g2, 1.0f, pa_shade(col, -0.32f));
-    pa_fill_ellipse_paint(c, x + s * 0.42f, y + s * 0.12f, s * 0.62f, s * 0.58f, &g2);
+    clay_blob(c, x - s * 0.3f, y - s * 0.25f, s * 0.55f, s * tall, col);
+    clay_blob(c, x + s * 0.42f, y + s * 0.12f, s * 0.62f, s * 0.58f, col);
 }
 
 /** A low-poly ice shard: a long blade with a lit face and a shaded face. */
@@ -1106,7 +1121,7 @@ static void draw_props(PA_Canvas *c, const Theme *th, float U, float pause_x, fl
         }
         switch (p->kind) {
         case PROP_TUBE:
-            tube_arc(c, x, y, p->s * U, p->s * U * 0.55f, p->ang + drift, p->sweep,
+            tube_arc(c, x, y, p->s * U, fminf(p->s * 0.55f, 0.075f) * U, p->ang + drift, p->sweep,
                      pa_hex(th->prop_a), pa_alpha(pa_shade(pa_hex(th->bg), -0.22f), 0.55f));
             break;
         case PROP_LOG:
@@ -1138,7 +1153,8 @@ static PA_Color face_col(const Theme *th, int painted, int side, PA_Color paint)
     static const float PAINTED[3] = { -0.25f, -0.40f, -0.15f };
     static const float BARE[3] = { 0.0f, -0.30f, 0.10f };
     if (painted) return pa_shade(paint, PAINTED[side]);
-    return pa_shade(pa_hex(th->well_face), BARE[side]);
+    PA_Color base = pa_mix(pa_shade(pa_hex(th->slab), -0.30f), pa_hex(th->well_face), 0.2f);
+    return pa_shade(base, BARE[side]);
 }
 
 static uint32_t hash3(uint32_t a, uint32_t b, uint32_t c) {
@@ -1194,6 +1210,24 @@ static void draw_floor(PA_Canvas *c, const Theme *th, PA_Color paint, float flas
             }
         }
 
+    /* Grain: settled paint is speckled with +/-8% value noise, so it reads as
+       a wet coat rather than a flat fill. */
+    {
+        float gs = P.tile / 20.0f;
+        if (gs < 1.2f) gs = 1.2f;
+        for (int y = 0; y < S.h; y++)
+            for (int x = 0; x < S.w; x++) {
+                if (!walkable(x, y) || !S.painted[y][x] || S.age[y][x] < FRESH) continue;
+                for (int i = 0; i < 18; i++) {
+                    uint32_t h = hash3((uint32_t)x + 101u, (uint32_t)y, (uint32_t)i);
+                    PA_Vec2 q = pj((float)x + 0.06f + 0.88f * hashf(h), (float)y + 0.06f + 0.88f * hashf(hash3(h, 5u, 3u)), 0.0f);
+                    float v = hashf(hash3(h, 9u, 4u)) * 2.0f - 1.0f;
+                    float sz = gs * (1.0f + hashf(hash3(h, 2u, 8u)));
+                    pa_fill_rect(c, q.x - sz * 0.5f, q.y - sz * 0.5f, sz, sz, pa_shade(paint, v * 0.08f));
+                }
+            }
+    }
+
     /* A darker inner edge where paint meets a wall or bare floor, about two
        pixels wide, so the painted channel reads as a glossy filled groove. */
     {
@@ -1217,24 +1251,24 @@ static void draw_floor(PA_Canvas *c, const Theme *th, PA_Color paint, float flas
             if (!walkable(x, y)) continue;
             float fx0 = (float)x, fy0 = (float)y;
             if (is_wall(x, y - 1)) {
-                PA_Vec2 a = pj(fx0, fy0, 0), b = pj(fx0 + 1, fy0, 0), d = pj(fx0 + 1, fy0 + 0.22f, 0), f = pj(fx0, fy0 + 0.22f, 0);
+                PA_Vec2 a = pj(fx0, fy0, 0), b = pj(fx0 + 1, fy0, 0), d = pj(fx0 + 1, fy0 + 0.5f, 0), f = pj(fx0, fy0 + 0.5f, 0);
                 PA_Paint g = pa_linear(0, a.y, 0, d.y);
-                pa_stop(&g, 0.0f, PA_RGBA(10, 20, 40, 60));
-                pa_stop(&g, 1.0f, PA_RGBA(10, 20, 40, 0));
+                pa_stop(&g, 0.0f, PA_RGBA(0, 0, 0, 52));
+                pa_stop(&g, 1.0f, PA_RGBA(0, 0, 0, 0));
                 quad_paint(c, a, b, d, f, &g);
             }
             if (is_wall(x - 1, y)) {
-                PA_Vec2 a = pj(fx0, fy0, 0), b = pj(fx0 + 0.16f, fy0, 0), d = pj(fx0 + 0.16f, fy0 + 1, 0), f = pj(fx0, fy0 + 1, 0);
+                PA_Vec2 a = pj(fx0, fy0, 0), b = pj(fx0 + 0.4f, fy0, 0), d = pj(fx0 + 0.4f, fy0 + 1, 0), f = pj(fx0, fy0 + 1, 0);
                 PA_Paint g = pa_linear(a.x, 0, b.x, 0);
-                pa_stop(&g, 0.0f, PA_RGBA(10, 20, 40, 40));
-                pa_stop(&g, 1.0f, PA_RGBA(10, 20, 40, 0));
+                pa_stop(&g, 0.0f, PA_RGBA(0, 0, 0, 44));
+                pa_stop(&g, 1.0f, PA_RGBA(0, 0, 0, 0));
                 quad_paint(c, a, b, d, f, &g);
             }
             if (is_wall(x + 1, y)) {
-                PA_Vec2 a = pj(fx0 + 1, fy0, 0), b = pj(fx0 + 0.84f, fy0, 0), d = pj(fx0 + 0.84f, fy0 + 1, 0), f = pj(fx0 + 1, fy0 + 1, 0);
+                PA_Vec2 a = pj(fx0 + 1, fy0, 0), b = pj(fx0 + 0.6f, fy0, 0), d = pj(fx0 + 0.6f, fy0 + 1, 0), f = pj(fx0 + 1, fy0 + 1, 0);
                 PA_Paint g = pa_linear(a.x, 0, b.x, 0);
-                pa_stop(&g, 0.0f, PA_RGBA(10, 20, 40, 40));
-                pa_stop(&g, 1.0f, PA_RGBA(10, 20, 40, 0));
+                pa_stop(&g, 0.0f, PA_RGBA(0, 0, 0, 44));
+                pa_stop(&g, 1.0f, PA_RGBA(0, 0, 0, 0));
                 quad_paint(c, a, b, d, f, &g);
             }
         }
@@ -1394,29 +1428,30 @@ static void draw_board(PA_Canvas *c, const Theme *th, PA_Color paint, float flas
         draw_cut_slab(c, th);
     } else {
         {
-            /* Soft drop shadow, 30% black, offset about 0.02 of the screen width. */
+            /* Soft drop shadow: 20% black spread over about 0.03 of the screen
+               width, layered so its edge feathers out. */
             PA_Vec2 q[4] = { pj(-rw, -rw, -SLAB_T), pj(W + rw, -rw, -SLAB_T),
                              pj(W + rw, H + rw, -SLAB_T), pj(-rw, H + rw, -SLAB_T) };
-            for (int k = 0; k < 3; k++) {
-                float o = P.shadow, g = P.shadow * 0.35f * (float)(2 - k);
-                PA_Vec2 sq[4] = { { q[0].x + o - g, q[0].y + o - g }, { q[1].x + o + g, q[1].y + o - g },
-                                  { q[2].x + o + g, q[2].y + o + g }, { q[3].x + o - g, q[3].y + o + g } };
-                pa_fill_poly(c, sq, 4, PA_RGBA(0, 0, 0, 26));
+            for (int k = 0; k < 5; k++) {
+                float o = P.shadow * 0.8f, g = P.shadow * 0.30f * (float)(4 - k);
+                PA_Vec2 sq[4] = { { q[0].x + o * 0.4f - g, q[0].y + o - g }, { q[1].x + o * 0.4f + g, q[1].y + o - g },
+                                  { q[2].x + o * 0.4f + g, q[2].y + o + g }, { q[3].x + o * 0.4f - g, q[3].y + o + g } };
+                pa_fill_poly(c, sq, 4, PA_RGBA(0, 0, 0, 12));
             }
         }
         {
-            /* Front edge of the slab under the rim, then the rim, then the top. */
-            PA_Color rim = pa_hex(th->rim);
+            /* A thick shaded plinth in the slab's own colour - no outline - then
+               the top with a soft lit bevel along its edge. */
             PA_Vec2 a = pj(-rw, H + rw, WALL_H), b = pj(W + rw, H + rw, WALL_H);
             PA_Vec2 d = pj(W + rw, H + rw, -SLAB_T), e = pj(-rw, H + rw, -SLAB_T);
             PA_Paint fr = pa_linear(0, a.y, 0, d.y);
-            pa_stop(&fr, 0.0f, pa_shade(rim, -0.22f));
-            pa_stop(&fr, 1.0f, pa_shade(rim, -0.38f));
+            pa_stop(&fr, 0.0f, pa_shade(top, -0.18f));
+            pa_stop(&fr, 0.25f, pa_shade(top, -0.26f));
+            pa_stop(&fr, 1.0f, pa_shade(top, -0.46f));
             quad_paint(c, a, b, d, e, &fr);
-            tile_quad(c, -rw, -rw, W + rw, H + rw, WALL_H, rim);
-            /* A fine lit edge where the rim meets the top. */
-            tile_quad(c, -rw * 0.25f, -rw * 0.25f, W + rw * 0.25f, H + rw * 0.25f, WALL_H, pa_shade(rim, 0.25f));
-            tile_quad(c, 0, 0, W, H, WALL_H, top);
+            tile_quad(c, -rw, -rw, W + rw, H + rw, WALL_H, pa_shade(top, 0.06f));
+            tile_quad(c, -rw * 0.6f, -rw * 0.6f, W + rw * 0.6f, H + rw * 0.6f, WALL_H, top);
+            (void)th->rim;
         }
     }
     draw_floor(c, th, paint, flash);
@@ -1621,7 +1656,7 @@ static void draw_celebration(PA_Canvas *c, PA_Color paint, float U) {
     snprintf(buf, sizeof(buf), "LEVEL %d", S.level + 1);
     const char *lines[3] = { buf, "COMPLETE", PRAISE[S.praise] };
     float sizes[3] = { U * 0.072f, U * 0.084f, U * 0.062f };
-    float widths[3] = { 0.66f, 0.80f, 0.56f };
+    float widths[3] = { 0.70f, 0.85f, 0.58f };
     for (int i = 0; i < 3; i++) {
         float off = ((float)i - 1.0f) * line;
         float lx = cx - sa * off, ly = cy + ca * off;
@@ -1631,6 +1666,20 @@ static void draw_celebration(PA_Canvas *c, PA_Color paint, float U) {
         /* A lit band along the top edge so the strip reads as a thick stroke. */
         brush_banner(c, lx + sa * ts * 0.52f, ly - ca * ts * 0.52f, W * widths[i] * sc * 0.96f, ts * 0.32f, ang,
                      60u + (uint32_t)i, pa_shade(light, 0.20f));
+    }
+    /* Paint drips running off the bottom banner. */
+    {
+        float off = line, ts = sizes[2] * sc;
+        float lx = cx - sa * off, ly = cy + ca * off;
+        for (int k = 0; k < 7; k++) {
+            uint32_t h = hash3(77u, (uint32_t)k, (uint32_t)S.level);
+            float along = (-0.42f + 0.84f * hashf(h)) * W * widths[2] * sc;
+            float len = ts * (0.5f + 1.6f * hashf(hash3(h, 3u, 3u))) * pa_clamp01((S.clear_t - 0.2f) * 3.0f);
+            float wdt = ts * (0.18f + 0.14f * hashf(hash3(h, 4u, 4u)));
+            float bx = lx + along * ca, by = ly + along * sa + ts * 0.8f;
+            pa_round_rect(c, bx - wdt * 0.5f, by - wdt * 0.5f, wdt, len + wdt * 0.5f, wdt * 0.5f, light);
+            pa_fill_circle(c, bx, by + len, wdt * 0.62f, light);
+        }
     }
     for (int i = 0; i < 3; i++) {
         float off = ((float)i - 1.0f) * line;
