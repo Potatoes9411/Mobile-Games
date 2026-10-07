@@ -30,12 +30,14 @@
 #define MAX_FALL    10.0f
 #define CONTINUE_COST 30
 #define CONTINUE_TIME 5.0f
+#define MAX_FLY     48
+#define KEYS_FOR_CHESTS 3
 
 enum { SEG_SAFE = 0, SEG_DEADLY = 1, SEG_GAP = 2 };
 enum { MAT_GLOSS, MAT_SPONGE, MAT_STONE, MAT_CANDY };
 enum { COL_PLAIN, COL_GROOVES, COL_BRICK, COL_BANDS };
 enum { BACK_CLOUDS, BACK_CITY };
-enum { ST_READY, ST_PLAY, ST_DEAD, ST_FAIL, ST_WIN };
+enum { ST_READY, ST_PLAY, ST_DEAD, ST_FAIL, ST_WIN, ST_CHEST, ST_MAP };
 enum { P_SHARD, P_DROP, P_EMBER, P_CONFETTI };
 
 /* ------------------------------------------------------------------ themes */
@@ -102,6 +104,8 @@ typedef struct {
 
 typedef struct { char text[16]; float t; } Pop;
 typedef struct { char text[16]; float t; PA_Color col; } Word;
+/* A coin flying from a reward to the coin pill. */
+typedef struct { float x0, y0, x1, y1, t, delay; } Fly;
 
 typedef struct {
     Floor  floors[MAX_FLOORS];
@@ -126,6 +130,15 @@ typedef struct {
     int    part_next;
     Pop    pops[MAX_POPS];
     Word   words[MAX_WORDS];
+    Fly    fly[MAX_FLY];
+    float  coin_hold;          /* the pill counts up once the coins land */
+    int    key_earned;
+
+    /* chest room */
+    int    chest_val[9], chest_open[9], best_prize;
+    float  chest_t[9], chest_last;
+    /* level map */
+    float  map_hop;
 
     /* demo bot */
     int    bot_bounces[MAX_FLOORS];
@@ -135,7 +148,7 @@ typedef struct {
 } Helix;
 
 static Helix H;
-static int   g_best, g_coins, g_loaded;
+static int   g_best, g_coins, g_keys, g_loaded;
 
 static struct {
     int   w, h;
@@ -272,15 +285,19 @@ static float under_angle(void) { return pa_wrapf(PA_TAU * 0.25f - H.spin, PA_TAU
 static void load_save(void) {
     if (g_loaded) return;
     g_loaded = 1;
-    if (demo()) { g_best = 2460; g_coins = 1240; return; }
+    if (demo()) { g_best = 2460; g_coins = 1240; g_keys = 2; return; }
     g_best = pa_save_get("helix.best", 0);
     g_coins = pa_save_get("helix.coins", 0);
+    g_keys = pa_save_get("helix.keys", 0);
+    if (g_keys < 0) g_keys = 0;
+    if (g_keys > KEYS_FOR_CHESTS) g_keys = KEYS_FOR_CHESTS;
 }
 
 static void save_progress(void) {
     if (demo()) return;
     pa_save_set("helix.best", g_best);
     pa_save_set("helix.coins", g_coins);
+    pa_save_set("helix.keys", g_keys);
     pa_save_set("helix.level", H.level);
     pa_save_flush();
 }
@@ -448,6 +465,9 @@ static void win(void) {
     H.win_coins = 20 + H.level * 5;
     H.coins_shown = g_coins;
     g_coins += H.win_coins;
+    H.coin_hold = H.time + 1.6f;
+    H.key_earned = g_keys < KEYS_FOR_CHESTS;
+    if (g_keys < KEYS_FOR_CHESTS) g_keys++;
     if (H.score > g_best) g_best = H.score;
     confetti();
     pa_sfx("win");
@@ -614,6 +634,101 @@ static void do_continue(void) {
     save_progress();
 }
 
+
+/* ------------------------------------------------------------- meta layer */
+static void coin_burst(float x, float y, int count) {
+    float tx = (float)L.w - 50.0f * L.u, ty = 46.0f * L.u;
+    for (int i = 0, n = 0; i < MAX_FLY && n < count; i++) {
+        Fly *f = &H.fly[i];
+        if (f->t > 0.0f && f->t < 1.0f) continue;
+        f->x0 = x + sinf((float)i * 2.4f) * 30.0f * L.u;
+        f->y0 = y + cosf((float)i * 1.7f) * 24.0f * L.u;
+        f->x1 = tx; f->y1 = ty;
+        f->t = 0.0001f;
+        f->delay = (float)n * 0.045f;
+        n++;
+    }
+}
+
+static void update_fly(float dt) {
+    for (int i = 0; i < MAX_FLY; i++) {
+        Fly *f = &H.fly[i];
+        if (f->t <= 0.0f || f->t >= 1.0f) continue;
+        if (f->delay > 0.0f) { f->delay -= dt; continue; }
+        f->t += dt / 0.65f;
+        if (f->t >= 1.0f) { f->t = 1.0f; pa_tone(1500, 1900, 0.03f, 1, 0.035f); }
+    }
+}
+
+static void enter_chests(void) {
+    H.state = ST_CHEST;
+    H.state_t = 0.0f;
+    static const int VALUES[9] = { 25, 25, 30, 40, 50, 50, 75, 100, 150 };
+    PA_Rng r;
+    pa_rng_seed(&r, (uint32_t)H.level * 7121u + 99u);
+    for (int i = 0; i < 9; i++) { H.chest_val[i] = VALUES[i]; H.chest_open[i] = 0; H.chest_t[i] = 0.0f; }
+    for (int i = 8; i > 0; i--) {
+        int j = pa_rng_int(&r, 0, i);
+        int t = H.chest_val[i]; H.chest_val[i] = H.chest_val[j]; H.chest_val[j] = t;
+    }
+    H.best_prize = 150;
+    H.chest_last = -10.0f;
+}
+
+static void enter_map(void) {
+    H.state = ST_MAP;
+    H.state_t = 0.0f;
+    H.map_hop = 0.0f;
+}
+
+static Rect chest_cell(int i) {
+    float u = L.u, cw = 130.0f * u;
+    float gx = L.cx - cw * 1.5f, gy = (float)L.h * 0.25f + 26.0f * u;
+    Rect r = { gx + (float)(i % 3) * cw, gy + (float)(i / 3) * cw, cw, cw };
+    return r;
+}
+
+static int chests_finished(void) {
+    return g_keys == 0 && H.time - H.chest_last > 0.9f;
+}
+
+static void open_chest(int i) {
+    H.chest_open[i] = 1;
+    H.chest_t[i] = 0.0f;
+    H.chest_last = H.time;
+    g_keys--;
+    H.coins_shown = H.coins_shown < g_coins ? H.coins_shown : g_coins;
+    g_coins += H.chest_val[i];
+    H.coin_hold = H.time + 0.75f;
+    Rect r = chest_cell(i);
+    coin_burst(r.x + r.w * 0.5f, r.y + r.h * 0.5f, H.chest_val[i] >= 100 ? 16 : 9);
+    pa_tone(300, 900, 0.18f, 2, 0.08f);
+    pa_sfx("coin");
+    save_progress();
+}
+
+static void chest_update(float dt, const PA_Input *in, int bot) {
+    for (int i = 0; i < 9; i++) if (H.chest_open[i]) H.chest_t[i] += dt;
+    if (H.state_t < 0.6f) return;
+    if (chests_finished()) {
+        int go = in->tapped && in_rect(card_button(0), in->x, in->y);
+        if (bot) go = H.time - H.chest_last > 1.8f;
+        if (go) { pa_sfx("select"); enter_map(); }
+        return;
+    }
+    if (g_keys <= 0) return;
+    if (bot) {
+        static const int ORDER[3] = { 4, 0, 8 };
+        int opened = 0;
+        for (int i = 0; i < 9; i++) opened += H.chest_open[i];
+        if (opened < 3 && H.time - H.chest_last > 0.85f && H.state_t > 1.0f) open_chest(ORDER[opened]);
+        return;
+    }
+    if (!in->tapped) return;
+    for (int i = 0; i < 9; i++)
+        if (!H.chest_open[i] && in_rect(chest_cell(i), in->x, in->y)) { open_chest(i); break; }
+}
+
 static void helix_update(float dt, const PA_Input *in) {
     if (L.w == 0) compute_layout(540, 1170);
     H.time += dt;
@@ -627,13 +742,14 @@ static void helix_update(float dt, const PA_Input *in) {
         H.fire_t = pa_approach(H.fire_t, ft, ft > H.fire_t ? 30.0f : 2.5f, dt);
     }
     update_parts(dt);
+    update_fly(dt);
     for (int i = 0; i < H.floor_count; i++) {
         Floor *f = &H.floors[i];
         if (f->broken > 0.0f) f->broken = f->broken > dt * 2.0f ? f->broken - dt * 2.0f : 0.0f;
         if (f->hit > 0.0f) f->hit = f->hit > dt * 6.0f ? f->hit - dt * 6.0f : 0.0f;
         for (int k = 0; k < f->splat_count; k++) f->splat_t[k] += dt;
     }
-    if (H.coins_shown < g_coins && (H.state != ST_WIN || H.state_t > 1.0f)) {
+    if (H.coins_shown < g_coins && H.time >= H.coin_hold) {
         int step = (g_coins - H.coins_shown) / 12 + 1;
         H.coins_shown += step;
         if ((int)(H.time * 30.0f) % 3 == 0) pa_tone(1320, 1760, 0.03f, 1, 0.04f);
@@ -665,6 +781,21 @@ static void helix_update(float dt, const PA_Input *in) {
         if (H.ball_y >= gy) { H.ball_y = gy; H.ball_v = -BOUNCE_V * 0.8f; H.land_t = 0.0f; }
         int go = in->tapped && H.state_t > 0.6f;
         if (bot) go = H.state_t > 2.6f;
+        if (go) {
+            if (g_keys >= KEYS_FOR_CHESTS) enter_chests(); else enter_map();
+            pa_sfx("select");
+        }
+        return;
+    }
+    if (H.state == ST_CHEST) { chest_update(dt, in, bot); return; }
+    if (H.state == ST_MAP) {
+        int go = in->tapped && H.state_t > 1.0f;
+        if (bot) go = H.state_t > 2.8f;
+        if (H.state_t > 0.55f && H.map_hop == 0.0f) { H.map_hop = 0.001f; pa_tone(500, 900, 0.12f, 1, 0.08f); }
+        if (H.map_hop > 0.0f && H.map_hop < 1.0f) {
+            H.map_hop += dt / 0.6f;
+            if (H.map_hop >= 1.0f) { H.map_hop = 1.0f; pa_sfx("pop"); }
+        }
         if (go) {
             H.demo_runs++;
             begin_level(H.level + 1, H.score);
@@ -741,12 +872,12 @@ static void helix_update(float dt, const PA_Input *in) {
                 pa_tone(380.0f + 90.0f * (float)H.combo, 620.0f + 120.0f * (float)H.combo, 0.10f, 1, 0.08f);
                 if (H.combo == 3) {
                     H.smashing = 1;
-                    word("GREAT!", pa_hex(0x7CFF3A));
+                    word("GREAT!", pa_hex(0x2DBE4E));
                     pa_tone(160, 520, 0.35f, 3, 0.07f);
                     pa_noise(0.25f, 0.06f);
-                } else if (H.combo == 4) word("WOW!", pa_hex(0x7CFF3A));
-                else if (H.combo == 5) word("AMAZING!", pa_hex(0x7CFF3A));
-                else if (H.combo >= 6) word("GODLIKE!", pa_hex(0x7CFF3A));
+                } else if (H.combo == 4) word("WOW!", pa_hex(0x1FA9E8));
+                else if (H.combo == 5) word("AMAZING!", pa_hex(0x8C4DF0));
+                else if (H.combo >= 6) word("GODLIKE!", pa_hex(0xE8336B));
                 if (bot) H.bot_bounces[i] = 0;
                 continue;
             }
@@ -763,7 +894,7 @@ static void helix_update(float dt, const PA_Input *in) {
                 H.smashing = 0;
                 H.combo = 0;
                 H.ball_v *= 0.35f;
-                word(kind == SEG_DEADLY ? "SMASH!" : "CRUSH!", pa_hex(0xFFB300));
+                word(kind == SEG_DEADLY ? "SMASH!" : "CRUSH!", pa_hex(0xFF6A1F));
                 pa_sfx("boom");
                 continue;
             }
@@ -1561,7 +1692,8 @@ static void ribbon(PA_Canvas *c, float cy, float w, float h, PA_Color col, const
     pa_stop(&p, 1.0f, pa_shade(col, -0.08f));
     pa_round_rect_paint(c, x, cy - h * 0.5f, w, h, 4.0f * L.u, &p);
     pa_fill_rect(c, x, cy - h * 0.5f, w, h * 0.12f, PA_RGBA(255, 255, 255, 60));
-    pa_text_bold(c, text, L.cx, cy - ts * 0.5f, ts, PA_RGB(255, 255, 255), dark, PA_ALIGN_CENTER, 2.0f * L.u, 0.9f);
+    pa_text_bold(c, text, L.cx, cy - ts * 0.5f, ts, PA_RGB(255, 255, 255), pa_shade(col, -0.5f), PA_ALIGN_CENTER,
+                 2.0f * L.u, ts > 34.0f * L.u ? 1.3f : 0.95f);
 }
 
 static void draw_hud(PA_Canvas *c) {
@@ -1601,18 +1733,21 @@ static void draw_hud(PA_Canvas *c) {
                      PA_RGBA(255, 255, 255, (int)(a * 230)), PA_ALIGN_CENTER, 2.0f * u, 0.9f);
     }
 
-    /* Combo words, elastic scale-in. */
-    for (int i = 1; i >= 0; i--) {
-        const Word *w = &H.words[i];
-        if (w->t <= 0.0f) continue;
-        float age = 1.0f - w->t;
-        float a = pa_clamp01(w->t * 3.0f);
-        float sc = elastic(pa_clamp01(age * 2.6f));
-        float ts = 0.08f * 540.0f * u * sc * (i == 0 ? 1.0f : 0.75f);
-        if (ts < 2.0f) continue;
-        float wy = sy + ss + 98.0f * u + (float)i * 58.0f * u - ts * 0.5f;
-        pa_text_bold(c, w->text, L.cx, wy, ts, pa_alpha(w->col, a), PA_RGBA(24, 40, 20, (int)(a * 255)),
-                     PA_ALIGN_CENTER, 2.0f * u, 1.1f);
+    /* One praise line at a time on its own ribbon, between the score and
+       the ball's highest bounce, so it never covers either. */
+    {
+        const Word *w = &H.words[0];
+        if (w->t > 0.0f) {
+            float age = 1.0f - w->t;
+            float sc = elastic(pa_clamp01(age * 2.4f));
+            if (w->t < 0.18f) sc *= pa_smooth(w->t / 0.18f);
+            float ts = 46.0f * u * sc;
+            if (ts > 2.0f) {
+                float tw = pa_text_width(w->text, ts, 3.0f * u);
+                float cy = sy + ss + 104.0f * u;
+                ribbon(c, cy, tw + 56.0f * u * sc, 66.0f * u * sc, w->col, w->text, ts);
+            }
+        }
     }
 
     if (H.state == ST_READY) {
@@ -1690,55 +1825,461 @@ static void fail_card(PA_Canvas *c) {
     }
 }
 
+/* ------------------------------------------------------------ meta art */
+static void leaf(PA_Canvas *c, float x, float y, float len, float wid, float ang, PA_Color col) {
+    PA_Vec2 pts[12];
+    float ca = cosf(ang), sa = sinf(ang);
+    for (int i = 0; i < 12; i++) {
+        float t = (float)i / 12.0f * PA_TAU;
+        float lx = cosf(t) * len * 0.5f;
+        float ly = sinf(t) * wid * 0.5f * (cosf(t) > 0.0f ? 1.0f - cosf(t) * 0.5f : 1.0f);
+        pts[i].x = x + lx * ca - ly * sa;
+        pts[i].y = y + lx * sa + ly * ca;
+    }
+    pa_fill_poly(c, pts, 12, col);
+}
+
+static void laurel(PA_Canvas *c, float cx, float cy, float r, float a) {
+    for (int side = -1; side <= 1; side += 2) {
+        PA_Vec2 stem[16];
+        for (int i = 0; i < 16; i++) {
+            float t = PA_PI * (0.62f + 0.62f * (float)i / 15.0f);
+            stem[i].x = cx - (float)side * cosf(t) * r;
+            stem[i].y = cy - sinf(t) * r * 0.92f + r * 0.05f;
+        }
+        pa_stroke_poly(c, stem, 16, 0, r * 0.035f, pa_alpha(pa_hex(0xB8860B), a));
+        for (int i = 0; i < 9; i++) {
+            float t = PA_PI * (0.66f + 0.56f * (float)i / 8.0f);
+            float x = cx - (float)side * cosf(t) * r, y = cy - sinf(t) * r * 0.92f + r * 0.05f;
+            float tang = atan2f(-cosf(t) * r * 0.92f, (float)side * sinf(t) * r);
+            float ls = r * (0.30f - 0.012f * (float)i);
+            for (int o = -1; o <= 1; o += 2) {
+                float ang = tang + (float)o * 0.55f * (float)side;
+                float lx = x + cosf(ang) * ls * 0.45f, ly = y + sinf(ang) * ls * 0.45f;
+                leaf(c, lx + 2.0f, ly + 3.0f, ls, ls * 0.42f, ang, pa_alpha(pa_hex(0x9A6A00), a * 0.6f));
+                leaf(c, lx, ly, ls, ls * 0.42f, ang, pa_alpha(pa_hex(o > 0 ? 0xFFCF33 : 0xF2B200), a));
+            }
+        }
+    }
+}
+
+static void trophy(PA_Canvas *c, float cx, float top, float s, float a, int score) {
+    PA_Color g0 = pa_hex(0xFFE680), g1 = pa_hex(0xF7BA0E), g2 = pa_hex(0xB57A00);
+    /* Handles. */
+    for (int side = -1; side <= 1; side += 2) {
+        PA_Vec2 arc[14];
+        for (int i = 0; i < 14; i++) {
+            float t = -PA_PI * 0.5f + PA_PI * (float)i / 13.0f;
+            arc[i].x = cx + (float)side * (s * 0.48f + cosf(t) * s * 0.22f);
+            arc[i].y = top + s * 0.28f + sinf(t) * s * 0.22f;
+        }
+        pa_stroke_poly(c, arc, 14, 0, s * 0.075f, pa_alpha(g2, a));
+        for (int i = 0; i < 14; i++) arc[i].y -= s * 0.015f;
+        pa_stroke_poly(c, arc, 14, 0, s * 0.05f, pa_alpha(g1, a));
+    }
+    /* Bowl. */
+    PA_Vec2 bowl[20];
+    int n = 0;
+    bowl[n].x = cx - s * 0.52f; bowl[n].y = top; n++;
+    for (int i = 0; i <= 16; i++) {
+        float t = PA_PI * (float)i / 16.0f;
+        bowl[n].x = cx - cosf(t) * s * 0.52f * (0.55f + 0.45f * (1.0f - sinf(t)));
+        bowl[n].y = top + s * 0.25f + sinf(t) * s * 0.55f;
+        n++;
+    }
+    bowl[n].x = cx + s * 0.52f; bowl[n].y = top; n++;
+    PA_Paint bp = pa_linear(cx - s * 0.52f, 0, cx + s * 0.52f, 0);
+    pa_stop(&bp, 0.0f, pa_alpha(g2, a));
+    pa_stop(&bp, 0.28f, pa_alpha(g0, a));
+    pa_stop(&bp, 0.55f, pa_alpha(g1, a));
+    pa_stop(&bp, 1.0f, pa_alpha(g2, a));
+    pa_fill_poly_paint(c, bowl, n, &bp);
+    pa_fill_ellipse(c, cx, top, s * 0.52f, s * 0.08f, pa_alpha(g2, a));
+    pa_fill_ellipse(c, cx, top + s * 0.01f, s * 0.46f, s * 0.055f, pa_alpha(pa_hex(0x8A5A00), a));
+    pa_round_rect(c, cx - s * 0.40f, top + s * 0.08f, s * 0.06f, s * 0.42f, s * 0.03f, PA_RGBA(255, 255, 255, (int)(110 * a)));
+    /* Stem and base. */
+    pa_fill_rect(c, cx - s * 0.07f, top + s * 0.78f, s * 0.14f, s * 0.20f, pa_alpha(g1, a));
+    pa_fill_rect(c, cx - s * 0.07f, top + s * 0.78f, s * 0.04f, s * 0.20f, pa_alpha(g0, a));
+    pa_fill_ellipse(c, cx, top + s * 0.98f, s * 0.22f, s * 0.05f, pa_alpha(g2, a));
+    pa_round_rect(c, cx - s * 0.36f, top + s * 1.0f, s * 0.72f, s * 0.16f, s * 0.04f, pa_alpha(g2, a));
+    pa_round_rect(c, cx - s * 0.33f, top + s * 0.99f, s * 0.66f, s * 0.12f, s * 0.04f, pa_alpha(g1, a));
+    /* Score plaque on the bowl, as the reference's trophy carries it. */
+    float pw = s * 0.72f, ph = s * 0.32f, px = cx - pw * 0.5f, py = top + s * 0.18f;
+    pa_round_rect(c, px, py + 3.0f, pw, ph, s * 0.04f, pa_alpha(pa_hex(0x7A4E00), a * 0.7f));
+    pa_round_rect(c, px, py, pw, ph, s * 0.04f, pa_alpha(pa_hex(0xC88A10), a));
+    char buf[24];
+    pa_text_bold(c, "TOTAL SCORE", cx, py + ph * 0.12f, s * 0.062f, PA_RGBA(255, 246, 220, (int)(255 * a)),
+                 pa_alpha(pa_hex(0x8A5A00), a), PA_ALIGN_CENTER, 1.0f, 0.8f);
+    snprintf(buf, sizeof(buf), "%d", score);
+    pa_text_bold(c, buf, cx, py + ph * 0.44f, s * 0.12f, PA_RGBA(255, 255, 255, (int)(255 * a)),
+                 pa_alpha(pa_hex(0x7A4E00), a), PA_ALIGN_CENTER, 1.5f, 0.95f);
+}
+
+static void key_icon(PA_Canvas *c, float x, float y, float s, PA_Color col) {
+    PA_Color dark = pa_shade(col, -0.35f);
+    for (int pass = 0; pass < 2; pass++) {
+        PA_Color k = pass ? col : pa_alpha(dark, (float)PA_A(col) / 255.0f);
+        float o = pass ? 0.0f : s * 0.06f;
+        pa_stroke_circle(c, x - s * 0.32f, y + o, s * 0.22f, s * 0.13f, k);
+        pa_line(c, x - s * 0.10f, y + o, x + s * 0.55f, y + o, s * 0.13f, k);
+        pa_line(c, x + s * 0.40f, y + o, x + s * 0.40f, y + s * 0.22f + o, s * 0.11f, k);
+        pa_line(c, x + s * 0.54f, y + o, x + s * 0.54f, y + s * 0.18f + o, s * 0.11f, k);
+    }
+}
+
+static void chest_icon(PA_Canvas *c, float x, float y, float s, int gold, float open) {
+    PA_Color body = gold ? pa_hex(0xFFC21C) : pa_hex(0x2F7BEA);
+    PA_Color band = gold ? pa_hex(0xFF8A00) : pa_hex(0xFFC21C);
+    float bw = s, bh = s * 0.52f, bx = x - bw * 0.5f, by = y - bh * 0.15f;
+    pa_shadow(c, x, by + bh, bw * 0.55f, s * 0.08f, 0.35f);
+    if (open > 0.0f) {
+        /* Lid swung back, gold light spilling out. */
+        float lift = s * 0.30f * pa_smooth(pa_clamp01(open));
+        pa_round_rect(c, bx + s * 0.02f, by - s * 0.20f - lift, bw - s * 0.04f, s * 0.22f, s * 0.08f, pa_shade(body, -0.35f));
+        PA_Paint gl = pa_radial(x, by, 2.0f, s * 0.9f);
+        pa_stop(&gl, 0.0f, PA_RGBA(255, 240, 160, (int)(220 * pa_clamp01(open))));
+        pa_stop(&gl, 1.0f, PA_RGBA(255, 220, 80, 0));
+        pa_fill_ellipse_paint(c, x, by, s * 0.9f, s * 0.6f, &gl);
+        pa_fill_ellipse(c, x, by, bw * 0.46f, s * 0.10f, pa_hex(0x5A3A00));
+        for (int i = 0; i < 4; i++)
+            coin_icon(c, x - s * 0.24f + (float)i * s * 0.16f, by - s * 0.04f - (float)(i & 1) * s * 0.05f, s * 0.09f);
+    }
+    PA_Paint bp = pa_linear(0, by, 0, by + bh);
+    pa_stop(&bp, 0.0f, pa_shade(body, 0.15f));
+    pa_stop(&bp, 1.0f, pa_shade(body, -0.25f));
+    pa_round_rect_paint(c, bx, by, bw, bh, s * 0.08f, &bp);
+    float lid = open > 0.0f ? 0.0f : s * 0.30f;
+    if (open <= 0.0f) {
+        PA_Paint lp = pa_linear(0, by - s * 0.30f, 0, by + s * 0.02f);
+        pa_stop(&lp, 0.0f, pa_shade(body, 0.25f));
+        pa_stop(&lp, 1.0f, pa_shade(body, -0.10f));
+        pa_round_rect_paint(c, bx - s * 0.02f, by - s * 0.30f, bw + s * 0.04f, s * 0.34f, s * 0.14f, &lp);
+        pa_fill_rect(c, bx - s * 0.02f, by - s * 0.02f, bw + s * 0.04f, s * 0.05f, pa_shade(body, -0.4f));
+    }
+    pa_fill_rect(c, bx + bw * 0.16f, by - lid, bw * 0.12f, bh + lid, band);
+    pa_fill_rect(c, bx + bw * 0.72f, by - lid, bw * 0.12f, bh + lid, band);
+    pa_round_rect(c, x - s * 0.11f, by - s * 0.07f, s * 0.22f, s * 0.26f, s * 0.05f, band);
+    pa_fill_circle(c, x, by + s * 0.04f, s * 0.04f, pa_hex(0x3A2A00));
+}
+
+static void draw_fly(PA_Canvas *c) {
+    for (int i = 0; i < MAX_FLY; i++) {
+        const Fly *f = &H.fly[i];
+        if (f->t <= 0.0f || f->t >= 1.0f || f->delay > 0.0f) continue;
+        float t = f->t, e = t * t * (3.0f - 2.0f * t);
+        float x = pa_lerpf(f->x0, f->x1, e) + sinf(t * PA_PI) * 60.0f * L.u * ((i & 1) ? 1.0f : -1.0f);
+        float y = pa_lerpf(f->y0, f->y1, e) - sinf(t * PA_PI) * 90.0f * L.u;
+        coin_icon(c, x, y, 13.0f * L.u * (1.2f - 0.4f * t));
+    }
+}
+
+static void meta_header(PA_Canvas *c) {
+    float u = L.u, top = 46.0f * u;
+    coin_pill(c, (float)c->w - 14.0f * u, top, H.coins_shown);
+    for (int k = 0; k < KEYS_FOR_CHESTS; k++)
+        key_icon(c, 40.0f * u + (float)k * 46.0f * u, top, 34.0f * u,
+                 k < g_keys ? pa_hex(0xFFC21C) : PA_RGBA(255, 255, 255, 70));
+}
+
 static void win_card(PA_Canvas *c) {
     float u = L.u, w = (float)c->w, h = (float)c->h;
     float t = H.state_t - 0.35f;
     if (t <= 0.0f) return;
     float a = pa_clamp01(t * 3.0f);
     pa_hub_hide_pause();
-    pa_fill_rect(c, 0, 0, w, h, PA_RGBA(255, 255, 255, (int)(a * 90.0f)));
-
-    /* Sunburst behind the headline. */
-    float cy = h * 0.24f;
+    /* A proper results screen: dark, glowing, the trophy centre stage. */
     PA_Color plate = pa_hex(H.th.plate);
-    for (int i = 0; i < 14; i++) {
-        float a0 = (float)i / 14.0f * PA_TAU + H.time * 0.4f, a1 = a0 + PA_TAU / 28.0f;
-        PA_Vec2 tri[3] = { { L.cx, cy }, { L.cx + cosf(a0) * w, cy + sinf(a0) * w },
-                           { L.cx + cosf(a1) * w, cy + sinf(a1) * w } };
-        pa_fill_poly(c, tri, 3, PA_RGBA(255, 255, 255, (int)(a * 70.0f)));
+    PA_Paint bg = pa_radial(L.cx, h * 0.30f, 20.0f, h * 0.8f);
+    pa_stop(&bg, 0.0f, pa_alpha(pa_mix(pa_hex(0x2B5F78), plate, 0.25f), a * 0.95f));
+    pa_stop(&bg, 1.0f, pa_alpha(pa_hex(0x14202E), a * 0.97f));
+    pa_fill_rect_paint(c, 0, 0, w, h, &bg);
+
+    float cy = h * 0.29f;
+    for (int i = 0; i < 16; i++) {
+        float a0 = (float)i / 16.0f * PA_TAU + H.time * 0.3f, a1 = a0 + PA_TAU / 32.0f;
+        PA_Vec2 tri[3] = { { L.cx, cy }, { L.cx + cosf(a0) * h, cy + sinf(a0) * h },
+                           { L.cx + cosf(a1) * h, cy + sinf(a1) * h } };
+        pa_fill_poly(c, tri, 3, PA_RGBA(255, 255, 255, (int)(a * 16.0f)));
     }
-    PA_Paint glow = pa_radial(L.cx, cy, 10.0f, w * 0.5f);
-    pa_stop(&glow, 0.0f, pa_alpha(pa_shade(plate, 0.6f), a * 0.6f));
-    pa_stop(&glow, 1.0f, pa_alpha(pa_shade(plate, 0.6f), 0.0f));
-    pa_fill_ellipse_paint(c, L.cx, cy, w * 0.5f, w * 0.5f, &glow);
+    PA_Paint glow = pa_radial(L.cx, cy, 10.0f, w * 0.55f);
+    pa_stop(&glow, 0.0f, PA_RGBA(255, 220, 120, (int)(a * 120)));
+    pa_stop(&glow, 1.0f, PA_RGBA(255, 220, 120, 0));
+    pa_fill_ellipse_paint(c, L.cx, cy, w * 0.55f, w * 0.55f, &glow);
 
     char buf[48];
-    float pop = elastic(pa_clamp01(t * 1.8f));
-    snprintf(buf, sizeof(buf), "LEVEL %d", H.level);
-    ribbon(c, cy - 52.0f * u, 250.0f * u * pop + 1.0f, 56.0f * u, pa_shade(plate, -0.05f), buf, 30.0f * u * pop + 0.5f);
-    pa_text_bold(c, "COMPLETED!", L.cx, cy + 10.0f * u, 54.0f * u * pop + 0.5f, PA_RGB(255, 255, 255),
-                 pa_shade(plate, -0.40f), PA_ALIGN_CENTER, 3.0f * u, 1.0f);
-    snprintf(buf, sizeof(buf), "%d", H.score);
-    pa_text_bold(c, buf, L.cx, h * 0.47f, 46.0f * u, pa_alpha(pa_hex(0x2B2B2B), a),
-                 PA_RGBA(255, 255, 255, (int)(a * 255)), PA_ALIGN_CENTER, 3.0f * u, 0.9f);
+    float pop = elastic(pa_clamp01(t * 1.6f));
+    float ts = 240.0f * u * (0.6f + 0.4f * pop);
+    laurel(c, L.cx, cy + 20.0f * u, 205.0f * u * (0.7f + 0.3f * pop), a);
+    trophy(c, L.cx, cy - ts * 0.55f, ts, a, H.score);
 
-    /* Coin reward pill. */
-    float pw = 190.0f * u, ph = 62.0f * u, px = L.cx - pw * 0.5f, py = h * 0.47f + 66.0f * u;
-    float rs = pa_smooth(pa_clamp01((t - 0.3f) * 3.0f));
-    pa_round_rect(c, px, py + (1.0f - rs) * 30.0f * u, pw, ph, ph * 0.5f, PA_RGBA(20, 30, 45, (int)(150 * rs)));
-    coin_icon(c, px + ph * 0.5f + 4.0f * u, py + ph * 0.5f + (1.0f - rs) * 30.0f * u, 20.0f * u);
+    float rb = pa_smooth(pa_clamp01((t - 0.15f) * 3.0f));
+    snprintf(buf, sizeof(buf), "LEVEL %d COMPLETED!", H.level);
+    float rts = 32.0f * u;
+    float rw = pa_text_width(buf, rts, 2.0f * u) + 44.0f * u;
+    if (rb > 0.01f) ribbon(c, h * 0.50f, rw * rb, 68.0f * u * rb, pa_hex(0xE8336B), buf, rts * rb);
+
+    snprintf(buf, sizeof(buf), "BEST : %d", g_best);
+    pa_text_bold(c, buf, L.cx, h * 0.50f + 52.0f * u, 22.0f * u, PA_RGBA(255, 255, 255, (int)(a * 230)),
+                 PA_RGBA(10, 20, 30, (int)(a * 200)), PA_ALIGN_CENTER, 1.5f * u, 0.9f);
+
+    /* Rewards: the coins, and the key toward the next chest room. */
+    float rs = pa_smooth(pa_clamp01((t - 0.4f) * 3.0f));
+    float py = h * 0.50f + 96.0f * u + (1.0f - rs) * 30.0f * u;
+    float pw = 380.0f * u, ph = 74.0f * u, px = L.cx - pw * 0.5f;
+    pa_round_rect(c, px, py, pw, ph, 20.0f * u, PA_RGBA(255, 255, 255, (int)(28 * rs)));
+    coin_icon(c, px + 40.0f * u, py + ph * 0.5f, 20.0f * u);
     snprintf(buf, sizeof(buf), "+%d", H.win_coins);
-    pa_text_bold(c, buf, px + ph + 14.0f * u, py + ph * 0.5f - 15.0f * u + (1.0f - rs) * 30.0f * u, 30.0f * u,
+    pa_text_bold(c, buf, px + 70.0f * u, py + ph * 0.5f - 15.0f * u, 30.0f * u,
                  PA_RGBA(255, 214, 80, (int)(255 * rs)), PA_RGBA(20, 30, 45, (int)(200 * rs)), PA_ALIGN_LEFT, 2.0f * u, 0.9f);
+    for (int k = 0; k < KEYS_FOR_CHESTS; k++) {
+        int lit = k < g_keys;
+        int fresh = H.key_earned && k == g_keys - 1;
+        float ks = 40.0f * u;
+        if (fresh) {
+            if (t < 0.9f) lit = 0;
+            else ks *= 0.4f + 0.6f * elastic(pa_clamp01((t - 0.9f) * 2.0f));
+        }
+        key_icon(c, px + pw - 150.0f * u + (float)k * 50.0f * u, py + ph * 0.5f, ks,
+                 lit ? pa_hex(0xFFC21C) : PA_RGBA(255, 255, 255, (int)(60 * rs)));
+    }
+    if (rs > 0.5f && t > 1.0f && g_keys >= KEYS_FOR_CHESTS)
+        pa_text_bold(c, "CHESTS UNLOCKED!", L.cx, py + ph + 16.0f * u, 22.0f * u, pa_hex(0xFFC21C),
+                     PA_RGBA(20, 30, 45, 220), PA_ALIGN_CENTER, 1.5f * u, 0.9f);
 
     Rect r = card_button(0);
-    float bs = pa_smooth(pa_clamp01((t - 0.5f) * 3.0f));
+    r.y = h * 0.80f;
+    float bs = pa_smooth(pa_clamp01((t - 0.6f) * 3.0f));
     r.y += (1.0f - bs) * 80.0f * u;
-    if (bs > 0.01f) button(c, r, pa_hex(0x2FC85A), "NEXT LEVEL", 30.0f * u, 0);
+    if (bs > 0.01f) button(c, r, pa_hex(0x2FC85A), "NEXT", 34.0f * u, 0);
+    meta_header(c);
+}
+
+static void chest_screen(PA_Canvas *c) {
+    float u = L.u, w = (float)c->w, h = (float)c->h;
+    float a = pa_clamp01(H.state_t * 4.0f);
+    pa_hub_hide_pause();
+    pa_fill_rect(c, 0, 0, w, h, PA_RGBA(8, 9, 18, (int)(a * 240)));
+    char buf[24];
+
+    /* Best prize up top: a golden chest on an orange splash. */
+    float bx = L.cx, by = h * 0.10f + 6.0f * u;
+    PA_Vec2 star[24];
+    for (int i = 0; i < 24; i++) {
+        float ang = (float)i / 24.0f * PA_TAU + H.time * 0.5f;
+        float rr = (i & 1) ? 52.0f * u : 84.0f * u;
+        star[i].x = bx + cosf(ang) * rr; star[i].y = by + sinf(ang) * rr * 0.8f;
+    }
+    pa_fill_poly(c, star, 24, PA_RGBA(255, 110, 30, (int)(a * 230)));
+    chest_icon(c, bx, by, 92.0f * u, 1, 0.0f);
+    ribbon(c, by + 70.0f * u, 210.0f * u, 46.0f * u, pa_hex(0xFF6A1F), "BEST PRIZE", 24.0f * u);
+    coin_icon(c, bx + 108.0f * u, by - 22.0f * u, 14.0f * u);
+    snprintf(buf, sizeof(buf), "%d", H.best_prize);
+    pa_text_bold(c, buf, bx + 126.0f * u, by - 33.0f * u, 22.0f * u, PA_RGB(255, 255, 255), PA_RGB(20, 20, 30),
+                 PA_ALIGN_LEFT, 1.0f * u, 0.9f);
+
+    /* The card of nine. */
+    Rect c0 = chest_cell(0), c8 = chest_cell(8);
+    float kx = c0.x - 16.0f * u, ky = c0.y - 18.0f * u, kw = c8.x + c8.w - c0.x + 32.0f * u;
+    float kh = c8.y + c8.h - c0.y + 36.0f * u;
+    pa_round_rect(c, kx, ky + kh - 30.0f * u, kw, 106.0f * u, 26.0f * u, pa_hex(0xC2410C));
+    pa_round_rect(c, kx, ky + kh - 36.0f * u, kw, 106.0f * u, 26.0f * u, pa_hex(0xFF7A1A));
+    pa_round_rect(c, kx, ky, kw, kh, 26.0f * u, pa_hex(0xF7F7FA));
+    pa_text_bold(c, "CHOOSE A CHEST", L.cx, ky + kh + 14.0f * u, 30.0f * u, PA_RGB(255, 255, 255), pa_hex(0xA8350A),
+                 PA_ALIGN_CENTER, 2.0f * u, 1.1f);
+    for (int i = 0; i < 9; i++) {
+        Rect r = chest_cell(i);
+        float x = r.x + r.w * 0.5f, y = r.y + r.h * 0.5f;
+        float ap = elastic(pa_clamp01(H.state_t * 3.0f - (float)i * 0.08f));
+        if (ap <= 0.01f) continue;
+        if (H.chest_open[i]) {
+            float o = H.chest_t[i];
+            int best = H.chest_val[i] == H.best_prize;
+            PA_Paint g = pa_radial(x, y, 4.0f, 56.0f * u);
+            pa_stop(&g, 0.0f, pa_hex(best ? 0xFFE27A : 0x9BE7FF));
+            pa_stop(&g, 1.0f, pa_hex(best ? 0xFFB300 : 0x3CC3F2));
+            pa_fill_ellipse_paint(c, x, y, 54.0f * u, 54.0f * u, &g);
+            chest_icon(c, x, y - 8.0f * u, 62.0f * u, best, o * 3.0f);
+            float tp = elastic(pa_clamp01(o * 2.5f - 0.2f));
+            snprintf(buf, sizeof(buf), "%d", H.chest_val[i]);
+            if (tp > 0.05f)
+                pa_text_bold(c, buf, x, y + 20.0f * u, 26.0f * u * tp, PA_RGB(255, 255, 255), pa_hex(0x0B5C86),
+                             PA_ALIGN_CENTER, 1.0f * u, 1.0f);
+        } else {
+            PA_Paint g = pa_linear(0, y - 52.0f * u, 0, y + 52.0f * u);
+            pa_stop(&g, 0.0f, pa_hex(0xE9EBF0));
+            pa_stop(&g, 1.0f, pa_hex(0xBFC4CE));
+            pa_fill_ellipse(c, x, y + 4.0f * u, 52.0f * u * ap, 52.0f * u * ap, pa_hex(0xA9AEB9));
+            pa_fill_ellipse_paint(c, x, y, 52.0f * u * ap, 52.0f * u * ap, &g);
+            float wob = g_keys > 0 ? sinf(H.time * 9.0f + (float)i) * 0.04f : 0.0f;
+            chest_icon(c, x + wob * 40.0f * u, y + 4.0f * u, 64.0f * u * ap, 0, 0.0f);
+        }
+    }
+
+    /* Keys left. */
+    float ky2 = ky + kh + 112.0f * u;
+    for (int k = 0; k < KEYS_FOR_CHESTS; k++)
+        key_icon(c, L.cx - 74.0f * u + (float)k * 74.0f * u, ky2, 56.0f * u,
+                 k < g_keys ? pa_hex(0xFFC21C) : PA_RGB(70, 72, 84));
+    if (chests_finished()) {
+        Rect r = card_button(0);
+        r.y = h * 0.86f;
+        button(c, r, pa_hex(0x2FC85A), "CONTINUE", 30.0f * u, 0);
+    }
+    coin_pill(c, w - 14.0f * u, 46.0f * u, H.coins_shown);
+}
+
+/* Level map: the next few towers as platforms on pillars standing in water,
+   the ball wearing a "YOU" tag hopping onto the next one. */
+static void map_disc_pos(int slot, float *x, float *y) {
+    float h = (float)L.h;
+    *y = h * 0.78f - (float)slot * h * 0.135f;
+    *x = L.cx + ((slot & 1) ? 0.16f : -0.14f) * 540.0f * L.u;
+}
+
+static void map_screen(PA_Canvas *c) {
+    float u = L.u, w = (float)c->w, h = (float)c->h;
+    pa_hub_hide_pause();
+    PA_Paint bg = pa_linear(0, 0, 0, h);
+    pa_stop(&bg, 0.0f, pa_hex(0x5BE3FA));
+    pa_stop(&bg, 1.0f, pa_hex(0x17B4E6));
+    pa_fill_rect_paint(c, 0, 0, w, h, &bg);
+    /* Caustics: wobbling cells of light on the water. */
+    PA_Rng r;
+    pa_rng_seed(&r, 4242u);
+    for (int i = 0; i < 34; i++) {
+        float cx = pa_rng_range(&r, -20.0f, w + 20.0f), cy = pa_rng_range(&r, 0.0f, h);
+        float rr = pa_rng_range(&r, 40.0f, 80.0f) * u;
+        PA_Vec2 cell[9];
+        for (int k = 0; k < 9; k++) {
+            float ang = (float)k / 8.0f * PA_TAU;
+            float j = 1.0f + 0.18f * sinf(H.time * 1.3f + (float)(i * 3 + k));
+            cell[k].x = cx + cosf(ang) * rr * j; cell[k].y = cy + sinf(ang) * rr * 0.7f * j;
+        }
+        pa_stroke_poly(c, cell, 9, 0, 3.0f * u, PA_RGBA(255, 255, 255, 46));
+    }
+    /* A boat and an ice floe for scale. */
+    {
+        float x = w * 0.20f, y = h * 0.24f;
+        PA_Vec2 hull[4] = { { x - 70 * u, y }, { x + 80 * u, y }, { x + 60 * u, y + 34 * u }, { x - 56 * u, y + 34 * u } };
+        pa_fill_ellipse(c, x, y + 40 * u, 90 * u, 14 * u, PA_RGBA(255, 255, 255, 90));
+        pa_fill_poly(c, hull, 4, pa_hex(0xF4F7FA));
+        pa_fill_rect(c, x - 40 * u, y - 34 * u, 70 * u, 34 * u, pa_hex(0xFFFFFF));
+        pa_fill_rect(c, x - 40 * u, y - 34 * u, 70 * u, 8 * u, pa_hex(0xDDE4EC));
+        pa_fill_rect(c, x - 20 * u, y - 60 * u, 30 * u, 26 * u, pa_hex(0xEEF2F6));
+        for (int k = 0; k < 3; k++) pa_fill_rect(c, x - 32 * u + (float)k * 20 * u, y - 24 * u, 10 * u, 9 * u, pa_hex(0x8FB8D0));
+        float fx = w * 0.86f, fy = h * 0.29f;
+        pa_fill_ellipse(c, fx, fy + 10 * u, 74 * u, 26 * u, PA_RGBA(255, 255, 255, 80));
+        pa_round_rect(c, fx - 64 * u, fy - 24 * u, 128 * u, 40 * u, 16 * u, pa_hex(0xE9F6FB));
+        pa_round_rect(c, fx - 64 * u, fy - 24 * u, 128 * u, 14 * u, 10 * u, pa_hex(0xFFFFFF));
+    }
+
+    /* Dotted path between the platforms. */
+    int base = H.level > 1 ? H.level - 1 : 1;
+    for (int slot = 0; slot < 4; slot++) {
+        float x, y, x2, y2;
+        map_disc_pos(slot, &x, &y);
+        map_disc_pos(slot + 1, &x2, &y2);
+        for (int d = 1; d < 6; d++) {
+            float t = (float)d / 6.0f;
+            pa_fill_circle(c, pa_lerpf(x, x2, t), pa_lerpf(y, y2, t) + 30.0f * u, 5.0f * u, PA_RGBA(255, 255, 255, 150));
+        }
+    }
+    /* Platforms, the far (upper) ones first. */
+    for (int slot = 4; slot >= 0; slot--) {
+        int lvl = base + slot;
+        float x, y;
+        map_disc_pos(slot, &x, &y);
+        int boss = is_boss(lvl);
+        Theme th = boss ? BOSS_THEME : THEMES[(lvl - 1 - (lvl - 1) / 5) % THEME_COUNT];
+        PA_Color col = boss ? pa_hex(HAZARD) : pa_hex(th.plate);
+        float rx = 72.0f * u, ry = 30.0f * u, thick = 20.0f * u;
+        pa_fill_ellipse(c, x, y + 110.0f * u, 42.0f * u, 12.0f * u, PA_RGBA(255, 255, 255, 110));
+        PA_Paint pp = pa_linear(x - 26.0f * u, 0, x + 26.0f * u, 0);
+        pa_stop(&pp, 0.0f, pa_hex(0xC9D2DC));
+        pa_stop(&pp, 0.35f, pa_hex(0xFFFFFF));
+        pa_stop(&pp, 1.0f, pa_hex(0xB5BFCB));
+        pa_fill_rect_paint(c, x - 26.0f * u, y, 52.0f * u, 110.0f * u, &pp);
+        pa_fill_ellipse(c, x, y + thick, rx, ry, pa_shade(col, -0.38f));
+        pa_fill_rect(c, x - rx, y, rx * 2.0f, thick, pa_shade(col, -0.30f));
+        PA_Paint tp = pa_linear(0, y - ry, 0, y + ry);
+        pa_stop(&tp, 0.0f, pa_shade(col, 0.18f));
+        pa_stop(&tp, 1.0f, col);
+        pa_fill_ellipse_paint(c, x, y, rx, ry, &tp);
+        if (lvl == H.level + 1) {
+            float pulse = 0.5f + 0.5f * sinf(H.time * 5.0f);
+            PA_Vec2 ring[25];
+            for (int k = 0; k < 25; k++) {
+                float ang = (float)k / 24.0f * PA_TAU;
+                ring[k].x = x + cosf(ang) * (rx + 8.0f * u * pulse);
+                ring[k].y = y + sinf(ang) * (ry + 4.0f * u * pulse);
+            }
+            pa_stroke_poly(c, ring, 25, 1, 4.0f * u, PA_RGBA(255, 255, 255, (int)(120 + 100 * pulse)));
+        }
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", lvl);
+        pa_text_bold(c, buf, x, y - 17.0f * u, 34.0f * u, PA_RGB(255, 255, 255), pa_shade(col, -0.5f),
+                     PA_ALIGN_CENTER, 1.0f * u, 1.1f);
+        if (boss) {
+            float tw = 90.0f * u;
+            pa_round_rect(c, x - tw * 0.5f, y - ry - 34.0f * u, tw, 26.0f * u, 8.0f * u, pa_hex(0x2B2B33));
+            pa_text_bold(c, "BOSS", x, y - ry - 29.0f * u, 16.0f * u, PA_RGB(255, 80, 80), pa_hex(0x2B2B33),
+                         PA_ALIGN_CENTER, 1.0f * u, 0.9f);
+        }
+        if (lvl <= H.level) {
+            /* Tick for levels behind the player. */
+            PA_Vec2 tick[3] = { { x + rx * 0.55f, y - ry * 0.1f }, { x + rx * 0.70f, y + ry * 0.25f },
+                                { x + rx * 0.98f, y - ry * 0.45f } };
+            pa_stroke_poly(c, tick, 3, 0, 9.0f * u, pa_hex(0x1C9B3A));
+            pa_stroke_poly(c, tick, 3, 0, 4.0f * u, PA_RGB(255, 255, 255));
+        }
+    }
+
+    /* The ball with its YOU tag, hopping from the cleared level to the next. */
+    float x0, y0, x1, y1;
+    map_disc_pos(H.level - base, &x0, &y0);
+    map_disc_pos(H.level - base + 1, &x1, &y1);
+    /* Sit at the back of the platform, clear of its number. */
+    x0 += 46.0f * u; x1 += 46.0f * u; y0 -= 8.0f * u; y1 -= 8.0f * u;
+    float t = pa_clamp01(H.map_hop), e = pa_smooth(t);
+    float gx = pa_lerpf(x0, x1, e), gy = pa_lerpf(y0, y1, e);
+    float bx = gx, by = gy - sinf(t * PA_PI) * 120.0f * u;
+    float br = 22.0f * u;
+    float sq = 0.0f;
+    if (H.map_hop >= 1.0f) {
+        float since = H.state_t - 1.15f;
+        if (since > 0.0f) sq = expf(-since * 8.0f) * cosf(since * 30.0f) * 0.25f;
+    }
+    pa_shadow(c, gx, gy, br, br * 0.35f, 0.4f);
+    PA_Color bc = pa_hex(H.th.ball);
+    PA_Paint bp = pa_radial(bx - br * 0.35f, by - br * 1.4f, 2.0f, br * 1.4f);
+    pa_stop(&bp, 0.0f, pa_shade(bc, 0.6f));
+    pa_stop(&bp, 0.5f, bc);
+    pa_stop(&bp, 1.0f, pa_shade(bc, -0.4f));
+    pa_fill_ellipse_paint(c, bx, by - br * (1.0f - sq), br * (1.0f + sq), br * (1.0f - sq), &bp);
+    float tagy = by - br * 2.0f - 46.0f * u + sinf(H.time * 4.0f) * 4.0f * u;
+    pa_round_rect(c, bx - 42.0f * u, tagy + 3.0f * u, 84.0f * u, 38.0f * u, 19.0f * u, PA_RGBA(0, 0, 0, 60));
+    pa_round_rect(c, bx - 42.0f * u, tagy, 84.0f * u, 38.0f * u, 19.0f * u, PA_RGB(255, 255, 255));
+    PA_Vec2 tip[3] = { { bx - 9.0f * u, tagy + 36.0f * u }, { bx + 9.0f * u, tagy + 36.0f * u }, { bx, tagy + 50.0f * u } };
+    pa_fill_poly(c, tip, 3, PA_RGB(255, 255, 255));
+    pa_text_bold(c, "YOU", bx, tagy + 8.0f * u, 22.0f * u, pa_hex(0xE8336B), PA_RGB(255, 255, 255),
+                 PA_ALIGN_CENTER, 1.5f * u, 1.0f);
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "LEVEL %d", H.level + 1);
+    ribbon(c, 116.0f * u, 230.0f * u, 56.0f * u, pa_hex(0x2F7BEA), buf, 30.0f * u);
+    if (H.state_t > 0.9f) {
+        Rect rr = card_button(0);
+        rr.y = h * 0.89f;
+        float bs = pa_smooth(pa_clamp01((H.state_t - 0.9f) * 3.0f));
+        rr.y += (1.0f - bs) * 60.0f * u;
+        button(c, rr, pa_hex(0x2FC85A), "PLAY", 36.0f * u, 0);
+    }
+    meta_header(c);
 }
 
 static void helix_render(PA_Canvas *c) {
     if (L.w != c->w || L.h != c->h) compute_layout(c->w, c->h);
+    if (H.state == ST_MAP) { map_screen(c); draw_fly(c); return; }
 
     backdrop(c);
     float shake_x = H.shake > 0.0f ? sinf(H.time * 63.0f) * H.shake * 6.0f * L.u : 0.0f;
@@ -1757,10 +2298,12 @@ static void helix_render(PA_Canvas *c) {
         pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(255, 255, 255, (int)(a * 120.0f)));
     }
 
-    if (H.state != ST_FAIL && !(H.state == ST_WIN && H.state_t > 0.35f)) draw_hud(c);
+    if (H.state != ST_FAIL && H.state != ST_CHEST && !(H.state == ST_WIN && H.state_t > 0.35f)) draw_hud(c);
     if (H.state == ST_FAIL) fail_card(c);
     if (H.state == ST_WIN) win_card(c);
+    if (H.state == ST_CHEST) chest_screen(c);
     draw_parts(c, cx, 1);
+    draw_fly(c);
 }
 
 /* ------------------------------------------------------------------ thumb */
