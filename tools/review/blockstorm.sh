@@ -15,7 +15,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 shots() { python3 tools/shots.py render blockstorm "$tmp/$1" --demo "$2" --shots "$3" >/dev/null; }
 
-shots a 1 0.70,7.00,45.00
+shots a 1 0.70,7.00,44.75
 shots b 2 1.45,1.90
 shots c 3 3.30,6.70
 shots s 2 1.66,1.74,1.82,1.90,1.98,2.06

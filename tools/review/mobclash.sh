@@ -26,17 +26,17 @@ shot() {   # shot NAME DEMO TIMES
 shot a 1 0.5,6.0
 mv a/mobclash_00.png "$out/01_first_screen.png"
 mv a/mobclash_01.png "$out/02_early_play.png"
-shot b 6 12.0
+shot b 6 10.0
 mv b/mobclash_00.png "$out/03_busy_boss_level.png"
 shot c 2 6.5
 mv c/mobclash_00.png "$out/04_gates_vs_red_wave.png"
-shot d 4 23.0,26.5
+shot d 4 30.6,34.5
 mv d/mobclash_00.png "$out/05_castle_destroyed.png"
 mv d/mobclash_01.png "$out/06_victory_results.png"
 shot e 3 17.0
 mv e/mobclash_00.png "$out/07_defeat_results.png"
 shot f 5 2.2
 mv f/mobclash_00.png "$out/08_upgrade_screen.png"
-shot g 6 10.00,10.08,10.16,10.24,10.32,10.40
+shot g 6 8.00,8.08,8.16,8.24,8.32,8.40
 python3 "$root/tools/shots.py" sheet "$out/09_motion_strip.png" g/mobclash_0*.png --height 900 >/dev/null
 ls "$out"/*.png

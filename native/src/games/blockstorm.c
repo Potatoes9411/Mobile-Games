@@ -25,7 +25,7 @@
 
 /* Gap between the finger and the bottom of a lifted piece, in board cells.
    On a phone the thumb covers the drop site otherwise. */
-#define LIFT_GAP   1.15f
+#define LIFT_GAP   1.5f
 
 /* ------------------------------------------------------------------ shapes */
 typedef struct {
@@ -138,6 +138,7 @@ typedef struct {
     PA_Rng fxr;                /* cosmetics, so effects never change the deals */
     int    cell[N * N];        /* -1 empty, else tint index */
     float  land[N * N];        /* placement settle, 1 -> 0 */
+    float  intro[N * N];       /* opening fill-in: seconds until fully shown */
     float  clr[N * N];         /* clear burst clock; < -5 idle, < 0 waiting */
     int    clr_tint[N * N];
     float  grey[N * N];        /* game-over grey-out 0..1 */
@@ -219,13 +220,13 @@ static void compute_layout(int w, int h) {
         L.hud_y = H * 0.07f;
         L.score_size = W * 0.09f;
         L.score_y = H * 0.137f;
-        L.tcell = L.cell * 0.60f;
+        L.tcell = W * 0.045f;
         /* Three fixed slots centred at 0.2, 0.5 and 0.8 sw; a piece never
-           spans more than 0.21 sw, so even the five-bar keeps a 0.09 sw
-           margin from the screen edge and the slots never shift. */
+           spans more than five 0.045 sw cells, so every piece shares one
+           tray scale and even the five-bar keeps a 0.09 sw margin. */
         L.slot_w = W * 0.28f;
         L.slot_h = tray_room * 0.92f;
-        L.piece_w = W * 0.21f;
+        L.piece_w = W * 0.23f;
         L.piece_h = tray_room * 0.78f;
         if (L.piece_h > W * 0.30f) L.piece_h = W * 0.30f;
         for (int i = 0; i < TRAY; i++) {
@@ -262,6 +263,8 @@ static void compute_layout(int w, int h) {
         L.slot_h = side / 3.0f;
         L.piece_w = L.slot_w * 0.85f;
         L.piece_h = L.slot_h * 0.85f;
+        if (L.tcell > L.piece_w / 5.0f) L.tcell = L.piece_w / 5.0f;
+        if (L.tcell > L.piece_h / 5.0f) L.tcell = L.piece_h / 5.0f;
         for (int i = 0; i < TRAY; i++) {
             L.slot_cx[i] = col_x;
             L.slot_cy[i] = L.oy + side * (1.0f / 6.0f + (float)i / 3.0f);
@@ -284,19 +287,24 @@ static void compute_layout(int w, int h) {
     }
 }
 
-/** Tray scale for one piece: the reference's 0.6 of a board cell, shrunk
-    when the piece would overflow its slot. */
+/** Tray scale: one size for every piece, chosen so a five-long bar fits. */
 static float tray_cell_for(int shape) {
-    const Shape *s = &SHAPES[shape];
+    (void)shape;
     float c = L.tcell;
-    if ((float)s->w * c > L.piece_w) c = L.piece_w / (float)s->w;
-    if ((float)s->h * c > L.piece_h) c = L.piece_h / (float)s->h;
+    if (5.0f * c > L.piece_w) c = L.piece_w / 5.0f;
+    if (5.0f * c > L.piece_h) c = L.piece_h / 5.0f;
     return c;
 }
 
 /* ------------------------------------------------------------- particles */
 static Part *spawn(int kind, float x, float y, float vx, float vy, float life, float size, PA_Color col) {
     if (B.nparts >= MAX_PARTS) return NULL;
+    if (kind == P_CONFETTI) {
+        /* Confetti is a garnish: never more than 60 pieces in the air. */
+        int n = 0;
+        for (int i = 0; i < B.nparts; i++) n += B.parts[i].kind == P_CONFETTI;
+        if (n >= 60) return NULL;
+    }
     Part *p = &B.parts[B.nparts++];
     memset(p, 0, sizeof(*p));
     p->kind = kind; p->x = x; p->y = y; p->vx = vx; p->vy = vy;
@@ -450,7 +458,7 @@ static void resolve_clears(int tint, float pcx, float pcy) {
             int i = idx(x, y);
             float d = sqrtf(((float)x + 0.5f - pcx) * ((float)x + 0.5f - pcx) +
                             ((float)y + 0.5f - pcy) * ((float)y + 0.5f - pcy));
-            B.clr[i] = -d * 0.035f;
+            B.clr[i] = -d * 0.02f;
             B.clr_tint[i] = tint;
             if (B.item[i] != ITEM_NONE) {
                 for (int f = 0; f < MAX_FLYERS; f++) {
@@ -473,7 +481,7 @@ static void resolve_clears(int tint, float pcx, float pcy) {
         for (int r = 0; r < 2; r++) {
             if (!(r == 0 ? rows[k] : cols[k])) continue;
             for (int b = 0; b < MAX_BEAMS; b++) {
-                if (B.beams[b].t <= 0.0f || B.beams[b].t > 0.7f) {
+                if (B.beams[b].t <= 0.0f || B.beams[b].t > 0.34f) {
                     B.beams[b].row = r == 0; B.beams[b].index = k; B.beams[b].tint = tint;
                     B.beams[b].t = 0.0001f;
                     break;
@@ -745,8 +753,7 @@ static void bot_step(float dt, PA_Input *o) {
                 /* A real thumb never lands dead on the grid: hover a little
                    off so the snapped ghost and the held piece both read. */
                 b->ex = L.ox + ((float)gx + (float)s->w * 0.5f + 0.32f) * L.cell;
-                b->ey = L.oy + ((float)gy + (float)s->h * 0.5f - 0.36f) * L.cell
-                      + (float)s->h * L.cell * 0.5f + L.cell * LIFT_GAP;
+                b->ey = L.oy + ((float)gy + (float)s->h - 0.36f) * L.cell + L.cell * LIFT_GAP;
                 b->x = b->sx; b->y = b->sy;
                 b->down = 1;
                 o->pressed = 1;
@@ -774,6 +781,39 @@ static void bot_step(float dt, PA_Input *o) {
 }
 
 /* ------------------------------------------------------------------ frame */
+/** Every run opens on a few pre-placed blocks that pop in over about
+    0.4 s, never on an empty board. */
+static void seed_board(void) {
+    static const char *SMALL[] = { "##", "#|#", "##|##", ".#|##", "##|#.", "###", "#|#|#", "#.|##" };
+    for (int attempt = 0; attempt < 30; attempt++) {
+        int order = 0;
+        for (int i = 0; i < N * N; i++) { B.cell[i] = -1; B.intro[i] = 0.0f; }
+        for (int p = 0; p < 3; p++) {
+            int sh = find_shape(SMALL[pa_rng_int(&B.rand, 0, 7)]);
+            int tint = pa_rng_int(&B.rand, 0, TINT_COUNT - 1);
+            const Shape *s = &SHAPES[sh];
+            for (int tries = 0; tries < 30; tries++) {
+                int gx = pa_rng_int(&B.rand, 0, N - s->w), gy = pa_rng_int(&B.rand, 2, N - s->h);
+                if (!fits(sh, gx, gy)) continue;
+                for (int k = 0; k < s->count; k++) {
+                    int i = idx(gx + s->cx[k], gy + s->cy[k]);
+                    B.cell[i] = tint;
+                    B.intro[i] = 0.15f + 0.03f * (float)order++;
+                }
+                break;
+            }
+        }
+        int rows[N], cols[N];
+        int full = 0;
+        for (int k = 0; k < N; k++) {
+            rows[k] = cols[k] = 1;
+            for (int j = 0; j < N; j++) { if (B.cell[idx(j, k)] < 0) rows[k] = 0; if (B.cell[idx(k, j)] < 0) cols[k] = 0; }
+            full += rows[k] + cols[k];
+        }
+        if (order >= 6 && order <= 10 && !full) return;
+    }
+}
+
 static void new_run(void) {
     if (!g_shapes_ready) build_shapes();
     if (L.w == 0) compute_layout(540, 1170);
@@ -788,6 +828,7 @@ static void new_run(void) {
     pa_rng_seed(&B.rand, demo ? 0xB10C5u + (uint32_t)demo * 977u
                               : 0xB10Cu ^ ((uint32_t)g_best * 2654435761u + (uint32_t)g_best_loaded * 0x9E3779B9u));
     pa_rng_seed(&B.fxr, 0x5EED1u + (uint32_t)demo);
+    if (demo < 2) seed_board();
     refill_tray();
     if (demo) demo_setup(demo);
     B.bot.think = 0.75f;
@@ -801,13 +842,26 @@ static void storm_start(void) {
 
 static void storm_stop(void) { if (B.phase == 0) save_best(); }
 
+/** Top-left of a fully lifted piece at board scale: 1.5 cells above the
+    finger, clamped so it never hangs past the board's sides or top. */
+static void lifted_topleft(float *px, float *py) {
+    const Shape *s = &SHAPES[B.tray[B.drag].shape];
+    float w = (float)s->w * L.cell, h = (float)s->h * L.cell;
+    float x = B.fx - w * 0.5f;
+    float y = B.fy - L.cell * LIFT_GAP - h;
+    *px = pa_clampf(x, L.ox, L.ox + L.side - w);
+    *py = y < L.oy ? L.oy : y;
+}
+
 /** Geometry of the piece under the finger, easing from tray scale to board
     scale as it lifts. */
 static void drag_geom(float *px, float *py, float *cs) {
     const Shape *s = &SHAPES[B.tray[B.drag].shape];
     float e = ease_out(B.lift);
     float c = pa_lerpf(tray_cell_for(B.tray[B.drag].shape), L.cell, e);
-    float tx = B.fx, ty = B.fy - ((float)s->h * L.cell * 0.5f + L.cell * LIFT_GAP);
+    float lx, ly;
+    lifted_topleft(&lx, &ly);
+    float tx = lx + (float)s->w * L.cell * 0.5f, ty = ly + (float)s->h * L.cell * 0.5f;
     float cx = pa_lerpf(B.grab_x, tx, e), cy = pa_lerpf(B.grab_y, ty, e);
     *px = cx - (float)s->w * c * 0.5f;
     *py = cy - (float)s->h * c * 0.5f;
@@ -815,9 +869,8 @@ static void drag_geom(float *px, float *py, float *cs) {
 }
 
 static void drag_target(int *gx, int *gy) {
-    const Shape *s = &SHAPES[B.tray[B.drag].shape];
-    float px = B.fx - (float)s->w * L.cell * 0.5f;
-    float py = B.fy - ((float)s->h * L.cell * 0.5f + L.cell * LIFT_GAP) - (float)s->h * L.cell * 0.5f;
+    float px, py;
+    lifted_topleft(&px, &py);
     *gx = (int)floorf((px - L.ox) / L.cell + 0.5f);
     *gy = (int)floorf((py - L.oy) / L.cell + 0.5f);
 }
@@ -878,7 +931,7 @@ static void storm_update(float dt, const PA_Input *real_in) {
     for (int i = 0; i < TRAY; i++) if (B.tray[i].pop < 1.0f) B.tray[i].pop += dt * 4.0f;
     for (int b = 0; b < MAX_BEAMS; b++) if (B.beams[b].t > 0.0f) {
         B.beams[b].t += dt;
-        if (B.beams[b].t > 0.75f) B.beams[b].t = 0.0f;
+        if (B.beams[b].t > 0.36f) B.beams[b].t = 0.0f;
     }
     for (int f = 0; f < MAX_FLOATS; f++) if (B.floats[f].t > 0.0f) {
         B.floats[f].t += dt;
@@ -887,6 +940,11 @@ static void storm_update(float dt, const PA_Input *real_in) {
 
     for (int i = 0; i < N * N; i++) {
         if (B.land[i] > 0.0f) B.land[i] = B.land[i] > dt * 5.0f ? B.land[i] - dt * 5.0f : 0.0f;
+        if (B.intro[i] > 0.0f) {
+            float before = B.intro[i];
+            B.intro[i] = before > dt ? before - dt : 0.0f;
+            if (before > 0.15f && B.intro[i] <= 0.15f) pa_tone(700.0f + 30.0f * (float)(i % 9), 900.0f, 0.04f, 0, 0.04f);
+        }
         if (B.clr[i] > -5.0f) {
             float before = B.clr[i];
             B.clr[i] += dt;
@@ -895,19 +953,19 @@ static void storm_update(float dt, const PA_Input *real_in) {
                 float cx = L.ox + ((float)(i % N) + 0.5f) * L.cell;
                 float cy = L.oy + ((float)(i / N) + 0.5f) * L.cell;
                 PA_Color col = pa_hex(TINTS[B.clr_tint[i]]);
-                for (int k = 0; k < 3; k++) {
+                int nshard = 6 + (i & 1) * 2;
+                for (int k = 0; k < nshard; k++) {
                     float a = pa_rng_range(&B.fxr, 0.0f, PA_TAU);
-                    float v = L.side * pa_rng_range(&B.fxr, 0.25f, 0.75f);
+                    float v = L.side * pa_rng_range(&B.fxr, 0.30f, 0.80f);
+                    PA_Color sc = k % 3 == 0 ? PA_RGB(255, 255, 255) : pa_shade(col, k % 3 == 1 ? 0.45f : 0.15f);
                     spawn(P_SHARD, cx + pa_rng_range(&B.fxr, -L.cell * 0.3f, L.cell * 0.3f),
                           cy + pa_rng_range(&B.fxr, -L.cell * 0.3f, L.cell * 0.3f),
-                          cosf(a) * v, sinf(a) * v - L.side * 0.35f,
-                          pa_rng_range(&B.fxr, 0.45f, 0.85f),
-                          L.cell * pa_rng_range(&B.fxr, 0.12f, 0.26f),
-                          k == 0 ? pa_shade(col, 0.45f) : col);
+                          cosf(a) * v, sinf(a) * v - L.side * 0.30f,
+                          pa_rng_range(&B.fxr, 0.35f, 0.6f),
+                          L.cell * pa_rng_range(&B.fxr, 0.09f, 0.18f), sc);
                 }
-                spawn(P_DOT, cx, cy, 0, -L.side * 0.05f, 0.5f, L.cell * 0.1f, PA_RGB(255, 255, 255));
             }
-            if (B.clr[i] > 0.4f) B.clr[i] = -9.0f;
+            if (B.clr[i] > 0.18f) B.clr[i] = -9.0f;
         }
     }
     update_parts(dt);
@@ -1236,6 +1294,11 @@ static void draw_slot_item(PA_Canvas *c, int slot, float x, float y, float cell,
 }
 
 /* Text helpers: y is the vertical centre. */
+static float bold_ink_width(const char *t, float size, float weight) {
+    PA_TextStyle st = pa_text_bold_style(size, PA_RGB(255, 255, 255), PA_RGB(0, 0, 0), PA_ALIGN_CENTER, 0.0f, weight);
+    PA_TextExtent e = pa_text_measure(t, size, &st);
+    return e.x1 - e.x0;
+}
 static void text_mid(PA_Canvas *c, const char *t, float x, float cy, float size,
                      PA_Color fill, PA_Color outline, float weight) {
     pa_text_bold(c, t, x, cy - size * 0.5f, size, fill, outline, PA_ALIGN_CENTER, 0.0f, weight);
@@ -1298,48 +1361,26 @@ static void draw_parts(PA_Canvas *c, int confetti_pass) {
     }
 }
 
+/** A sharp one-cell beam in a light tint of the cleared colour: a crisp
+    band with a bright core, gone in a third of a second. */
 static void draw_beam(PA_Canvas *c, const Beam *bm, float ox, float oy) {
-    float t = bm->t, k = t / 0.75f;
-    PA_Color hue = pa_shade(pa_hex(TINTS[bm->tint]), 0.15f);
-    float a = (1.0f - k) * (1.0f - k);
-    float bleed = L.cell * 0.35f;
-    float thick = L.cell * (1.0f + 0.9f * ease_out(k));
+    float t = bm->t;
+    if (t > 0.34f) return;
+    float a = 1.0f - ease_out(t / 0.34f);
+    PA_Color tint = pa_shade(pa_hex(TINTS[bm->tint]), 0.55f);
+    float core = L.cell * (0.30f - 0.20f * (t / 0.34f));
     if (bm->row) {
-        float cy = oy + L.oy + ((float)bm->index + 0.5f) * L.cell;
-        PA_Paint p = pa_linear(0, cy - thick * 0.5f, 0, cy + thick * 0.5f);
-        pa_stop(&p, 0.0f, fade(hue, 0.0f));
-        pa_stop(&p, 0.30f, fade(hue, a * 0.62f));
-        pa_stop(&p, 0.50f, fade(pa_shade(hue, 0.6f), a * 0.85f));
-        pa_stop(&p, 0.70f, fade(hue, a * 0.62f));
-        pa_stop(&p, 1.0f, fade(hue, 0.0f));
-        pa_fill_rect_paint(c, ox + L.ox - bleed, cy - thick * 0.5f, L.side + bleed * 2.0f, thick, &p);
-        if (t < 0.15f)
-            pa_fill_rect(c, ox + L.ox, cy - L.cell * 0.5f, L.side, L.cell,
-                         PA_RGBA(255, 255, 255, (int)(140.0f * (1.0f - t / 0.15f))));
+        float y = oy + L.oy + (float)bm->index * L.cell;
+        pa_fill_rect(c, ox + L.ox, y, L.side, L.cell, fade(tint, a * 0.80f));
+        pa_fill_rect(c, ox + L.ox, y + (L.cell - core) * 0.5f, L.side, core, PA_RGBA(255, 255, 255, (int)(a * 235.0f)));
+        pa_fill_rect(c, ox + L.ox, y, L.side, 2.0f, PA_RGBA(255, 255, 255, (int)(a * 200.0f)));
+        pa_fill_rect(c, ox + L.ox, y + L.cell - 2.0f, L.side, 2.0f, PA_RGBA(255, 255, 255, (int)(a * 200.0f)));
     } else {
-        float cx = ox + L.ox + ((float)bm->index + 0.5f) * L.cell;
-        PA_Paint p = pa_linear(cx - thick * 0.5f, 0, cx + thick * 0.5f, 0);
-        pa_stop(&p, 0.0f, fade(hue, 0.0f));
-        pa_stop(&p, 0.30f, fade(hue, a * 0.62f));
-        pa_stop(&p, 0.50f, fade(pa_shade(hue, 0.6f), a * 0.85f));
-        pa_stop(&p, 0.70f, fade(hue, a * 0.62f));
-        pa_stop(&p, 1.0f, fade(hue, 0.0f));
-        pa_fill_rect_paint(c, cx - thick * 0.5f, oy + L.oy - bleed, thick, L.side + bleed * 2.0f, &p);
-        if (t < 0.15f)
-            pa_fill_rect(c, cx - L.cell * 0.5f, oy + L.oy, L.cell, L.side,
-                         PA_RGBA(255, 255, 255, (int)(140.0f * (1.0f - t / 0.15f))));
-    }
-    /* Square motes drifting inside the beam, as the reference's do. */
-    for (int m = 0; m < 10; m++) {
-        uint32_t hsh = (uint32_t)(bm->index * 131 + m * 977 + bm->row * 7);
-        float along = (float)((hsh * 2654435761u) >> 8 & 0xFFFF) / 65535.0f;
-        float across = ((float)((hsh * 40503u) >> 4 & 0xFF) / 255.0f - 0.5f) * thick * 0.8f;
-        float s = L.cell * (0.10f + 0.10f * (float)(m % 3) / 2.0f) * (1.0f - k * 0.5f);
-        float drift = (k * L.cell * 0.8f) * ((m & 1) ? 1.0f : -1.0f);
-        float px, py;
-        if (bm->row) { px = ox + L.ox + along * L.side; py = oy + L.oy + ((float)bm->index + 0.5f) * L.cell + across + drift; }
-        else         { py = oy + L.oy + along * L.side; px = ox + L.ox + ((float)bm->index + 0.5f) * L.cell + across + drift; }
-        pa_fill_rect(c, px - s * 0.5f, py - s * 0.5f, s, s, PA_RGBA(255, 255, 255, (int)(a * 170.0f)));
+        float x = ox + L.ox + (float)bm->index * L.cell;
+        pa_fill_rect(c, x, oy + L.oy, L.cell, L.side, fade(tint, a * 0.80f));
+        pa_fill_rect(c, x + (L.cell - core) * 0.5f, oy + L.oy, core, L.side, PA_RGBA(255, 255, 255, (int)(a * 235.0f)));
+        pa_fill_rect(c, x, oy + L.oy, 2.0f, L.side, PA_RGBA(255, 255, 255, (int)(a * 200.0f)));
+        pa_fill_rect(c, x + L.cell - 2.0f, oy + L.oy, 2.0f, L.side, PA_RGBA(255, 255, 255, (int)(a * 200.0f)));
     }
 }
 
@@ -1435,6 +1476,11 @@ static void draw_board(PA_Canvas *c, float ox, float oy, int gx, int gy, int gho
                 col = grey_of(col, B.grey[i]);
                 float ld = B.land[i];
                 float sc = 1.0f + sinf(ld * PA_PI) * 0.07f;
+                if (B.intro[i] > 0.0f) {
+                    if (B.intro[i] >= 0.15f) continue;
+                    sc = ease_back(1.0f - B.intro[i] / 0.15f);
+                    if (sc < 0.02f) continue;
+                }
                 float sz = L.cell * sc, d = (sz - L.cell) * 0.5f;
                 block(c, px - d, py - d, sz, col, 1.0f);
                 if (B.item[i] != ITEM_NONE)
@@ -1445,14 +1491,12 @@ static void draw_board(PA_Canvas *c, float ox, float oy, int gx, int gy, int gho
             float ct = B.clr[i];
             if (ct > -5.0f) {
                 PA_Color col = pa_hex(TINTS[B.clr_tint[i]]);
-                if (ct < 0.0f) block(c, px, py, L.cell, pa_mix(col, PA_RGB(255, 255, 255), 0.25f), 1.0f);
+                if (ct < 0.0f) block(c, px, py, L.cell, col, 1.0f);
                 else {
-                    float k = pa_clamp01(ct / 0.32f);
-                    float sc = 1.0f + 0.15f * sinf(pa_clamp01(k * 3.0f) * PA_PI) - k;
-                    if (sc > 0.02f) {
-                        float sz = L.cell * sc, d = (L.cell - sz) * 0.5f;
-                        block(c, px + d, py + d, sz, pa_mix(col, PA_RGB(255, 255, 255), pa_clamp01(1.0f - k * 3.0f) * 0.8f), 1.0f - k * 0.3f);
-                    }
+                    /* Pop to 1.2x while fading out over 180 ms. */
+                    float k = pa_clamp01(ct / 0.18f);
+                    float sz = L.cell * (1.0f + 0.2f * ease_out(k)), d = (L.cell - sz) * 0.5f;
+                    block(c, px + d, py + d, sz, pa_shade(col, 0.18f), 1.0f - k);
                 }
             }
         }
@@ -1530,13 +1574,15 @@ static void draw_callouts(PA_Canvas *c, float ox, float oy) {
     if (B.praise_t > 0.0f) {
         float t = B.praise_t;
         float a = t < 1.2f ? 1.0f : 1.0f - (t - 1.2f) / 0.4f;
-        float sc = t < 0.14f ? 0.3f + 0.95f * (t / 0.14f) : (t < 0.28f ? 1.25f - 0.25f * ((t - 0.14f) / 0.14f) : 1.0f);
+        float sc = t < 0.15f ? 0.6f + 0.5f * ease_out(t / 0.15f) : (t < 0.25f ? 1.1f - 0.1f * ((t - 0.15f) / 0.10f) : 1.0f);
         float size = L.side * 0.10f;
-        float fitw = pa_text_width(B.praise, size, 0.0f);
-        if (fitw > L.side * 0.86f) size *= L.side * 0.86f / fitw;
+        float cap = (float)L.w * 0.70f;
+        if (cap > L.side - L.cell * 2.0f) cap = L.side - L.cell * 2.0f;
+        float fitw = bold_ink_width(B.praise, size, 2.4f);
+        if (fitw * 1.1f > cap) size *= cap / (fitw * 1.1f);
         size *= sc;
         float y = oy + L.oy + L.side * 0.45f - t * L.cell * 0.25f;
-        soft_glow(c, bcx, y, pa_text_width(B.praise, size, 0) * 0.42f, size * 1.15f, pa_hex(0xFFB020), a);
+        soft_glow(c, bcx, y, bold_ink_width(B.praise, size, 2.4f) * 0.38f, size * 1.1f, pa_hex(0xFFB020), a);
         text_mid(c, B.praise, bcx, y, size, fade(pa_hex(0xFFD84A), a), fade(pa_hex(0x8A3600), a), 2.4f);
     }
 
@@ -1681,9 +1727,6 @@ static void draw_tray(PA_Canvas *c) {
 
 static void draw_results(PA_Canvas *c) {
     float t = B.phase_t;
-    float k = ease_out(t / 0.35f);
-    pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(14, 18, 52, (int)(k * 90.0f)));
-    pa_fill_rect(c, L.ox, L.oy, L.side, L.side, PA_RGBA(10, 12, 36, (int)(k * 120.0f)));
     float cx = L.land ? L.ox + L.side * 0.5f : (float)c->w * 0.5f;
     char buf[32];
     snprintf(buf, sizeof(buf), "%d", (int)(B.res_shown + 0.5f));
@@ -1810,7 +1853,6 @@ static void storm_render(PA_Canvas *c) {
 
     draw_callouts(c, sx, sy);
     draw_flyers(c);
-    draw_hud(c);
 
     if (B.phase == 1 && B.phase_t > 1.1f) {
         float t = B.phase_t - 1.1f;
@@ -1828,8 +1870,16 @@ static void storm_render(PA_Canvas *c) {
             text_mid(c, "No more space", L.ox + L.side * 0.5f, y, L.side * 0.085f * sc,
                      fade(PA_RGB(255, 255, 255), a), fade(pa_hex(0x1A2468), a), 2.2f);
     }
-    if (B.phase == 2) draw_results(c);
+    /* Layering: dim backdrop, then confetti, then the results card and the
+       HUD on top, so celebration never buries the numbers. */
+    if (B.phase == 2) {
+        float k = ease_out(B.phase_t / 0.35f);
+        pa_fill_rect(c, 0, 0, (float)c->w, (float)c->h, PA_RGBA(14, 18, 52, (int)(k * 90.0f)));
+        pa_fill_rect(c, L.ox, L.oy, L.side, L.side, PA_RGBA(10, 12, 36, (int)(k * 120.0f)));
+    }
     draw_parts(c, 1);
+    if (B.phase == 2) draw_results(c);
+    draw_hud(c);
 
     if (B.phase == 2) pa_hub_hide_pause();
     else pa_hub_pause_anchor(L.pause_x, L.hud_y, L.pause_r);

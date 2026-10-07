@@ -23,10 +23,13 @@
 
 #define DW 540.0f
 #define DH 780.0f
-#define BR 5.0f              /* ball radius */
+#define BR 4.7f              /* ball radius */
 #define BOMB_R 17.0f
-#define WALL_R 6.5f          /* half the glass tube thickness */
-#define PIN_R 3.2f
+#define WALL_R 7.5f          /* half the glass tube thickness */
+#define PIN_R 3.9f
+#define RING_R 13.2f         /* ring handle: centreline radius and stroke */
+#define RING_W 6.6f
+#define VIEW_W 450.0f        /* design units across the screen width */
 #define CORNER 30.0f         /* default rounding of vessel corners */
 #define GRAV 1500.0f
 #define ITERS 4
@@ -110,10 +113,10 @@ static const PA_Color BALL_COLS[8] = {
 
 /* 1: one pin, the tutorial */
 static const float LV01[] = {
-    V_, NECK_L, 240,500, 150,410, 150,40, 390,40, 390,410, 300,500, NECK_R, Z_,
-    P_, 148,215, 420,215,
-    B_, 0, 156,95,228,114, 210,
-    G_, 110, S_, 1, 0, E_
+    V_, NECK_L, 240,500, 135,410, 135,40, 405,40, 405,410, 300,500, NECK_R, Z_,
+    P_, 133,215, 436,215,
+    B_, 0, 141,95,258,114, 210,
+    G_, 135, S_, 1, 0, E_
 };
 
 /* 2: two floors, either order */
@@ -133,18 +136,18 @@ static const float LV03[] = {
     P_, 412,330, 95,330,
     B_, 0, 136,60,268,104, 130,
     B_, 1, 136,220,268,104, 150,
-    G_, 125, S_, 2, 0, 1, E_
+    G_, 145, S_, 2, 0, 1, E_
 };
 
 /* 4: a pin as a wall between grey and colour */
 static const float LV04[] = {
     V_, NECK_L, 240,500, 100,400, 100,40, 440,40, 440,400, 300,500, NECK_R, Z_,
-    P_, 270,326, 270,10,
-    P_, 273,332, 68,332,
-    P_, 267,332, 472,332,
+    P_, 270,326, 270,16,
+    P_, 273,332, 84,332,
+    P_, 267,332, 456,332,
     B_, 1, 106,120,154,206, 150,
     B_, 0, 280,120,154,206, 150,
-    G_, 125, S_, 3, 0, 1, 2, X_, 3, 1, 0, 2, E_
+    G_, 138, S_, 3, 0, 1, 2, X_, 3, 1, 0, 2, E_
 };
 
 /* 5: pegs - the oddly satisfying one */
@@ -156,18 +159,18 @@ static const float LV05[] = {
     W_, 205,255, 205,275, Z_, W_, 265,255, 265,275, Z_, W_, 325,255, 325,275, Z_, W_, 385,255, 385,275, Z_,
     W_, 175,315, 175,335, Z_, W_, 235,315, 235,335, Z_, W_, 295,315, 295,335, Z_, W_, 355,315, 355,335, Z_,
     W_, 205,375, 205,395, Z_, W_, 265,375, 265,395, Z_, W_, 325,375, 325,395, Z_,
-    G_, 125, S_, 1, 0, E_
+    G_, 138, S_, 1, 0, E_
 };
 
 /* 6: careful with the bomb */
 static const float LV06[] = {
     V_, NECK_L, 240,500, 100,400, 100,40, 440,40, 440,400, 300,500, NECK_R, Z_,
     W_, 270,60, 270,294, Z_,
-    P_, 274,300, 68,300,
-    P_, 266,300, 472,300,
+    P_, 274,300, 84,300,
+    P_, 266,300, 456,300,
     K_, 185,270,
     B_, 0, 280,110,154,184, 220,
-    G_, 125, S_, 1, 1, X_, 1, 0, E_
+    G_, 145, S_, 1, 1, X_, 1, 0, E_
 };
 
 /* 7: send the bomb out of the side door first */
@@ -180,7 +183,7 @@ static const float LV07[] = {
     P_, 134,376, 450,256,
     K_, 180,320,
     B_, 0, 136,60,268,104, 220,
-    G_, 115, S_, 3, 1, 2, 0, X_, 3, 0, 1, 2, E_
+    G_, 140, S_, 3, 1, 2, 0, X_, 3, 0, 1, 2, E_
 };
 
 /* 8: bombs on top - drain the balls out from under them */
@@ -190,31 +193,31 @@ static const float LV08[] = {
     P_, 412,330, 95,330,
     K_, 200,140, K_, 270,130, K_, 340,140,
     B_, 0, 136,220,268,104, 190,
-    G_, 125, S_, 1, 1, X_, 2, 0, 1, E_
+    G_, 130, S_, 1, 1, X_, 2, 0, 1, E_
 };
 
 /* 9: a pocket of colour over a sea of grey */
 static const float LV09[] = {
     V_, NECK_L, 240,500, 100,400, 100,40, 440,40, 440,400, 300,500, NECK_R, Z_,
     W_, 220,46, 220,150, Z_,
-    P_, 226,154, 68,154,
-    P_, 102,330, 472,330,
+    P_, 226,154, 84,154,
+    P_, 102,330, 456,330,
     B_, 0, 106,56,108,92, 40,
     B_, 1, 106,170,328,154, 250,
-    G_, 125, S_, 2, 0, 1, E_
+    G_, 140, S_, 2, 0, 1, E_
 };
 
 /* 10: colour splits over two grey wells */
 static const float LV10[] = {
     V_, NECK_L, 240,500, 100,400, 100,40, 440,40, 440,400, 300,500, NECK_R, Z_,
-    P_, 98,150, 472,150,
+    P_, 98,150, 456,150,
     B_, 0, 106,50,328,94, 200,
     W_, 270,190, 270,326, Z_,
-    P_, 274,330, 68,330,
-    P_, 266,330, 472,330,
+    P_, 274,330, 84,330,
+    P_, 266,330, 456,330,
     B_, 1, 106,230,158,94, 100,
     B_, 1, 282,230,152,94, 100,
-    G_, 125, S_, 3, 0, 1, 2, X_, 3, 1, 0, 2, E_
+    G_, 140, S_, 3, 0, 1, 2, X_, 3, 1, 0, 2, E_
 };
 
 /* 11: dump the grey and the bomb out of the side door */
@@ -228,19 +231,19 @@ static const float LV11[] = {
     B_, 1, 150,220,150,70, 70,
     K_, 210,190,
     B_, 0, 136,60,268,104, 220,
-    G_, 120, S_, 3, 1, 2, 0, X_, 3, 2, 0, 1, E_
+    G_, 140, S_, 3, 1, 2, 0, X_, 3, 2, 0, 1, E_
 };
 
 /* 12: mix two chambers in the hold before opening the floor */
 static const float LV12[] = {
     V_, NECK_L, 240,500, 100,410, 100,40, 440,40, 440,410, 300,500, NECK_R, Z_,
     W_, 270,46, 270,196, Z_,
-    P_, 274,200, 68,200,
-    P_, 266,200, 472,200,
-    P_, 98,370, 472,370,
+    P_, 274,200, 84,200,
+    P_, 266,200, 456,200,
+    P_, 98,370, 456,370,
     B_, 1, 106,60,158,134, 140,
     B_, 0, 282,60,152,134, 140,
-    G_, 125, S_, 3, 0, 1, 2, X_, 3, 2, 0, 1, E_
+    G_, 140, S_, 3, 0, 1, 2, X_, 3, 2, 0, 1, E_
 };
 
 /* 13: grey over pegs */
@@ -253,7 +256,7 @@ static const float LV13[] = {
     W_, 175,285, 175,300, Z_, W_, 235,285, 235,300, Z_, W_, 295,285, 295,300, Z_, W_, 355,285, 355,300, Z_,
     W_, 205,340, 205,355, Z_, W_, 265,340, 265,355, Z_, W_, 325,340, 325,355, Z_, W_, 385,340, 385,355, Z_,
     W_, 235,395, 235,410, Z_, W_, 295,395, 295,410, Z_,
-    G_, 125, S_, 2, 0, 1, E_
+    G_, 145, S_, 2, 0, 1, E_
 };
 
 /* 14: three floors, top down */
@@ -265,18 +268,18 @@ static const float LV14[] = {
     B_, 0, 136,50,268,84, 110,
     B_, 1, 136,170,268,84, 100,
     B_, 1, 136,290,268,84, 100,
-    G_, 125, S_, 3, 0, 1, 2, X_, 3, 2, 1, 0, E_
+    G_, 145, S_, 3, 0, 1, 2, X_, 3, 2, 1, 0, E_
 };
 
 /* 15: twin flasks over a shared hold */
 static const float LV15[] = {
-    V_, NECK_L, 240,480, 70,330, 70,60, 250,60, 250,240, 290,240, 290,60, 470,60, 470,330, 300,480, NECK_R, Z_,
-    P_, 256,250, 38,250,
-    P_, 284,250, 502,250,
-    P_, 124,380, 452,380,
-    B_, 1, 76,120,168,124, 140,
-    B_, 0, 296,120,168,124, 140,
-    G_, 125, S_, 3, 0, 1, 2, X_, 3, 2, 0, 1, E_
+    V_, NECK_L, 240,480, 100,330, 100,60, 250,60, 250,240, 290,240, 290,60, 440,60, 440,330, 300,480, NECK_R, Z_,
+    P_, 256,250, 84,250,
+    P_, 284,250, 456,250,
+    P_, 144,380, 452,380,
+    B_, 1, 108,100,134,144, 140,
+    B_, 0, 298,100,134,144, 140,
+    G_, 145, S_, 3, 0, 1, 2, X_, 3, 2, 0, 1, E_
 };
 
 /* 16: the leaning vessel, a pin through the middle */
@@ -287,7 +290,7 @@ static const float LV16[] = {
     W_, 300,262, 420,232, Z_,
     B_, 1, 116,250,180,64, 120,
     B_, 0, 306,140,108,86, 110,
-    G_, 125, S_, 2, 1, 0, E_
+    G_, 145, S_, 2, 1, 0, E_
 };
 
 /* 17: bombs above, grey below, colour in the middle */
@@ -299,7 +302,7 @@ static const float LV17[] = {
     K_, 190,100, K_, 270,96, K_, 350,100,
     B_, 0, 136,150,268,94, 120,
     B_, 1, 136,300,268,74, 85,
-    G_, 125, S_, 2, 1, 2, X_, 3, 0, 1, 2, E_
+    G_, 140, S_, 2, 1, 2, X_, 3, 0, 1, 2, E_
 };
 
 /* 18: zigzag - colour flows over the grey before the gate opens */
@@ -311,20 +314,20 @@ static const float LV18[] = {
     W_, 410,300, 210,350, Z_,
     P_, 212,352, 98,262,
     B_, 1, 220,240,110,50, 60,
-    G_, 110, S_, 2, 0, 1, E_
+    G_, 128, S_, 2, 0, 1, E_
 };
 
 /* 19: colour on the left, a bomb on the right, grey in the hold */
 static const float LV19[] = {
     V_, NECK_L, 240,500, 100,410, 100,40, 440,40, 440,410, 300,500, NECK_R, Z_,
     W_, 270,46, 270,186, Z_,
-    P_, 274,190, 68,190,
-    P_, 266,190, 472,190,
-    P_, 98,370, 472,370,
+    P_, 274,190, 84,190,
+    P_, 266,190, 456,190,
+    P_, 98,370, 456,370,
     B_, 0, 106,70,158,114, 110,
     K_, 355,160,
     B_, 1, 106,290,328,74, 110,
-    G_, 125, S_, 2, 0, 2, X_, 3, 1, 0, 2, E_
+    G_, 135, S_, 2, 0, 2, X_, 3, 1, 0, 2, E_
 };
 
 /* 20: the tower - colour, grey, colour, grey */
@@ -338,19 +341,19 @@ static const float LV20[] = {
     B_, 1, 186,150,168,74, 70,
     B_, 0, 186,250,168,74, 70,
     B_, 1, 186,350,168,64, 70,
-    G_, 125, S_, 4, 0, 1, 2, 3, X_, 4, 3, 2, 1, 0, E_
+    G_, 145, S_, 4, 0, 1, 2, 3, X_, 4, 3, 2, 1, 0, E_
 };
 
 /* 21: twin flasks, one of them hiding a bomb */
 static const float LV21[] = {
-    V_, NECK_L, 240,480, 70,330, 70,60, 250,60, 250,240, 290,240, 290,60, 470,60, 470,330, 300,480, NECK_R, Z_,
-    P_, 256,250, 38,250,
-    P_, 284,250, 502,250,
-    P_, 124,380, 452,380,
-    B_, 0, 76,100,168,144, 110,
+    V_, NECK_L, 240,480, 100,330, 100,60, 250,60, 250,240, 290,240, 290,60, 440,60, 440,330, 300,480, NECK_R, Z_,
+    P_, 256,250, 84,250,
+    P_, 284,250, 456,250,
+    P_, 144,380, 452,380,
+    B_, 0, 108,100,134,144, 110,
     K_, 380,220,
     B_, 1, 130,300,280,74, 110,
-    G_, 125, S_, 2, 0, 2, X_, 3, 1, 0, 2, E_
+    G_, 145, S_, 2, 0, 2, X_, 3, 1, 0, 2, E_
 };
 
 /* 22: the bomb goes out the door before anything falls on it */
@@ -365,7 +368,7 @@ static const float LV22[] = {
     B_, 0, 136,46,268,58, 110,
     B_, 1, 136,130,268,64, 100,
     K_, 220,315,
-    G_, 120, S_, 4, 2, 3, 0, 1, X_, 4, 0, 1, 2, 3, E_
+    G_, 140, S_, 4, 2, 3, 0, 1, X_, 4, 0, 1, 2, 3, E_
 };
 
 /* 23: the long way round */
@@ -376,7 +379,7 @@ static const float LV23[] = {
     B_, 0, 98,158,136,87, 120,
     B_, 1, 366,330,48,144, 60,
     C_, 390,
-    G_, 110, S_, 2, 0, 1, X_, 2, 1, 0, E_
+    G_, 135, S_, 2, 0, 1, X_, 2, 1, 0, E_
 };
 
 /* 24: everything at once */
@@ -393,7 +396,7 @@ static const float LV24[] = {
     B_, 0, 136,50,128,94, 95,
     B_, 1, 276,50,128,94, 90,
     K_, 200,320,
-    G_, 110, S_, 5, 2, 3, 0, 1, 4, X_, 3, 0, 1, 4, E_
+    G_, 118, S_, 5, 2, 3, 0, 1, 4, X_, 3, 0, 1, 4, E_
 };
 
 static const float *const LEVELS[] = { LV01, LV02, LV03, LV04, LV05, LV06, LV07, LV08, LV09, LV10, LV11, LV12,
@@ -534,7 +537,7 @@ static void add_balls(int kind, float x, float y, float w, float h, int n) {
         float x0 = x + BR + ((row & 1) ? d * 0.5f : 0.0f);
         for (float xx = x0; xx <= x + w - BR + 0.01f && placed < n; xx += d) {
             add_ball(kind, mx(xx + pa_rng_range(&g_rng, -0.9f, 0.9f)), yy + pa_rng_range(&g_rng, -0.6f, 0.6f),
-                     BR * pa_rng_range(&g_rng, 0.88f, 1.08f));
+                     BR * pa_rng_range(&g_rng, 0.92f, 1.07f));
             placed++;
         }
     }
@@ -922,7 +925,7 @@ static int pin_at(float px, float py) {
     for (int k = 0; k < g_npin; k++) {
         Pin *p = &g_pin[k];
         if (p->state != 0) continue;
-        float rx = p->hx + p->dx * 12.0f, ry = p->hy + p->dy * 12.0f;
+        float rx = p->hx + p->dx * RING_R * 1.6f, ry = p->hy + p->dy * RING_R * 1.6f;
         float d = seg_dist(p->tx, p->ty, rx, ry, x, y);
         if (d < bd) { bd = d; best = k; }
     }
@@ -933,7 +936,7 @@ static int pin_at(float px, float py) {
 static void ring_pos(const Pin *p, float *x, float *y) {
     float ax, ay, bx, by;
     pin_points(p, &ax, &ay, &bx, &by);
-    *x = bx + p->dx * 10.0f; *y = by + p->dy * 10.0f;
+    *x = bx + p->dx * RING_R; *y = by + p->dy * RING_R;
 }
 
 /* --------------------------------------------------------------- update -- */
@@ -1127,16 +1130,15 @@ static void s_update(float dt, const PA_Input *in) {
 static void resolve_layout(PA_Canvas *c) {
     g_cw = c->w; g_ch = c->h;
     float W = (float)c->w, H = (float)c->h;
-    g_s = W / DW;
-    float avail = H - HUD_H - 30.0f;
-    if (avail / DH < g_s) g_s = avail / DH;
+    /* The playfield is drawn big: VIEW_W design units span the phone's width,
+       so a standard vessel fills about 0.7 of it as the reference does. */
+    g_s = W / VIEW_W;
+    float content = DH - 10.0f;                  /* ring tops to pill bottom */
+    float avail = H - HUD_H - 16.0f;
+    if (avail / content < g_s) g_s = avail / content;
     g_ox = (W - DW * g_s) * 0.5f;
-    /* The reference hangs the vessel a little below the bar and leaves a band
-       of studio floor under the cup; keep that on tall phones. */
-    float oy = H * 0.15f;
-    if (oy + DH * g_s > H - 12.0f) oy = H - 12.0f - DH * g_s;
-    if (oy < HUD_H + 14.0f) oy = HUD_H + 14.0f;
-    g_oy = oy;
+    float spare = avail - content * g_s;
+    g_oy = HUD_H + 8.0f + spare * 0.38f - 4.0f * g_s;
 }
 
 static void draw_background(PA_Canvas *c) {
@@ -1192,28 +1194,41 @@ static void glass_fill(PA_Canvas *c, const Poly *f) {
 
 /* The glass tube: a grey rim, a pale body, a white specular stripe up-left
    and a soft shadow line down-right, all following the same rounded path. */
-static void tube_stroke(PA_Canvas *c, const PA_Vec2 *dp, int n, float thick, int design) {
-    PA_Vec2 pts[MAXPP];
+/* The glass tube, as thick rounded plastic-glass: a soft drop shadow down and
+   right, a grey rim, a pale body shaded darker toward its lower edge, and a
+   white specular stripe a third of the wall wide along its upper-left side.
+   `pass` 0 draws the shadow only (under the balls), 1 the tube itself. */
+static void tube_stroke(PA_Canvas *c, const PA_Vec2 *dp, int n, float thick, int design, int pass) {
+    PA_Vec2 pts[MAXPP], t[MAXPP];
     for (int k = 0; k < n; k++) {
         pts[k].x = design ? sx(dp[k].x) : dp[k].x;
         pts[k].y = design ? sy(dp[k].y) : dp[k].y;
     }
     float w = thick * (design ? g_s : 1.0f);
     if (n == 1) { pts[1] = pts[0]; n = 2; }
-    PA_Vec2 sh[MAXPP];
-    for (int k = 0; k < n; k++) { sh[k].x = pts[k].x + w * 0.10f; sh[k].y = pts[k].y + w * 0.30f; }
-    pa_stroke_poly(c, sh, n, 0, w * 1.1f, PA_RGBA(70, 72, 80, 40));
-    pa_stroke_poly(c, pts, n, 0, w + 1.6f, TUBE_EDGE);
-    pa_fill_circle(c, pts[0].x, pts[0].y, (w + 1.6f) * 0.5f, TUBE_EDGE);
-    pa_fill_circle(c, pts[n - 1].x, pts[n - 1].y, (w + 1.6f) * 0.5f, TUBE_EDGE);
-    pa_stroke_poly(c, pts, n, 0, w - 0.4f, TUBE_COL);
-    pa_fill_circle(c, pts[0].x, pts[0].y, (w - 0.4f) * 0.5f, TUBE_COL);
-    pa_fill_circle(c, pts[n - 1].x, pts[n - 1].y, (w - 0.4f) * 0.5f, TUBE_COL);
-    PA_Vec2 hl[MAXPP];
-    for (int k = 0; k < n; k++) { hl[k].x = pts[k].x + w * 0.12f; hl[k].y = pts[k].y + w * 0.16f; }
-    pa_stroke_poly(c, hl, n, 0, w * 0.40f, pa_hex(0xC4C7CB));
-    for (int k = 0; k < n; k++) { hl[k].x = pts[k].x - w * 0.14f; hl[k].y = pts[k].y - w * 0.16f; }
-    pa_stroke_poly(c, hl, n, 0, w * 0.30f, pa_hex(0xFBFBFB));
+    if (pass == 0) {
+        float off = (float)g_cw * 0.008f;
+        if (!design) off = w * 0.3f;
+        for (int k = 0; k < n; k++) { t[k].x = pts[k].x + off * 0.6f; t[k].y = pts[k].y + off; }
+        pa_stroke_poly(c, t, n, 0, w * 1.05f, pa_hex(0xC3C5CC));
+        pa_fill_circle(c, t[0].x, t[0].y, w * 0.525f, pa_hex(0xC3C5CC));
+        pa_fill_circle(c, t[n - 1].x, t[n - 1].y, w * 0.525f, pa_hex(0xC3C5CC));
+        return;
+    }
+    pa_stroke_poly(c, pts, n, 0, w + 2.0f, pa_hex(0xA4A8B2));
+    pa_fill_circle(c, pts[0].x, pts[0].y, (w + 2.0f) * 0.5f, pa_hex(0xA4A8B2));
+    pa_fill_circle(c, pts[n - 1].x, pts[n - 1].y, (w + 2.0f) * 0.5f, pa_hex(0xA4A8B2));
+    pa_stroke_poly(c, pts, n, 0, w - 0.6f, pa_hex(0xD3D5DC));
+    pa_fill_circle(c, pts[0].x, pts[0].y, (w - 0.6f) * 0.5f, pa_hex(0xD3D5DC));
+    pa_fill_circle(c, pts[n - 1].x, pts[n - 1].y, (w - 0.6f) * 0.5f, pa_hex(0xD3D5DC));
+    for (int k = 0; k < n; k++) { t[k].x = pts[k].x - w * 0.06f; t[k].y = pts[k].y - w * 0.08f; }
+    pa_stroke_poly(c, t, n, 0, w * 0.72f, pa_hex(0xE6E7EC));
+    pa_fill_circle(c, t[0].x, t[0].y, w * 0.36f, pa_hex(0xE6E7EC));
+    pa_fill_circle(c, t[n - 1].x, t[n - 1].y, w * 0.36f, pa_hex(0xE6E7EC));
+    for (int k = 0; k < n; k++) { t[k].x = pts[k].x - w * 0.17f; t[k].y = pts[k].y - w * 0.20f; }
+    pa_stroke_poly(c, t, n, 0, w * 0.30f, pa_hex(0xFFFFFF));
+    pa_fill_circle(c, t[0].x, t[0].y, w * 0.15f, pa_hex(0xFFFFFF));
+    pa_fill_circle(c, t[n - 1].x, t[n - 1].y, w * 0.15f, pa_hex(0xFFFFFF));
 }
 
 static void draw_ball(PA_Canvas *c, float x, float y, float r, PA_Color col, float flash) {
@@ -1232,26 +1247,39 @@ static void draw_ball(PA_Canvas *c, float x, float y, float r, PA_Color col, flo
     pa_fill_circle(c, x - r * 0.34f, y - r * 0.38f, r * 0.26f, PA_RGBA(255, 255, 255, 200));
 }
 
+/* The bomb: a glossy black sphere with a steel cap, a brown wick and a spark
+   that always flickers at its tip, burning hot and fast once lit. */
 static void draw_bomb(PA_Canvas *c, const Ball *b) {
     float x = sx(b->x), y = sy(b->y), r = b->r * g_s;
     float lit = b->fuse > 0 ? 1.0f : 0.0f;
     float pulse = lit * (0.5f + 0.5f * sinf(g_time * 60.0f));
-    /* fuse: a short cap and a curled wick */
-    pa_round_rect(c, x - r * 0.24f, y - r * 1.12f, r * 0.48f, r * 0.34f, r * 0.08f, pa_hex(0x3A3A3E));
-    PA_Vec2 wick[5] = { { x, y - r * 1.1f }, { x - r * 0.04f, y - r * 1.35f }, { x - r * 0.12f, y - r * 1.55f },
-                        { x - r * 0.10f, y - r * 1.75f }, { x - r * 0.18f, y - r * 1.92f } };
-    pa_stroke_poly(c, wick, 5, 0, r * 0.13f, pa_hex(0x6B4A2E));
-    if (lit > 0) {
-        pa_fill_circle(c, wick[4].x, wick[4].y, r * (0.30f + 0.15f * pulse), PA_RGBA(255, 210, 80, 200));
-        pa_fill_circle(c, wick[4].x, wick[4].y, r * 0.14f, PA_RGB(255, 255, 220));
+    float fl = 0.5f + 0.5f * sinf(g_time * 23.0f + b->x * 0.3f);
+    pa_shadow(c, x + r * 0.15f, y + r * 0.95f, r * 0.85f, r * 0.25f, 0.25f);
+    float fw = (float)g_cw * 0.012f;
+    PA_Vec2 wick[6] = { { x + r * 0.05f, y - r * 1.0f }, { x + r * 0.10f, y - r * 1.30f }, { x + r * 0.02f, y - r * 1.55f },
+                        { x - r * 0.14f, y - r * 1.72f }, { x - r * 0.22f, y - r * 1.95f }, { x - r * 0.16f, y - r * 2.16f } };
+    pa_stroke_poly(c, wick, 6, 0, fw + 1.5f, pa_hex(0x4A3020));
+    pa_stroke_poly(c, wick, 6, 0, fw, pa_hex(0x8A5A34));
+    pa_round_rect(c, x - r * 0.30f, y - r * 1.16f, r * 0.60f, r * 0.36f, r * 0.10f, pa_hex(0x55565C));
+    pa_round_rect(c, x - r * 0.26f, y - r * 1.13f, r * 0.30f, r * 0.10f, r * 0.05f, pa_hex(0x8C8C94));
+    /* spark */
+    float sxp = wick[5].x, syp = wick[5].y;
+    float sr = r * (0.26f + 0.10f * fl + 0.22f * lit);
+    pa_fill_circle(c, sxp, syp, sr * 1.7f, PA_RGBA(255, 200, 58, (int)(70 + 60 * lit)));
+    for (int k = 0; k < 6; k++) {
+        float a = (float)k * PA_TAU / 6.0f + g_time * 9.0f;
+        float l = sr * (1.1f + 0.5f * sinf(g_time * 31.0f + (float)k * 2.1f));
+        pa_line(c, sxp, syp, sxp + cosf(a) * l, syp + sinf(a) * l, r * 0.06f + 0.8f, pa_hex(0xFFC83A));
     }
+    pa_fill_circle(c, sxp, syp, sr * 0.55f, pa_hex(0xFFF2B0));
     PA_Color body = pa_mix(pa_hex(0x2A2A2E), pa_hex(0xD8261C), pulse * 0.6f);
     PA_Paint p = pa_radial(x - r * 0.35f, y - r * 0.40f, 0.0f, r * 1.5f);
-    pa_stop(&p, 0.0f, pa_shade(body, 0.35f));
+    pa_stop(&p, 0.0f, pa_shade(body, 0.32f));
     pa_stop(&p, 0.45f, body);
-    pa_stop(&p, 1.0f, pa_shade(body, -0.5f));
+    pa_stop(&p, 1.0f, pa_shade(body, -0.55f));
     pa_fill_ellipse_paint(c, x, y, r, r, &p);
-    pa_fill_ellipse(c, x - r * 0.36f, y - r * 0.42f, r * 0.20f, r * 0.13f, PA_RGBA(255, 255, 255, 120));
+    pa_fill_ellipse(c, x - r * 0.38f, y - r * 0.40f, r * 0.24f, r * 0.15f, pa_hex(0x8C8C94));
+    pa_fill_circle(c, x - r * 0.44f, y - r * 0.44f, r * 0.08f, PA_RGB(230, 230, 236));
 }
 
 static void draw_balls(PA_Canvas *c, int cup_pass) {
@@ -1266,6 +1294,8 @@ static void draw_balls(PA_Canvas *c, int cup_pass) {
 }
 
 /* A pin: a thin blue rod through the glass, a ring on the outside end. */
+/* A pin: a chunky blue cylinder through the glass with a fat ring handle on
+   the outside end. */
 static void draw_pin(PA_Canvas *c, const Pin *p) {
     if (p->state == 2) return;
     float a = 1.0f;
@@ -1274,23 +1304,30 @@ static void draw_pin(PA_Canvas *c, const Pin *p) {
     pin_points(p, &ax, &ay, &bx, &by);
     float x0 = sx(ax), y0 = sy(ay), x1 = sx(bx), y1 = sy(by);
     float w = PIN_R * 2.0f * g_s;
-    PA_Color base = pa_alpha(PIN_COL, a), dark = pa_alpha(pa_shade(PIN_COL, -0.45f), a);
-    PA_Color lite = pa_alpha(pa_shade(PIN_COL, 0.55f), a);
-    pa_line(c, x0 + 1.5f * g_s, y0 + 3.0f * g_s, x1 + 1.5f * g_s, y1 + 3.0f * g_s, w, PA_RGBA(40, 44, 60, (int)(36.0f * a)));
-    pa_line(c, x0, y0, x1, y1, w + 1.6f * g_s, dark);
-    pa_fill_circle(c, x0, y0, (w + 1.6f * g_s) * 0.5f, dark);
-    pa_line(c, x0, y0, x1, y1, w * 0.86f, base);
-    pa_fill_circle(c, x0, y0, w * 0.43f, base);
+    PA_Color base = pa_alpha(PIN_COL, a), dark = pa_alpha(pa_shade(PIN_COL, -0.42f), a);
+    PA_Color lite = pa_alpha(pa_hex(0x7DB8FF), a), shadow = PA_RGBA(60, 64, 80, (int)(46.0f * a));
+    float rr = RING_R * g_s, rw = RING_W * g_s;
+    float rcx = x1 + p->dx * rr, rcy = y1 + p->dy * rr;
+    float so = (float)g_cw * 0.008f;
+    pa_line(c, x0 + so * 0.6f, y0 + so, x1 + so * 0.6f, y1 + so, w, shadow);
+    pa_stroke_circle(c, rcx + so * 0.6f, rcy + so, rr, rw, shadow);
+    pa_line(c, x0, y0, x1, y1, w + 2.0f, dark);
+    pa_fill_circle(c, x0, y0, (w + 2.0f) * 0.5f, dark);
+    pa_line(c, x0, y0, x1, y1, w - 0.4f, base);
+    pa_fill_circle(c, x0, y0, (w - 0.4f) * 0.5f, base);
     float nx = p->dy, ny = -p->dx;
     if (ny > 0 || (ny == 0 && nx > 0)) { nx = -nx; ny = -ny; }
     float hx = nx * w * 0.20f, hy = ny * w * 0.20f;
-    pa_line(c, x0 + hx, y0 + hy, x1 + hx, y1 + hy, w * 0.26f, lite);
-    float rr = 9.5f * g_s, rw = 4.6f * g_s;
-    float rcx = x1 + p->dx * rr * 1.05f, rcy = y1 + p->dy * rr * 1.05f;
-    pa_stroke_circle(c, rcx + 1.0f * g_s, rcy + 2.5f * g_s, rr, rw, PA_RGBA(40, 44, 60, (int)(36.0f * a)));
-    pa_stroke_circle(c, rcx, rcy, rr, rw + 1.6f * g_s, dark);
-    pa_stroke_circle(c, rcx, rcy, rr, rw * 0.86f, base);
-    pa_stroke_circle(c, rcx - 0.6f * g_s, rcy - 0.9f * g_s, rr, rw * 0.26f, lite);
+    pa_line(c, x0 + hx, y0 + hy, x1 + hx, y1 + hy, w * 0.30f, lite);
+    /* ring: dark rim, blue body, a light arc on its upper-left */
+    pa_stroke_circle(c, rcx, rcy, rr, rw + 2.0f, dark);
+    pa_stroke_circle(c, rcx, rcy, rr, rw - 0.4f, base);
+    PA_Vec2 arc[24];
+    for (int k = 0; k < 24; k++) {
+        float t = PA_PI * 0.95f + PA_PI * 0.75f * (float)k / 23.0f;
+        arc[k].x = rcx + cosf(t) * (rr - rw * 0.08f); arc[k].y = rcy + sinf(t) * (rr - rw * 0.08f);
+    }
+    pa_stroke_poly(c, arc, 24, 0, rw * 0.30f, lite);
 }
 
 static PA_Color cup_colour(void) {
@@ -1305,15 +1342,14 @@ static void rim_half(PA_Canvas *c, float cx, float cy, float rx, float ry, float
         float a = front ? PA_PI * (float)k / 32.0f : PA_PI + PA_PI * (float)k / 32.0f;
         pts[n].x = cx + cosf(a) * rx; pts[n].y = cy + sinf(a) * ry; n++;
     }
-    pa_stroke_poly(c, pts, n, 0, thick + 2.0f, pa_shade(col, -0.30f));
+    /* a torus seen from above: darker underside, bright crown */
+    PA_Vec2 q[40];
+    for (int k = 0; k < n; k++) { q[k].x = pts[k].x; q[k].y = pts[k].y + thick * 0.22f; }
+    pa_stroke_poly(c, q, n, 0, thick + 2.0f, pa_shade(col, -0.45f));
     pa_stroke_poly(c, pts, n, 0, thick, col);
-    if (front) {
-        for (int k = 0; k < n; k++) pts[k].y -= thick * 0.22f;
-        pa_stroke_poly(c, pts + 6, n - 12, 0, thick * 0.28f, pa_shade(col, 0.45f));
-    } else {
-        for (int k = 0; k < n; k++) pts[k].y -= thick * 0.18f;
-        pa_stroke_poly(c, pts + 8, n - 16, 0, thick * 0.22f, pa_shade(col, 0.30f));
-    }
+    for (int k = 0; k < n; k++) { q[k].x = pts[k].x; q[k].y = pts[k].y - thick * 0.20f; }
+    if (front) pa_stroke_poly(c, q + 4, n - 8, 0, thick * 0.34f, pa_shade(col, 0.40f));
+    else pa_stroke_poly(c, q + 6, n - 12, 0, thick * 0.26f, pa_shade(col, 0.25f));
 }
 
 static void draw_cup_back(PA_Canvas *c) {
@@ -1329,7 +1365,13 @@ static void draw_cup_back(PA_Canvas *c) {
     pa_fill_rect_paint(c, cx - hw, top, hw * 2.0f, bot - top, &p);
     pa_fill_ellipse_paint(c, cx, bot, hw, ey, &p);
     pa_fill_ellipse(c, cx, bot - 2.0f * g_s, hw * 0.92f, ey * 0.8f, PA_RGBA(150, 154, 162, 40));
-    rim_half(c, cx, top, hw + 4.0f * g_s, ey + 2.0f * g_s, 11.0f * g_s, cup_colour(), 0);
+    /* the opening glows faintly in the rim colour */
+    PA_Paint gl = pa_radial(cx, top, 0, hw + 6.0f * g_s);
+    pa_stop(&gl, 0.0f, pa_alpha(cup_colour(), 0.10f));
+    pa_stop(&gl, 0.75f, pa_alpha(cup_colour(), 0.25f));
+    pa_stop(&gl, 1.0f, pa_alpha(cup_colour(), 0.34f));
+    pa_fill_ellipse_paint(c, cx, top, hw + 5.0f * g_s, ey + 3.0f * g_s, &gl);
+    rim_half(c, cx, top, hw + 6.0f * g_s, ey + 3.0f * g_s, 15.0f * g_s, cup_colour(), 0);
 }
 
 static void draw_cup_front(PA_Canvas *c) {
@@ -1355,7 +1397,7 @@ static void draw_cup_front(PA_Canvas *c) {
     pa_fill_rect_paint(c, cx - hw * 0.18f, top + 6.0f * g_s, 4.5f * g_s, bot - top - 8.0f * g_s, &hl);
     pa_fill_rect_paint(c, cx - hw * 0.62f, top + 10.0f * g_s, 2.0f * g_s, bot - top - 20.0f * g_s, &hl);
     float pulse = g_cup_pulse * 1.5f * g_s;
-    rim_half(c, cx, top - b * 0.5f, hw + 4.0f * g_s + pulse, ey + 2.0f * g_s, 11.0f * g_s + pulse * 0.5f, cup_colour(), 1);
+    rim_half(c, cx, top - b * 0.5f, hw + 6.0f * g_s + pulse, ey + 3.0f * g_s, 15.0f * g_s + pulse * 0.5f, cup_colour(), 1);
 
     /* percentage pill under the cup */
     char buf[16];
@@ -1421,25 +1463,55 @@ static int rrect_pts(PA_Vec2 *o, float x, float y, float w, float h, float r) {
     return n;
 }
 
+/* One rounded part of the hand, shaded: an outline, then a fill lit from the
+   upper-left of the part and falling off to its lower-right. */
 static void hand_part(PA_Canvas *c, float x, float y, float w, float h, float r, float hx, float hy,
                       float s, float ang, PA_Color fill, PA_Color edge) {
-    PA_Vec2 pts[24];
-    int n = rrect_pts(pts, x - 1.2f, y - 1.2f, w + 2.4f, h + 2.4f, r + 1.2f);
+    PA_Vec2 pts[24], q[24];
+    int n = rrect_pts(pts, x - 1.4f, y - 1.4f, w + 2.8f, h + 2.8f, r + 1.4f);
     xf_poly(c, pts, n, hx, hy, s, ang, edge);
     n = rrect_pts(pts, x, y, w, h, r);
-    xf_poly(c, pts, n, hx, hy, s, ang, fill);
+    float cs = cosf(ang), sn = sinf(ang);
+    for (int k = 0; k < n; k++) {
+        float lx = pts[k].x * s, ly = pts[k].y * s;
+        q[k].x = hx + lx * cs - ly * sn; q[k].y = hy + lx * sn + ly * cs;
+    }
+    float ax = x * s, ay = y * s, bx = (x + w) * s, by = (y + h) * s;
+    PA_Paint p = pa_linear(hx + ax * cs - ay * sn, hy + ax * sn + ay * cs, hx + bx * cs - by * sn, hy + bx * sn + by * cs);
+    pa_stop(&p, 0.0f, pa_shade(fill, 0.35f));
+    pa_stop(&p, 0.45f, fill);
+    pa_stop(&p, 1.0f, pa_shade(fill, -0.10f));
+    pa_fill_poly_paint(c, q, n, &p);
 }
 
 static void draw_hand(PA_Canvas *c, float x, float y, float press, float s) {
-    /* local frame: fingertip at the origin, finger up, the arm down-right */
-    float ang = -0.58f;
+    /* local frame: fingertip at the origin, finger up, the arm down-right.
+       The pose leans further upright (then past it) until the whole hand,
+       cuff and all, sits on screen. */
+    static const float angs[7] = { -0.58f, -0.42f, -0.26f, -0.10f, 0.08f, 0.26f, 0.44f };
     float lift = (1.0f - press);
     s *= 1.0f - 0.05f * press;
     x += 10.0f * lift * s; y += 16.0f * lift * s;
-    PA_Color skin = pa_hex(0xFFE4D6), edge = pa_hex(0xDDB2A0), crease = pa_hex(0xF2C9B6);
-    pa_shadow(c, x + 70.0f * s, y + 110.0f * s, 50.0f * s, 20.0f * s, 0.10f + 0.06f * press);
-    hand_part(c, -24, 92, 66, 30, 9, x, y, s, ang, pa_hex(0xFFFFFF), pa_hex(0xAFBCCF));   /* cuff */
-    hand_part(c, -24, 112, 66, 10, 4, x, y, s, ang, pa_hex(0xD6E0EE), pa_hex(0xAFBCCF));
+    float ang = angs[0];
+    for (int i = 0; i < 7; i++) {
+        float cs = cosf(angs[i]), sn = sinf(angs[i]);
+        float lo = 1e9f, hi = -1e9f, bot = -1e9f;
+        static const float cx[4] = { -32, 44, -32, 44 }, cy[4] = { 0, 0, 124, 124 };
+        for (int k = 0; k < 4; k++) {
+            float px = x + (cx[k] * cs - cy[k] * sn) * s, py = y + (cx[k] * sn + cy[k] * cs) * s;
+            if (px < lo) lo = px;
+            if (px > hi) hi = px;
+            if (py > bot) bot = py;
+        }
+        ang = angs[i];
+        if (lo >= 4.0f && hi <= (float)c->w - 4.0f && bot <= (float)c->h - 4.0f) break;
+    }
+    PA_Color skin = pa_hex(0xFFE2D2), edge = pa_hex(0xD9A894), crease = pa_hex(0xEDBFAA);
+    float cs = cosf(ang), sn = sinf(ang);
+    pa_shadow(c, x + (20.0f * cs - 110.0f * sn) * s + 14.0f * s, y + (20.0f * sn + 110.0f * cs) * s + 18.0f * s,
+              52.0f * s, 22.0f * s, 0.12f + 0.06f * press);
+    hand_part(c, -24, 92, 66, 30, 9, x, y, s, ang, pa_hex(0xFFFFFF), pa_hex(0xA9B7CC));   /* cuff */
+    hand_part(c, -24, 112, 66, 11, 4, x, y, s, ang, pa_hex(0xC9D6EA), pa_hex(0xA9B7CC));
     hand_part(c, -30, 52, 20, 36, 10, x, y, s, ang, skin, edge);                         /* thumb */
     hand_part(c, -20, 40, 58, 58, 20, x, y, s, ang, skin, edge);                         /* palm */
     hand_part(c, 16, 44, 26, 17, 8.5f, x, y, s, ang, skin, edge);                        /* curled fingers */
@@ -1447,14 +1519,16 @@ static void draw_hand(PA_Canvas *c, float x, float y, float press, float s) {
     hand_part(c, 16, 76, 23, 15, 7.5f, x, y, s, ang, skin, edge);
     hand_part(c, -9, 0, 18, 62, 9, x, y, s, ang, skin, edge);                            /* index */
     PA_Vec2 ln[24];
-    int n = rrect_pts(ln, -5, 3, 10, 10, 5);
-    xf_poly(c, ln, n, x, y, s, ang, pa_hex(0xFFF3EC));                                   /* nail */
-    n = rrect_pts(ln, -6, 30, 12, 2.4f, 1.2f);
+    int n = rrect_pts(ln, -5, 3, 10, 11, 5);
+    xf_poly(c, ln, n, x, y, s, ang, pa_hex(0xFFF1EA));                                   /* nail */
+    n = rrect_pts(ln, -6, 32, 12, 2.6f, 1.3f);
     xf_poly(c, ln, n, x, y, s, ang, crease);                                             /* knuckle crease */
+    n = rrect_pts(ln, -14, 48, 10, 30, 5);
+    xf_poly(c, ln, n, x, y, s, ang, PA_RGBA(255, 255, 255, 90));                         /* palm sheen */
 }
 
 static void icon_ring(PA_Canvas *c, float x, float y, float r) {
-    pa_stroke_circle(c, x, y, r, 2.4f, INK);
+    pa_stroke_circle(c, x, y, r, 3.6f, INK);
 }
 
 static void draw_hud(PA_Canvas *c) {
@@ -1466,49 +1540,49 @@ static void draw_hud(PA_Canvas *c) {
     char buf[16];
     /* level badge: number in a ring, LVL under it */
     float lx = hud_icon_x(0);
-    icon_ring(c, lx, cy - 2.0f, 17.0f);
+    icon_ring(c, lx, cy - 2.0f, 20.0f);
     snprintf(buf, sizeof buf, "%d", g_level + 1);
-    float ts = g_level + 1 >= 100 ? 11.0f : 14.0f;
+    float ts = g_level + 1 >= 100 ? 13.0f : 16.0f;
     pa_text_bold(c, buf, lx, cy - 2.0f - ts * 0.62f, ts, INK, INK, PA_ALIGN_CENTER, 0.5f, 0.15f);
-    pa_round_rect(c, lx - 15.0f, cy + 9.0f, 30.0f, 11.0f, 4.0f, PA_RGB(255, 255, 255));
-    pa_text(c, "LVL", lx, cy + 10.0f, 7.5f, INK, PA_ALIGN_CENTER, 0.8f);
+    pa_round_rect(c, lx - 16.0f, cy + 11.0f, 32.0f, 12.0f, 4.0f, PA_RGB(255, 255, 255));
+    pa_text(c, "LVL", lx, cy + 12.5f, 8.5f, INK, PA_ALIGN_CENTER, 0.8f);
     /* retry */
     {
-        float x = hud_icon_x(1), r = 12.0f;
+        float x = hud_icon_x(1), r = 14.0f;
         PA_Vec2 pts[40];
         int n = 0;
         for (int k = 0; k <= 30; k++) {
             float a = -PA_PI * 0.30f + (PA_TAU * 0.80f) * (float)k / 30.0f;
             pts[n].x = x + cosf(a) * r; pts[n].y = cy + sinf(a) * r; n++;
         }
-        pa_stroke_poly(c, pts, n, 0, 2.6f, INK);
+        pa_stroke_poly(c, pts, n, 0, 3.8f, INK);
         float a0 = -PA_PI * 0.30f;
         float ex = x + cosf(a0) * r, ey = cy + sinf(a0) * r;
-        PA_Vec2 tri[3] = { { ex - 6.0f, ey - 2.0f }, { ex + 5.0f, ey - 7.0f }, { ex + 3.0f, ey + 6.0f } };
+        PA_Vec2 tri[3] = { { ex - 7.5f, ey - 2.5f }, { ex + 6.5f, ey - 8.5f }, { ex + 4.0f, ey + 7.5f } };
         pa_fill_poly(c, tri, 3, INK);
     }
     /* hint bulb */
     {
         float x = hud_icon_x(2);
-        pa_stroke_circle(c, x, cy - 4.0f, 10.0f, 2.4f, INK);
-        pa_line(c, x - 5.0f, cy + 6.5f, x + 5.0f, cy + 6.5f, 2.4f, INK);
-        pa_line(c, x - 4.0f, cy + 11.0f, x + 4.0f, cy + 11.0f, 2.4f, INK);
-        pa_line(c, x, cy - 1.0f, x, cy + 6.0f, 1.8f, INK);
-        pa_fill_circle(c, x - 3.5f, cy - 7.5f, 2.0f, pa_hex(0xFFC21F));
+        pa_fill_circle(c, x, cy - 5.0f, 11.0f, pa_hex(0xFFE58A));
+        pa_stroke_circle(c, x, cy - 5.0f, 12.0f, 3.6f, INK);
+        pa_line(c, x - 6.0f, cy + 9.0f, x + 6.0f, cy + 9.0f, 3.6f, INK);
+        pa_line(c, x - 4.5f, cy + 14.0f, x + 4.5f, cy + 14.0f, 3.6f, INK);
+        pa_fill_circle(c, x - 4.0f, cy - 9.0f, 2.8f, PA_RGB(255, 255, 255));
     }
     /* skip */
     {
         float x = hud_icon_x(3);
         for (int k = 0; k < 2; k++) {
-            float o = k ? 6.0f : -6.0f;
-            PA_Vec2 tri[3] = { { x + o - 6.5f, cy - 9.0f }, { x + o + 6.5f, cy }, { x + o - 6.5f, cy + 9.0f } };
-            pa_stroke_poly(c, tri, 3, 1, 2.4f, INK);
+            float o = k ? 7.0f : -7.0f;
+            PA_Vec2 tri[3] = { { x + o - 7.5f, cy - 10.5f }, { x + o + 7.5f, cy }, { x + o - 7.5f, cy + 10.5f } };
+            pa_fill_poly(c, tri, 3, INK);
         }
-        pa_fill_circle(c, x + 13.0f, cy - 12.0f, 7.0f, pa_hex(0xE8442E));
-        pa_text_bold(c, "!", x + 13.0f, cy - 17.5f, 9.0f, PA_RGB(255, 255, 255), PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 0, 0.2f);
+        pa_fill_circle(c, x + 15.0f, cy - 13.0f, 8.0f, pa_hex(0xE8442E));
+        pa_text_bold(c, "!", x + 15.0f, cy - 18.0f, 10.0f, PA_RGB(255, 255, 255), PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 0, 0.2f);
     }
     pa_hub_pause_anchor(hud_icon_x(4), cy, 17.0f);
-    icon_ring(c, hud_icon_x(4), cy, 19.0f);
+    icon_ring(c, hud_icon_x(4), cy, 21.0f);
 }
 
 static void button(PA_Canvas *c, Box b, const char *label, PA_Color col, float pop) {
@@ -1595,12 +1669,13 @@ static void s_render(PA_Canvas *c) {
     draw_background(c);
     g_ox += shx; g_oy += shy;
     for (int i = 0; i < g_npoly; i++) if (g_poly[i].fill) glass_fill(c, &g_poly[i]);
+    for (int i = 0; i < g_npoly; i++) if (g_poly[i].fill != 2) tube_stroke(c, g_poly[i].p, g_poly[i].n, WALL_R * 2.0f, 1, 0);
     draw_cup_back(c);
     draw_balls(c, 1);
     draw_cup_front(c);
     draw_balls(c, 0);
     for (int i = 0; i < g_nb; i++) if (g_b[i].alive && g_b[i].kind == BK_BOMB) draw_bomb(c, &g_b[i]);
-    for (int i = 0; i < g_npoly; i++) if (g_poly[i].fill != 2) tube_stroke(c, g_poly[i].p, g_poly[i].n, WALL_R * 2.0f, 1);
+    for (int i = 0; i < g_npoly; i++) if (g_poly[i].fill != 2) tube_stroke(c, g_poly[i].p, g_poly[i].n, WALL_R * 2.0f, 1, 1);
     for (int k = 0; k < g_npin; k++) draw_pin(c, &g_pin[k]);
     draw_particles(c, 0);
     if (g_hand_x < DW + 100.0f && g_state == ST_PLAY)
@@ -1640,10 +1715,13 @@ static void s_thumb(PA_Canvas *c, float x, float y, float w, float h, float t) {
     PA_Vec2 tube[6] = { { sp - w * 0.07f, y + h * 0.64f }, { sp - w * 0.07f, y + h * 0.56f }, { tx0, y + h * 0.44f },
                         { tx0, top }, { tx1, top }, { tx1, y + h * 0.44f } };
     PA_Vec2 tube2[2] = { { tx1, y + h * 0.44f }, { sp + w * 0.07f, y + h * 0.56f } };
-    tube_stroke(c, tube, 6, w * 0.035f, 0);
-    tube_stroke(c, tube2, 2, w * 0.035f, 0);
+    for (int ps = 0; ps < 2; ps++) {
+        tube_stroke(c, tube, 6, w * 0.05f, 0, ps);
+        tube_stroke(c, tube2, 2, w * 0.05f, 0, ps);
+    }
     PA_Vec2 tube3[2] = { { sp + w * 0.07f, y + h * 0.56f }, { sp + w * 0.07f, y + h * 0.64f } };
-    tube_stroke(c, tube3, 2, w * 0.035f, 0);
+    tube_stroke(c, tube3, 2, w * 0.05f, 0, 0);
+    tube_stroke(c, tube3, 2, w * 0.05f, 0, 1);
     pa_fill_rect(c, sp - w * 0.13f, y + h * 0.70f, w * 0.26f, h * 0.16f, PA_RGBA(255, 255, 255, 120));
     pa_fill_ellipse(c, sp, y + h * 0.70f, w * 0.15f, h * 0.025f, pa_hex(0xFF7A1A));
     pa_fill_ellipse(c, sp, y + h * 0.70f, w * 0.115f, h * 0.012f, pa_shade(pa_hex(0xFF7A1A), -0.3f));

@@ -24,40 +24,43 @@
 
 /* ------------------------------------------------------------- tuning -- */
 #define TRACK_HALF   5.0f
-#define TRACK_LEN    48.0f       /* castle front */
-#define CAM_D        40.0f       /* perspective distance */
-#define VK           0.86f       /* vertical foreshortening of heights */
+#define TRACK_LEN    40.0f       /* castle front */
+#define CAM_D        20.0f       /* perspective distance: a low, close chase camera */
+#define VK           0.95f       /* vertical foreshortening of heights */
 #define CANNON_Z     1.0f
-#define DEFENCE_Z    2.7f        /* hazard stripe: reds crossing it hurt the cannon */
-#define UNIT_H       0.78f
-#define BLUE_SPEED   6.8f
-#define HIT_R        0.46f
+#define DEFENCE_Z    2.6f        /* hazard stripe: reds crossing it hurt the cannon */
+#define UNIT_H       1.25f
+#define BLUE_SPEED   6.4f
+#define HIT_R        0.60f
 #define MAX_BLUE     1500
 #define MAX_RED      1100
 #define MAX_BRUTES   10
 #define MAX_CHAMPS   8
 #define MAX_GATES    12
+#define MAX_LADDER   10
+#define SEP_R        0.52f
 #define MAX_PARTS    900
 #define MAX_FLOATS   40
 #define MAX_DECOR    90
 #define MAX_SCUFF    40
-#define CELL         0.5f
-#define GX           24          /* x in [-6, 6) */
-#define GZ           144         /* z in [-4, 68) */
+#define CELL         0.7f
+#define GX           18          /* x in [-6, 6.6) */
+#define GZ           72          /* z in [-4, 46.4) */
 #define ZBINS        GZ
 
 enum { S_READY, S_PLAY, S_WIN, S_FAIL, S_RESULT, S_SHOP };
 enum { G_MUL, G_ADD, G_SUB };
-enum { PK_PUFF, PK_BIT, PK_RING, PK_SPARK };
+enum { PK_PUFF, PK_BIT, PK_RING, PK_SPARK, PK_FLASH, PK_DUST };
 enum { T_BLUE, T_RED, T_GLOW, T_COUNT };
 
-typedef struct { float x, z, vx, ph, fresh; uint16_t gates; uint8_t dead; } Mob;
+typedef struct { float x, z, vx, ph, fresh; uint16_t gates, lad; uint8_t dead; } Mob;
 typedef struct { float x, z, hp, maxhp, flash, ph, size, speed; uint16_t gates; int boss; } Brute;
 typedef struct { int type, val; float x0, x, z, w, amp, spd, ph, pulse, cool; int hunger; } Gate;
 typedef struct { float x, z, y, vx, vz, vy, life, max, size; PA_Color col; int kind; } Part;
 typedef struct { float x, z, y, t, size; PA_Color col; char text[16]; } Float;
 typedef struct { float x, z, s; int kind; } Decor;
 typedef struct { float x, y, w, h; } Rect;
+typedef struct { float x, z, w, cool, pulse; } Ladder;
 
 /* ------------------------------------------------------------- state -- */
 static Mob   g_blue[MAX_BLUE];  static int g_nblue;
@@ -65,6 +68,7 @@ static Mob   g_red[MAX_RED];    static int g_nred;
 static Brute g_brute[MAX_BRUTES]; static int g_nbrute;
 static Brute g_champ[MAX_CHAMPS]; static int g_nchamp;
 static Gate  g_gate[MAX_GATES]; static int g_ngate;
+static Ladder g_lad[MAX_LADDER]; static int g_nlad;
 static Part  g_part[MAX_PARTS]; static int g_pi;
 static Float g_float[MAX_FLOATS]; static int g_fi;
 static Decor g_decor[MAX_DECOR]; static int g_ndecor;
@@ -83,7 +87,7 @@ static struct {
     int   up_fire, up_champ, up_income;
     /* level */
     float base_hp, base_max, base_flash, base_shake, collapse;
-    int   boss_level;
+    int   boss_level, theme, built_level;
     float cannon_x, cannon_tx, recoil, cannon_flash;
     int   cannon_hp, cannon_max;
     float fire_acc, charge, charge_max, charge_flash;
@@ -121,12 +125,11 @@ static float frand(float a, float b) { return pa_rng_range(&G.rng, a, b); }
 static void layout(float w, float h) {
     g_w = w; g_h = h;
     int portrait = h >= w;
-    g_k = fminf(w * 0.47f, h * 0.40f) / TRACK_HALF;
-    float y0 = h * (portrait ? 0.835f : 0.88f);
-    float yf = h * (portrait ? (h / w < 2.0f ? 0.275f : 0.255f) : 0.36f);
-    float pl = CAM_D / (TRACK_LEN + CAM_D);
-    g_y0 = y0;
-    g_yh = (yf - y0 * pl) / (1.0f - pl);
+    /* A low chase camera: the lane fills the screen at the cannon (~80% down)
+       and converges on a vanishing point 10% from the top. */
+    g_k = fminf(w * 0.50f, h * (portrait ? 0.62f : 0.40f)) / TRACK_HALF;
+    g_y0 = h * (portrait ? 0.86f : 0.90f);
+    g_yh = h * (portrait ? 0.10f : 0.12f);
     g_u = pa_clampf(fminf(w / 540.0f, h / 900.0f), 0.62f, 2.2f);
 }
 
@@ -153,7 +156,7 @@ static void txt(PA_Canvas *c, const char *s, float x, float y, float size, PA_Co
 }
 
 /* ------------------------------------------------------------ economy -- */
-static float fire_rate(int lvl)  { return 8.0f + 0.6f * (float)lvl; }
+static float fire_rate(int lvl)  { return 9.0f + 0.6f * (float)lvl; }
 static int   champ_hp(int lvl)   { return 26 + 12 * lvl; }
 static float income_mul(int lvl) { return 1.0f + 0.15f * (float)lvl; }
 static int cost_fire(int lvl)   { return (int)(50.0f * powf(1.30f, (float)lvl) + 0.5f) / 5 * 5; }
@@ -206,7 +209,7 @@ static void bits(float x, float y, float z, PA_Color col, int n, float speed, fl
         float a = frand(0.0f, PA_TAU);
         float s = frand(0.3f, 1.0f) * speed;
         p->vx = cosf(a) * s; p->vz = sinf(a) * s * 0.7f; p->vy = frand(0.4f, 1.0f) * up;
-        p->life = p->max = frand(0.6f, 1.2f); p->size = frand(0.08f, 0.20f); p->col = col;
+        p->life = p->max = frand(0.7f, 1.3f); p->size = frand(0.16f, 0.36f); p->col = col;
     }
 }
 
@@ -232,6 +235,28 @@ static void float_text(float x, float y, float z, const char *s, PA_Color col, f
 }
 
 static void kick(float amount) { if (amount > G.shake) G.shake = amount; }
+
+static void flash_ring(float x, float y, float z, float px) {
+    Part *p = part_new();
+    p->kind = PK_FLASH; p->x = x; p->y = y; p->z = z; p->life = p->max = 0.32f; p->size = px;
+}
+
+static void dust(float x, float z, int n, float spread, float size) {
+    for (int i = 0; i < n; i++) {
+        Part *p = part_new();
+        p->kind = PK_DUST; p->x = x + frand(-spread, spread); p->z = z + frand(-0.6f, 1.6f); p->y = frand(0.2f, 2.0f);
+        p->vx = frand(-1.2f, 1.2f); p->vz = frand(-0.6f, 0.6f); p->vy = frand(0.3f, 1.4f);
+        p->life = p->max = frand(1.0f, 1.8f); p->size = size * frand(0.6f, 1.2f); p->col = pa_hex(0xD9CFC4);
+    }
+}
+
+/* A heavy hit: chunks, a white flash ring 0.15 of the screen, a short shake. */
+static void impact(float x, float y, float z, PA_Color col, int n, float shake) {
+    bits(x, y, z, col, n, 5.0f, 6.0f);
+    bits(x, y, z, PA_RGB(250, 246, 240), n / 3, 5.0f, 6.0f);
+    flash_ring(x, y, z, 0.15f * 540.0f);
+    kick(shake);
+}
 
 /* ------------------------------------------------------------- sounds -- */
 static void snd_fire(void) {
@@ -267,17 +292,19 @@ static void add_gate(int type, int val, float x, float z, float w) {
 
 static void level_build(int n) {
     pa_rng_seed(&G.rng, 4111u + (uint32_t)n * 7919u);
-    g_nblue = g_nred = g_nbrute = g_nchamp = g_ngate = 0;
+    g_nblue = g_nred = g_nbrute = g_nchamp = g_ngate = g_nlad = 0;
     for (int i = 0; i < MAX_PARTS; i++) g_part[i].life = 0.0f;
     for (int i = 0; i < MAX_FLOATS; i++) g_float[i].t = 9.0f;
 
     float m = (float)(n - 1);
     G.boss_level = n % 5 == 0;
+    G.theme = (n - 1) % 3;
+    G.built_level = n;
 
     /* Gate schedule: the product of the best gate in each row. One row of x2
        to teach, then the multipliers stack as the levels climb. */
     int rows, mul[3] = { 2, 2, 2 };
-    if (n == 1) { rows = 1; }
+    if (n == 1) { rows = 1; mul[0] = 3; }
     else if (n == 2) { rows = 1; mul[0] = 3; }
     else if (n <= 5) { rows = 2; }
     else if (n <= 9) { rows = 2; mul[pa_rng_int(&G.rng, 0, 1)] = 3; }
@@ -310,31 +337,31 @@ static void level_build(int n) {
     G.red_speed = fminf(4.6f, 3.3f + 0.08f * m);
     G.brute_every = n >= 8 ? 2 : 3;
     G.brute_hp = n >= 3 ? 0.9f * expect : 0.0f;
-    G.boss_timer = 8.0f; G.boss_spawned = !G.boss_level;
+    G.boss_timer = 0.0f; G.boss_spawned = !G.boss_level;
     G.kills = 0;
     G.t = 0.0f;
 
     /* Gate rows. The first levels teach with gifts only; traps and moving
        panels arrive once the player knows what a multiplier does. */
-    static const float ROWZ[3][3] = { { 17.0f, 0, 0 }, { 12.0f, 25.0f, 0 }, { 10.0f, 19.5f, 29.5f } };
+    static const float ROWZ[3][3] = { { 11.0f, 0, 0 }, { 8.5f, 17.5f, 0 }, { 7.5f, 14.0f, 21.0f } };
     for (int r = 0; r < rows; r++) {
         float z = ROWZ[rows - 1][r];
         int good = mul[r];
         int add = 5 * (int)((fire_rate(n - 1) * 1.6f + 4.0f) / 5.0f);
         int sub = 4 + n / 2;
-        if (n == 1) { add_gate(G_MUL, 2, -1.6f, z, 4.0f); continue; }
-        if (n == 2) { add_gate(G_MUL, 3, 2.2f, z, 3.4f); add_gate(G_ADD, 10, -2.4f, z, 3.2f); continue; }
+        if (n == 1) { add_gate(G_MUL, 3, -1.2f, z, 4.6f); continue; }
+        if (n == 2) { add_gate(G_MUL, 3, 2.5f, z, 4.2f); add_gate(G_ADD, 10, -2.5f, z, 4.2f); continue; }
         int pick = pa_rng_int(&G.rng, 0, n >= 7 ? 4 : (n >= 4 ? 3 : 1));
         float side = pa_rng_chance(&G.rng, 0.5f) ? 1.0f : -1.0f;
         switch (pick) {
-            case 0: add_gate(G_MUL, good, frand(-2.2f, 2.2f), z, 4.0f); break;
-            case 1: add_gate(G_MUL, good, -2.5f * side, z, 3.4f); add_gate(G_ADD, add, 2.5f * side, z, 3.3f); break;
-            case 2: add_gate(G_MUL, good, -2.5f * side, z, 3.4f); add_gate(G_SUB, sub, 2.5f * side, z, 3.4f); break;
-            case 3: if (good == 3) { add_gate(G_MUL, 3, -2.6f * side, z, 3.0f); add_gate(G_MUL, 2, 2.4f * side, z, 3.6f); }
-                    else { add_gate(G_MUL, 2, -2.5f * side, z, 3.4f); add_gate(G_ADD, add, 2.5f * side, z, 3.3f); }
+            case 0: add_gate(G_MUL, good, frand(-1.8f, 1.8f), z, 4.6f); break;
+            case 1: add_gate(G_MUL, good, -2.55f * side, z, 4.3f); add_gate(G_ADD, add, 2.55f * side, z, 4.1f); break;
+            case 2: add_gate(G_MUL, good, -2.55f * side, z, 4.3f); add_gate(G_SUB, sub, 2.55f * side, z, 4.1f); break;
+            case 3: if (good == 3) { add_gate(G_MUL, 3, -2.6f * side, z, 4.0f); add_gate(G_MUL, 2, 2.5f * side, z, 4.4f); }
+                    else { add_gate(G_MUL, 2, -2.55f * side, z, 4.3f); add_gate(G_ADD, add, 2.55f * side, z, 4.1f); }
                     break;
-            default: add_gate(G_MUL, good, 0.0f, z, 2.8f); add_gate(G_SUB, sub, -3.6f, z, 2.6f);
-                     add_gate(G_SUB, sub, 3.6f, z, 2.6f); break;
+            default: add_gate(G_MUL, good, 0.0f, z, 3.4f); add_gate(G_SUB, sub, -3.55f, z, 2.7f);
+                     add_gate(G_SUB, sub, 3.55f, z, 2.7f); break;
         }
     }
     /* moving panels from level 4 */
@@ -350,15 +377,37 @@ static void level_build(int n) {
         }
     }
 
-    /* scenery: pale pines and rocks either side of the track */
+    /* A ladder of +1 panels up one edge on some levels: a side route that
+       pays out steadily, the reference's long blue +1 walls. */
+    if (n >= 3 && (n % 3 == 0 || pa_rng_chance(&G.rng, 0.3f))) {
+        float side = pa_rng_chance(&G.rng, 0.5f) ? 1.0f : -1.0f;
+        float lx = side * (TRACK_HALF - 0.8f);
+        for (float z = 4.5f; z < 27.0f && g_nlad < MAX_LADDER; z += 2.5f) {
+            Ladder *l = &g_lad[g_nlad++];
+            l->x = lx; l->z = z; l->w = 1.3f; l->cool = 0.0f; l->pulse = 0.0f;
+        }
+        /* keep the rows clear of the ladder lane */
+        float edge = TRACK_HALF - 1.6f;
+        for (int i = 0; i < g_ngate; i++) {
+            Gate *g = &g_gate[i];
+            float lo = g->x0 - g->w * 0.5f - g->amp, hi = g->x0 + g->w * 0.5f + g->amp;
+            if (side > 0.0f && hi > edge) { g->x0 -= hi - edge; g->x = g->x0; }
+            if (side < 0.0f && lo < -edge) { g->x0 += -edge - lo; g->x = g->x0; }
+            lo = g->x0 - g->w * 0.5f - g->amp; hi = g->x0 + g->w * 0.5f + g->amp;
+            if (lo < -TRACK_HALF || hi > TRACK_HALF) { g->w = fmaxf(2.4f, g->w - 1.2f); g->amp = fmaxf(0.0f, g->amp - 1.0f); }
+        }
+    }
+
+    /* scenery either side of the track */
     g_ndecor = 0;
     for (int i = 0; i < MAX_DECOR; i++) {
         Decor *d = &g_decor[g_ndecor++];
         float side = (i & 1) ? 1.0f : -1.0f;
-        d->x = side * frand(TRACK_HALF + 1.0f, TRACK_HALF + 13.0f);
-        d->z = frand(-6.0f, TRACK_LEN + 26.0f);
-        d->kind = pa_rng_chance(&G.rng, 0.78f) ? 0 : 1;
+        d->x = side * frand(TRACK_HALF + 1.6f, TRACK_HALF + 16.0f);
+        d->z = frand(-4.0f, TRACK_LEN + 40.0f);
+        d->kind = pa_rng_chance(&G.rng, G.theme == 2 ? 0.7f : 0.75f) ? 0 : 1;
         d->s = frand(0.7f, 1.35f);
+        if (G.theme == 2 && d->kind == 0) d->x = side * (TRACK_HALF + 2.0f + 3.0f * (float)pa_rng_int(&G.rng, 0, 3));
     }
     /* far to near so the painter's order is right */
     for (int i = 1; i < g_ndecor; i++) {
@@ -400,7 +449,8 @@ static void spawn_brute(float x, float hp, int boss) {
     Brute *b = &g_brute[g_nbrute++];
     memset(b, 0, sizeof(*b));
     b->x = x; b->z = TRACK_LEN - 0.8f; b->hp = b->maxhp = hp; b->boss = boss;
-    b->size = boss ? 2.3f : 1.45f; b->speed = boss ? 1.2f : 1.6f;
+    b->size = boss ? 5.0f : 2.0f; b->speed = boss ? 0.45f : 1.4f;
+    if (boss) b->z = TRACK_LEN - 4.0f;
     b->ph = frand(0.0f, PA_TAU);
     pa_tone(110.0f, 70.0f, 0.35f, 3, 0.10f);
 }
@@ -409,7 +459,7 @@ static void spawn_champ(float x, float z, uint16_t gates, float hp) {
     if (g_nchamp >= MAX_CHAMPS) return;
     Brute *b = &g_champ[g_nchamp++];
     memset(b, 0, sizeof(*b));
-    b->x = x; b->z = z; b->hp = b->maxhp = hp; b->size = 1.3f; b->speed = 3.4f; b->gates = gates;
+    b->x = x; b->z = z; b->hp = b->maxhp = hp; b->size = 1.9f; b->speed = 3.2f; b->gates = gates;
     b->ph = frand(0.0f, PA_TAU);
 }
 
@@ -502,6 +552,7 @@ static float bot_target(void) {
             float gx = g->amp > 0.0f ? g->x0 + g->amp * sinf((G.t + eta) * g->spd + g->ph) : g->x;
             if (fabsf(x - gx) < g->w * 0.5f - 0.3f) { float f = gate_factor(g, flow); v *= f; flow *= f; }
         }
+        for (int i = 0; i < g_nlad; i++) if (fabsf(x - g_lad[i].x) < g_lad[i].w * 0.5f - 0.2f) { v *= 1.0f + 3.3f / flow; flow += 3.3f; }
         v -= fabsf(x - G.cannon_x) * 0.01f;
         if (v > best) { best = v; bx = x; }
     }
@@ -521,10 +572,10 @@ static void gate_pass(Mob *m, float pz) {
             float x = m->x, z = m->z; uint16_t gates = m->gates;
             m->fresh = 0.5f;
             for (int k = 1; k < g->val; k++) {
-                float off = (float)((k + 1) / 2) * 0.42f * ((k & 1) ? 1.0f : -1.0f);
+                float off = (float)((k + 1) / 2) * 0.58f * ((k & 1) ? 1.0f : -1.0f);
                 Mob *c = blue_new(pa_clampf(x + off, g->x - g->w * 0.5f + 0.1f, g->x + g->w * 0.5f - 0.1f), z + frand(0.0f, 0.25f));
                 if (!c) break;
-                c->gates = gates; c->fresh = 0.5f; c->vx = off * 2.4f;
+                c->gates = gates; c->lad = m->lad; c->fresh = 0.5f; c->vx = off * 1.8f;
             }
             g->pulse = 1.0f;
             snd_gate(g->val);
@@ -535,7 +586,7 @@ static void gate_pass(Mob *m, float pz) {
                 for (int k = 0; k < g->val; k++) {
                     Mob *c = blue_new(pa_clampf(x + frand(-1.0f, 1.0f), -TRACK_HALF + 0.3f, TRACK_HALF - 0.3f), z + frand(0.0f, 0.8f));
                     if (!c) break;
-                    c->gates = gates; c->fresh = 0.5f; c->vx = frand(-1.0f, 1.0f);
+                    c->gates = gates; c->lad = m->lad; c->fresh = 0.5f; c->vx = frand(-1.0f, 1.0f);
                 }
                 char buf[16]; snprintf(buf, sizeof(buf), "+%d", g->val);
                 float_text(g->x, 1.9f, g->z, buf, PA_RGB(255, 255, 255), 1.0f);
@@ -554,6 +605,24 @@ static void gate_pass(Mob *m, float pz) {
             }
         }
         if (m->dead) return;
+    }
+}
+
+/* Each +1 panel hands out one extra mob to a passer, then needs a moment. */
+static void ladder_pass(Mob *m, float pz) {
+    for (int i = 0; i < g_nlad; i++) {
+        Ladder *l = &g_lad[i];
+        if (!(pz < l->z && m->z >= l->z)) continue;
+        if (fabsf(m->x - l->x) > l->w * 0.5f) continue;
+        uint16_t bit = (uint16_t)(1u << i);
+        if (m->lad & bit) continue;
+        m->lad |= bit;
+        if (l->cool > 0.0f) continue;
+        l->cool = 0.3f; l->pulse = 1.0f;
+        Mob *c = blue_new(m->x + frand(-0.3f, 0.3f), m->z + 0.1f);
+        if (c) { c->gates = m->gates; c->lad = m->lad; c->fresh = 0.4f; c->vx = -l->x * 0.12f; }
+        m->fresh = 0.4f;
+        if (G.sfx_gate <= 0.0f) { G.sfx_gate = 0.07f; pa_tone(880.0f + 40.0f * (float)i, 1320.0f, 0.04f, 1, 0.035f); }
     }
 }
 
@@ -589,7 +658,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             while (G.fire_acc >= 1.0f) {
                 G.fire_acc -= 1.0f;
                 Mob *m = blue_new(G.cannon_x + frand(-0.25f, 0.25f), CANNON_Z + 0.55f + frand(0.0f, 0.3f));
-                if (m) m->vx = frand(-1.5f, 1.5f) + (G.cannon_tx - G.cannon_x) * 0.6f;
+                if (m) m->vx = frand(-2.3f, 2.3f) + (G.cannon_tx - G.cannon_x) * 0.6f;
                 G.recoil = 1.0f;
                 snd_fire();
                 G.charge += 1.0f;
@@ -616,16 +685,22 @@ static void sim_step(float dt, const PA_Input *in, int live) {
                 spawn_brute(frand(-2.0f, 2.0f), floorf(G.brute_hp), 0);
         }
         if (G.wave_left > 0) {
-            G.wave_acc += dt * fmaxf(40.0f, G.red_rate * G.wave_gap / 0.6f);
+            G.wave_acc += dt * G.red_speed / 0.62f;
+            /* the wave pours out as a carpet: full-width ranks, shoulder to shoulder */
             while (G.wave_acc >= 1.0f && G.wave_left > 0 && g_nred < G.red_cap) {
-                G.wave_acc -= 1.0f; G.wave_left--;
-                red_new(frand(-3.6f, 3.6f), TRACK_LEN - frand(0.3f, 3.2f));
+                G.wave_acc -= 1.0f;
+                int per = 13;
+                for (int k = 0; k < per && G.wave_left > 0; k++) {
+                    float x = -TRACK_HALF + 0.5f + (float)k * ((2.0f * TRACK_HALF - 1.0f) / (float)(per - 1));
+                    red_new(x + frand(-0.12f, 0.12f), TRACK_LEN - 0.4f + frand(-0.15f, 0.15f));
+                    G.wave_left--;
+                }
             }
         }
         if (!G.boss_spawned && G.t >= G.boss_timer) {
             G.boss_spawned = 1;
-            spawn_brute(0.0f, floorf(G.brute_hp * 5.0f), 1);
-            float_text(0.0f, 4.5f, TRACK_LEN - 2.0f, "BOSS!", PA_RGB(255, 90, 80), 1.6f);
+            spawn_brute(0.0f, floorf(G.brute_hp * 25.0f), 1);
+            float_text(0.0f, 9.0f, TRACK_LEN - 4.0f, "BOSS!", PA_RGB(255, 90, 80), 1.6f);
             kick(5.0f);
         }
     } else {
@@ -641,6 +716,10 @@ static void sim_step(float dt, const PA_Input *in, int live) {
         g->pulse = pa_approach(g->pulse, 0.0f, 7.0f, dt);
         if (g->cool > 0.0f) { g->cool -= dt; if (g->cool <= 0.0f) g->hunger = g->val; }
     }
+    for (int i = 0; i < g_nlad; i++) {
+        g_lad[i].cool -= dt;
+        g_lad[i].pulse = pa_approach(g_lad[i].pulse, 0.0f, 6.0f, dt);
+    }
 
     build_grids();
 
@@ -649,7 +728,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
         Mob *m = &g_blue[i];
         float pz = m->z;
         int r0 = row_of(m->z);
-        float want = 0.0f, rate = 1.1f;
+        float want = 0.0f, rate = 0.7f;
         for (int r = r0; r < r0 + 10 && r < GZ; r++) {
             if (g_rrow_n[r] > 0) { want = pa_clampf((g_rrow_x[r] / (float)g_rrow_n[r] - m->x) * 1.6f, -2.4f, 2.4f); rate = 3.0f; break; }
         }
@@ -661,6 +740,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
         m->ph += dt * 9.0f;
         if (m->fresh > 0.0f) m->fresh -= dt;
         gate_pass(m, pz);
+        if (!m->dead && g_nlad) ladder_pass(m, pz);
         if (!m->dead && m->z >= TRACK_LEN - 0.3f) {
             m->dead = 1;
             if (G.base_hp > 0.0f) {
@@ -678,8 +758,8 @@ static void sim_step(float dt, const PA_Input *in, int live) {
         Mob *m = &g_red[i];
         int r0 = row_of(m->z);
         float want = 0.0f;
-        for (int r = r0; r > r0 - 10 && r >= 0; r--) {
-            if (g_brow_n[r] > 0) { want = pa_clampf((g_brow_x[r] / (float)g_brow_n[r] - m->x) * 1.4f, -2.0f, 2.0f); break; }
+        for (int r = r0; r > r0 - 5 && r >= 0; r--) {
+            if (g_brow_n[r] > 0) { want = pa_clampf((g_brow_x[r] / (float)g_brow_n[r] - m->x) * 0.5f, -0.8f, 0.8f); break; }
         }
         m->vx = pa_approach(m->vx, want, 3.0f, dt);
         m->x = pa_clampf(m->x + m->vx * dt, -TRACK_HALF + 0.3f, TRACK_HALF - 0.3f);
@@ -732,8 +812,8 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             Mob *o = &g_blue[j];
             float ddx = b->x - o->x, ddz = b->z - o->z;
             float d2 = ddx * ddx + ddz * ddz;
-            if (d2 < 0.36f * 0.36f && d2 > 1e-6f) {
-                float d = sqrtf(d2), push = (0.36f - d) * 0.5f / d;
+            if (d2 < SEP_R * SEP_R && d2 > 1e-6f) {
+                float d = sqrtf(d2), push = (SEP_R - d) * 0.5f / d;
                 b->x += ddx * push; b->z += ddz * push * 0.5f;
             } else if (d2 <= 1e-6f) b->x += (i & 1) ? 0.05f : -0.05f;
         }
@@ -748,8 +828,8 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             Mob *o = &g_red[j];
             float ddx = b->x - o->x, ddz = b->z - o->z;
             float d2 = ddx * ddx + ddz * ddz;
-            if (d2 < 0.36f * 0.36f && d2 > 1e-6f) {
-                float d = sqrtf(d2), push = (0.36f - d) * 0.5f / d;
+            if (d2 < SEP_R * SEP_R && d2 > 1e-6f) {
+                float d = sqrtf(d2), push = (SEP_R - d) * 0.5f / d;
                 b->x += ddx * push; b->z += ddz * push * 0.5f;
             }
         }
@@ -761,8 +841,8 @@ static void sim_step(float dt, const PA_Input *in, int live) {
         Brute *b = &g_brute[i];
         b->z -= b->speed * dt;
         b->ph += dt * 4.0f;
-        b->flash = pa_approach(b->flash, 0.0f, 10.0f, dt);
-        float rad = 0.75f * b->size;
+        b->flash = pa_approach(b->flash, 0.0f, 14.0f, dt);
+        float rad = 0.55f * b->size;
         int c0 = cell_of(b->x - rad, b->z - rad), c1 = cell_of(b->x + rad, b->z + rad);
         int x0 = c0 % GX, z0 = c0 / GX, x1 = c1 % GX, z1 = c1 / GX;
         for (int zz = z0; zz <= z1; zz++) for (int xx = x0; xx <= x1; xx++) {
@@ -771,17 +851,18 @@ static void sim_step(float dt, const PA_Input *in, int live) {
                 if (m->dead) continue;
                 float ddx = m->x - b->x, ddz = m->z - b->z;
                 if (ddx * ddx + ddz * ddz < rad * rad && b->hp > 0.0f) {
-                    m->dead = 1; b->hp -= 1.0f; b->flash = 1.0f;
+                    m->dead = 1; b->hp -= 1.0f; if (b->flash < 0.15f) b->flash = 1.0f;
                     puff(m->x, m->z, PA_RGB(140, 200, 255), 1, 1.0f);
+                    if (pa_rng_chance(&G.rng, 0.25f)) bits(m->x, 0.8f * b->size, b->z - 0.3f * b->size, PA_RGB(255, 206, 60), 2, 3.0f, 3.0f);
                     snd_kill();
                 }
             }
         }
         if (b->hp <= 0.0f) {
-            bits(b->x, 1.2f * b->size, b->z, PA_RGB(255, 206, 60), 14, 4.0f, 5.0f);
+            impact(b->x, 1.2f * b->size, b->z, PA_RGB(255, 206, 60), b->boss ? 26 : 16, b->boss ? 12.0f : 6.0f);
             bits(b->x, 1.2f * b->size, b->z, PA_RGB(230, 50, 50), 8, 4.0f, 5.0f);
-            ring(b->x, b->z, PA_RGB(255, 230, 140), 2.5f * b->size);
-            kick(b->boss ? 10.0f : 5.0f);
+            ring(b->x, b->z, PA_RGB(255, 230, 140), 1.2f * b->size);
+            if (b->boss) dust(b->x, b->z, 10, 2.0f, 1.4f);
             pa_sfx("boom");
             G.kills += 5;
         } else if (b->z < DEFENCE_Z + 0.2f && live) {
@@ -806,7 +887,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             float dz = e->z - b->z;
             if (dz > -0.5f && dz < best) { best = dz; want = pa_clampf((e->x - b->x) * 1.2f, -2.0f, 2.0f); }
             float ddx = e->x - b->x;
-            float reach = 0.8f * (e->size + b->size);
+            float reach = 0.45f * (e->size + b->size);
             if (fabsf(dz) < reach && fabsf(ddx) < reach && e->hp > 0.0f) {
                 fighting = 1;
                 float dmg = 30.0f * dt;
@@ -822,7 +903,7 @@ static void sim_step(float dt, const PA_Input *in, int live) {
         b->x = pa_clampf(b->x + want * dt, -TRACK_HALF + 0.7f, TRACK_HALF - 0.7f);
         if (!fighting) b->z += b->speed * dt;
         /* trample reds */
-        float rad = 0.8f * b->size;
+        float rad = 0.5f * b->size;
         int c0 = cell_of(b->x - rad, b->z - rad), c1 = cell_of(b->x + rad, b->z + rad);
         int x0 = c0 % GX, z0 = c0 / GX, x1 = c1 % GX, z1 = c1 / GX;
         for (int zz = z0; zz <= z1; zz++) for (int xx = x0; xx <= x1; xx++) {
@@ -842,13 +923,12 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             G.base_hp -= dmg; G.base_flash = 1.0f; G.base_shake = 1.0f;
             char buf[16]; snprintf(buf, sizeof(buf), "-%d", (int)dmg);
             float_text(b->x, 3.8f, TRACK_LEN - 0.5f, buf, PA_RGB(255, 236, 90), 1.5f);
-            bits(b->x, 1.5f, TRACK_LEN - 0.2f, PA_RGB(240, 90, 80), 16, 4.0f, 5.0f);
-            bits(b->x, 1.5f, TRACK_LEN - 0.2f, PA_RGB(250, 245, 240), 10, 4.0f, 5.0f);
-            kick(9.0f);
+            impact(b->x, 2.0f, TRACK_LEN - 0.2f, PA_RGB(226, 64, 64), 18, 9.0f);
+            dust(b->x, TRACK_LEN, 5, 1.5f, 1.2f);
             pa_sfx("boom");
             b->hp = 0.0f;
         } else if (b->hp <= 0.0f) {
-            bits(b->x, 1.0f, b->z, PA_RGB(90, 170, 255), 10, 3.0f, 4.0f);
+            impact(b->x, 1.2f, b->z, PA_RGB(90, 170, 255), 12, 4.0f);
             puff(b->x, b->z, PA_RGB(200, 230, 255), 4, 2.0f);
         }
     }
@@ -862,10 +942,13 @@ static void sim_step(float dt, const PA_Input *in, int live) {
             for (int i = 0; i < g_nred; i++) puff(g_red[i].x, g_red[i].z, PA_RGB(255, 140, 130), 1, 1.5f);
             for (int i = 0; i < g_nbrute; i++) bits(g_brute[i].x, 1.0f, g_brute[i].z, PA_RGB(255, 206, 60), 8, 3.0f, 4.0f);
             g_nred = 0; g_nbrute = 0;
-            for (int k = 0; k < 6; k++) {
-                bits(frand(-4.0f, 4.0f), frand(1.0f, 3.5f), TRACK_LEN + frand(0.0f, 2.5f), PA_RGB(236, 76, 70), 8, 6.0f, 7.0f);
-                bits(frand(-4.0f, 4.0f), frand(1.0f, 3.5f), TRACK_LEN + frand(0.0f, 2.5f), PA_RGB(250, 246, 240), 6, 6.0f, 7.0f);
+            /* the castle comes down: chunks, a flash, a rolling dust cloud */
+            for (int k = 0; k < 7; k++) {
+                bits(frand(-5.0f, 5.0f), frand(1.0f, 5.0f), TRACK_LEN + frand(0.0f, 3.0f), PA_RGB(226, 64, 64), 8, 7.0f, 8.0f);
+                bits(frand(-5.0f, 5.0f), frand(1.0f, 5.0f), TRACK_LEN + frand(0.0f, 3.0f), PA_RGB(246, 240, 236), 5, 7.0f, 8.0f);
             }
+            flash_ring(0.0f, 3.0f, TRACK_LEN, 0.3f * 540.0f);
+            dust(0.0f, TRACK_LEN + 0.5f, 26, 6.0f, 2.2f);
             kick(16.0f);
             pa_sfx("boom");
             pa_sfx("win");
@@ -873,8 +956,8 @@ static void sim_step(float dt, const PA_Input *in, int live) {
         } else if (G.cannon_hp <= 0) {
             G.cannon_hp = 0;
             puff(G.cannon_x, CANNON_Z, PA_RGB(80, 80, 90), 10, 2.5f);
-            bits(G.cannon_x, 0.8f, CANNON_Z, PA_RGB(60, 140, 255), 14, 4.0f, 6.0f);
-            kick(14.0f);
+            impact(G.cannon_x, 0.8f, CANNON_Z, PA_RGB(60, 140, 255), 18, 14.0f);
+            dust(G.cannon_x, CANNON_Z, 8, 1.0f, 0.9f);
             pa_sfx("lose");
             finish(0);
         }
@@ -890,6 +973,8 @@ static void tick_effects(float dt) {
         if (p->kind == PK_BIT || p->kind == PK_SPARK) {
             p->vy -= 14.0f * dt;
             if (p->y < 0.0f) { p->y = 0.0f; p->vy *= -0.35f; p->vx *= 0.6f; p->vz *= 0.6f; }
+        } else if (p->kind == PK_DUST) {
+            p->vx *= 1.0f - 1.5f * dt; p->vy *= 1.0f - 1.2f * dt;
         } else if (p->kind == PK_PUFF) {
             p->vx *= 1.0f - 4.0f * dt; p->vz *= 1.0f - 4.0f * dt; p->vy *= 1.0f - 3.0f * dt;
         }
@@ -1045,50 +1130,56 @@ static void s_update(float dt, const PA_Input *in) {
 /* =========================================================== RENDERING == */
 
 /* ---- mob sprites: one premultiplied bitmap per team, scale and stride ---- */
-#define NSPR 16
+#define NSPR 29
 typedef struct { int w, h, ax, ay; uint8_t *a; uint32_t *c; } Spr;
 static Spr   g_spr[T_COUNT][NSPR][2];
 static float g_spr_k = -1.0f;
 
-static float spr_height(int s) { return 8.0f + (float)s * 2.0f; }
+static float spr_height(int s) { return 8.0f + (float)s * 3.0f; }
 
-static void team_cols(int team, PA_Color *mid, PA_Color *lite, PA_Color *dark) {
-    if (team == T_RED) { *mid = PA_RGB(236, 52, 52); *lite = PA_RGB(255, 128, 112); *dark = PA_RGB(150, 22, 34); }
-    else if (team == T_GLOW) { *mid = PA_RGB(150, 214, 255); *lite = PA_RGB(240, 252, 255); *dark = PA_RGB(70, 150, 245); }
-    else { *mid = PA_RGB(42, 140, 255); *lite = PA_RGB(130, 206, 255); *dark = PA_RGB(22, 76, 196); }
+static void team_cols(int team, PA_Color *mid, PA_Color *lite, PA_Color *dark, PA_Color *rim) {
+    if (team == T_RED) { *mid = pa_hex(0xE8302A); *lite = pa_hex(0xFF8C7C); *dark = pa_hex(0x98121C); *rim = pa_hex(0xFFC9BE); }
+    else if (team == T_GLOW) { *mid = pa_hex(0x8CCBFF); *lite = pa_hex(0xF2FBFF); *dark = pa_hex(0x3F8CF0); *rim = pa_hex(0xFFFFFF); }
+    else { *mid = pa_hex(0x2F8BFF); *lite = pa_hex(0x9FD4FF); *dark = pa_hex(0x1452C8); *rim = pa_hex(0xD2EEFF); }
 }
 
-/* One little mob person, foot at (fx, fy), H pixels tall. Blue run away from
-   the camera so we see their backs; red run at it and show their eyes. */
+/* One little mob person, foot at (fx, fy), H pixels tall, lit by a key light
+   from the upper left with a cool rim on the right. Blue run away from the
+   camera so we see their backs; red run at it and show their eyes. */
 static void draw_mob(PA_Canvas *c, float fx, float fy, float H, int team, int frame) {
-    PA_Color mid, lite, dark;
-    team_cols(team, &mid, &lite, &dark);
+    PA_Color mid, lite, dark, rim;
+    team_cols(team, &mid, &lite, &dark, &rim);
     float st = frame ? 1.0f : -1.0f;
-    pa_fill_ellipse(c, fx, fy - H * 0.02f, H * 0.30f, H * 0.11f, PA_RGBA(30, 34, 70, 70));
+    /* blob contact shadow, 30% black */
+    pa_fill_ellipse(c, fx + H * 0.04f, fy - H * 0.03f, H * 0.33f, H * 0.12f, PA_RGBA(0, 0, 0, 77));
     /* feet */
-    pa_fill_ellipse(c, fx - H * 0.13f, fy - H * 0.07f - st * H * 0.04f, H * 0.095f, H * 0.075f, dark);
-    pa_fill_ellipse(c, fx + H * 0.13f, fy - H * 0.07f + st * H * 0.04f, H * 0.095f, H * 0.075f, dark);
+    pa_fill_ellipse(c, fx - H * 0.13f, fy - H * 0.07f - st * H * 0.04f, H * 0.10f, H * 0.08f, dark);
+    pa_fill_ellipse(c, fx + H * 0.13f, fy - H * 0.07f + st * H * 0.04f, H * 0.10f, H * 0.08f, dark);
     /* arms swing against the feet */
-    pa_fill_ellipse(c, fx - H * 0.25f, fy - H * 0.40f + st * H * 0.05f, H * 0.075f, H * 0.12f, pa_mix(mid, dark, 0.35f));
-    pa_fill_ellipse(c, fx + H * 0.25f, fy - H * 0.40f - st * H * 0.05f, H * 0.075f, H * 0.12f, pa_mix(mid, dark, 0.45f));
-    /* bean body */
-    PA_Paint p = pa_linear(fx - H * 0.25f, fy - H * 0.75f, fx + H * 0.22f, fy - H * 0.08f);
-    pa_stop(&p, 0.0f, lite); pa_stop(&p, 0.45f, mid); pa_stop(&p, 1.0f, dark);
-    pa_round_rect_paint(c, fx - H * 0.22f, fy - H * 0.62f, H * 0.44f, H * 0.56f, H * 0.2f, &p);
-    /* head */
-    PA_Paint ph = pa_radial(fx - H * 0.07f, fy - H * 0.80f, 0.0f, H * 0.30f);
-    pa_stop(&ph, 0.0f, lite); pa_stop(&ph, 0.55f, mid); pa_stop(&ph, 1.0f, pa_mix(mid, dark, 0.6f));
-    pa_fill_circle(c, fx, fy - H * 0.72f, H * 0.23f, PA_RGB(0, 0, 0));
-    pa_fill_ellipse_paint(c, fx, fy - H * 0.72f, H * 0.23f, H * 0.23f, &ph);
+    pa_fill_ellipse(c, fx - H * 0.26f, fy - H * 0.40f + st * H * 0.06f, H * 0.08f, H * 0.13f, pa_mix(mid, lite, 0.2f));
+    pa_fill_ellipse(c, fx + H * 0.26f, fy - H * 0.40f - st * H * 0.06f, H * 0.08f, H * 0.13f, pa_mix(mid, dark, 0.45f));
+    pa_fill_ellipse(c, fx + H * 0.29f, fy - H * 0.43f - st * H * 0.06f, H * 0.03f, H * 0.08f, pa_alpha(rim, 0.8f));
+    /* bean body: rim pass first, the lit body over it nudged left */
+    pa_round_rect(c, fx - H * 0.20f, fy - H * 0.63f, H * 0.44f, H * 0.57f, H * 0.21f, rim);
+    PA_Paint p = pa_linear(fx - H * 0.25f, fy - H * 0.66f, fx + H * 0.20f, fy - H * 0.06f);
+    pa_stop(&p, 0.0f, lite); pa_stop(&p, 0.42f, mid); pa_stop(&p, 1.0f, dark);
+    pa_round_rect_paint(c, fx - H * 0.23f, fy - H * 0.61f, H * 0.43f, H * 0.56f, H * 0.21f, &p);
+    pa_fill_ellipse(c, fx - H * 0.13f, fy - H * 0.42f, H * 0.04f, H * 0.11f, pa_alpha(PA_RGB(255, 255, 255), 0.45f));
+    /* head, same treatment */
+    pa_fill_circle(c, fx + H * 0.02f, fy - H * 0.735f, H * 0.235f, rim);
+    PA_Paint ph = pa_radial(fx - H * 0.09f, fy - H * 0.82f, 0.0f, H * 0.32f);
+    pa_stop(&ph, 0.0f, lite); pa_stop(&ph, 0.5f, mid); pa_stop(&ph, 1.0f, dark);
+    pa_fill_ellipse_paint(c, fx - H * 0.01f, fy - H * 0.725f, H * 0.225f, H * 0.225f, &ph);
     /* little ears, the mob's silhouette */
-    pa_fill_circle(c, fx - H * 0.17f, fy - H * 0.90f, H * 0.075f, mid);
-    pa_fill_circle(c, fx + H * 0.17f, fy - H * 0.90f, H * 0.075f, pa_mix(mid, dark, 0.3f));
-    pa_fill_ellipse(c, fx - H * 0.08f, fy - H * 0.82f, H * 0.07f, H * 0.045f, pa_alpha(PA_RGB(255, 255, 255), 0.65f));
+    pa_fill_circle(c, fx - H * 0.17f, fy - H * 0.91f, H * 0.075f, pa_mix(mid, lite, 0.3f));
+    pa_fill_circle(c, fx + H * 0.16f, fy - H * 0.91f, H * 0.075f, pa_mix(mid, dark, 0.3f));
+    /* specular */
+    pa_fill_ellipse(c, fx - H * 0.09f, fy - H * 0.83f, H * 0.08f, H * 0.05f, pa_alpha(PA_RGB(255, 255, 255), 0.85f));
     if (team == T_RED) {
-        pa_fill_circle(c, fx - H * 0.08f, fy - H * 0.70f, H * 0.055f, PA_RGB(255, 255, 255));
-        pa_fill_circle(c, fx + H * 0.08f, fy - H * 0.70f, H * 0.055f, PA_RGB(255, 255, 255));
-        pa_fill_circle(c, fx - H * 0.075f, fy - H * 0.69f, H * 0.028f, PA_RGB(40, 10, 20));
-        pa_fill_circle(c, fx + H * 0.085f, fy - H * 0.69f, H * 0.028f, PA_RGB(40, 10, 20));
+        pa_fill_circle(c, fx - H * 0.08f, fy - H * 0.70f, H * 0.06f, PA_RGB(255, 255, 255));
+        pa_fill_circle(c, fx + H * 0.08f, fy - H * 0.70f, H * 0.06f, PA_RGB(255, 255, 255));
+        pa_fill_circle(c, fx - H * 0.075f, fy - H * 0.69f, H * 0.03f, PA_RGB(40, 10, 20));
+        pa_fill_circle(c, fx + H * 0.085f, fy - H * 0.69f, H * 0.03f, PA_RGB(40, 10, 20));
     }
 }
 
@@ -1161,8 +1252,8 @@ static void blit(PA_Canvas *c, const Spr *s, int x, int y) {
 }
 
 static const Spr *spr_for(int team, float z, int frame) {
-    float H = UNIT_H * ss(z) * 1.18f;
-    int s = (int)((H - 8.0f) * 0.5f + 0.5f);
+    float H = UNIT_H * ss(z);
+    int s = (int)((H - 8.0f) / 3.0f + 0.5f);
     s = s < 0 ? 0 : (s >= NSPR ? NSPR - 1 : s);
     return &g_spr[team][s][frame & 1];
 }
@@ -1230,165 +1321,403 @@ static void draw_pill(PA_Canvas *c, float x, float y, float w, float h, int gem,
     txt(c, buf, tx, y + h * 0.52f, ts, PA_RGB(255, 255, 255), gem ? PA_ALIGN_LEFT : PA_ALIGN_RIGHT, 1.3f);
 }
 
-/* ---- the scenery ---- */
-static void draw_ground(PA_Canvas *c) {
-    PA_Paint p = pa_linear(0, 0, 0, g_h);
-    pa_stop(&p, 0.0f, PA_RGB(214, 218, 232));
-    pa_stop(&p, 0.45f, PA_RGB(196, 201, 220));
-    pa_stop(&p, 1.0f, PA_RGB(176, 182, 204));
-    pa_fill_rect_paint(c, 0, 0, g_w, g_h, &p);
-    /* faint field stripes for depth */
-    for (int i = 0; i < 18; i++) {
-        float z0 = -6.0f + (float)i * 6.0f, z1 = z0 + 3.0f;
-        float y0 = sy(z1), y1 = sy(z0);
-        if (y1 < 0.0f || y0 > g_h) continue;
-        pa_fill_rect(c, 0, y0, g_w, y1 - y0, PA_RGBA(255, 255, 255, 18));
-    }
+/* ---- the scenery ----
+   Everything that never moves (sky, horizon, ground, props, the textured road
+   and its paint) is painted once per level into a cached canvas and copied in
+   each frame, so it can afford per-pixel grain and dozens of decals. */
+typedef struct {
+    uint32_t sky0, sky1, haze, gfar, gnear, rfar, rnear, curb, curb_side, speck, hill, hill2;
+} Theme;
+static const Theme THEMES[3] = {
+    /* snow field */
+    { 0xB9C6E4, 0xE8EDF7, 0xF2F4FA, 0xE4E8F2, 0xC9CFE0, 0xE3E4EA, 0xC6C8D2, 0xF5F6FA, 0xAEB2C4, 0xFFFFFF, 0xCDD5EA, 0xB6C0DC },
+    /* desert road */
+    { 0xF0BE7E, 0xFBE3BC, 0xFBEAD0, 0xF1D7A8, 0xDDB27A, 0xB3ACA7, 0x948C86, 0xEDE6DC, 0x8A8178, 0xC0904F, 0xE7AE74, 0xD8955C },
+    /* harbour yard */
+    { 0x86B0E2, 0xD7E6F5, 0xE4EDF7, 0xAAB3C7, 0x8D96AC, 0xD4D6DC, 0xB9BBC5, 0xF1F2F6, 0x9599AA, 0x6F788E, 0xA7B8D2, 0x91A4C2 },
+};
+
+static PA_Canvas g_bg;
+static int g_bg_key = -1, g_bg_w, g_bg_h;
+
+static uint32_t hash32(uint32_t x) {
+    x ^= x >> 16; x *= 0x7FEB352Du; x ^= x >> 15; x *= 0x846CA68Bu; x ^= x >> 16;
+    return x;
+}
+static float hashf(int x, int y) { return (float)(hash32((uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u) & 0xFFFF) / 65535.0f; }
+/* smooth value noise for blotches on the asphalt */
+static float vnoise(float x, float y) {
+    int ix = (int)floorf(x), iy = (int)floorf(y);
+    float fx = x - (float)ix, fy = y - (float)iy;
+    fx = fx * fx * (3.0f - 2.0f * fx); fy = fy * fy * (3.0f - 2.0f * fy);
+    float a = hashf(ix, iy), b = hashf(ix + 1, iy), c = hashf(ix, iy + 1), d = hashf(ix + 1, iy + 1);
+    return pa_lerpf(pa_lerpf(a, b, fx), pa_lerpf(c, d, fx), fy);
 }
 
 static void draw_pine(PA_Canvas *c, float x, float z, float s) {
     float k = ss(z);
     PA_Vec2 b = proj(x, 0.0f, z);
-    float h = 2.6f * s * k * VK, w = 0.9f * s * k;
-    pa_shadow(c, b.x + w * 0.3f, b.y, w * 0.9f, w * 0.28f, 0.35f);
-    pa_fill_rect(c, b.x - w * 0.1f, b.y - h * 0.22f, w * 0.2f, h * 0.22f, PA_RGB(128, 120, 132));
+    float h = 3.4f * s * k * VK, w = 1.15f * s * k;
+    pa_shadow(c, b.x + w * 0.5f, b.y, w * 1.2f, w * 0.32f, 0.45f);
+    pa_fill_rect(c, b.x - w * 0.1f, b.y - h * 0.22f, w * 0.2f, h * 0.22f, PA_RGB(120, 108, 120));
     for (int t = 0; t < 3; t++) {
         float ty = b.y - h * (0.18f + 0.26f * (float)t);
         float tw = w * (1.0f - 0.24f * (float)t);
         float th = h * 0.42f;
         PA_Vec2 l[3] = { { b.x, ty - th }, { b.x - tw, ty }, { b.x, ty + th * 0.08f } };
         PA_Vec2 r[3] = { { b.x, ty - th }, { b.x, ty + th * 0.08f }, { b.x + tw, ty } };
-        pa_fill_poly(c, l, 3, PA_RGB(150, 172, 170));
-        pa_fill_poly(c, r, 3, PA_RGB(116, 138, 142));
+        pa_fill_poly(c, l, 3, PA_RGB(132, 166, 160));
+        pa_fill_poly(c, r, 3, PA_RGB(92, 124, 130));
+        /* snow on each tier */
+        PA_Vec2 sn[4] = { { b.x, ty - th }, { b.x - tw * 0.55f, ty - th * 0.42f }, { b.x, ty - th * 0.55f }, { b.x + tw * 0.5f, ty - th * 0.45f } };
+        pa_fill_poly(c, sn, 4, PA_RGB(236, 242, 248));
     }
-    /* snow-pale tips, the plates' misty pines */
-    PA_Vec2 tip[3] = { { b.x, b.y - h * 0.94f }, { b.x - w * 0.22f, b.y - h * 0.80f }, { b.x + w * 0.22f, b.y - h * 0.80f } };
-    pa_fill_poly(c, tip, 3, PA_RGB(214, 226, 230));
 }
 
-static void draw_rock(PA_Canvas *c, float x, float z, float s) {
+static void draw_rock(PA_Canvas *c, float x, float z, float s, PA_Color lit, PA_Color shade) {
     float k = ss(z);
     PA_Vec2 b = proj(x, 0.0f, z);
-    float w = 0.7f * s * k, h = 0.45f * s * k * VK;
-    pa_shadow(c, b.x, b.y, w * 1.1f, w * 0.3f, 0.3f);
+    float w = 0.9f * s * k, h = 0.6f * s * k * VK;
+    pa_shadow(c, b.x + w * 0.2f, b.y, w * 1.2f, w * 0.3f, 0.4f);
     PA_Vec2 r[6] = { { b.x - w, b.y }, { b.x - w * 0.7f, b.y - h * 0.8f }, { b.x - w * 0.1f, b.y - h * 1.1f },
                      { b.x + w * 0.6f, b.y - h * 0.8f }, { b.x + w, b.y }, { b.x, b.y + h * 0.1f } };
-    pa_fill_poly(c, r, 6, PA_RGB(156, 158, 176));
+    pa_fill_poly(c, r, 6, shade);
     PA_Vec2 hi[4] = { { b.x - w * 0.7f, b.y - h * 0.8f }, { b.x - w * 0.1f, b.y - h * 1.1f }, { b.x + w * 0.2f, b.y - h * 0.5f }, { b.x - w * 0.5f, b.y - h * 0.35f } };
-    pa_fill_poly(c, hi, 4, PA_RGB(190, 192, 208));
+    pa_fill_poly(c, hi, 4, lit);
 }
 
-static void draw_track(PA_Canvas *c) {
-    float zn = -12.0f, zf = TRACK_LEN + 4.0f, H = TRACK_HALF;
-    /* soft drop shadow either side so the slab sits on the ground */
-    quad(c, proj(-H - 0.9f, 0, zn), proj(-H, 0, zn), proj(-H, 0, zf), proj(-H - 0.9f, 0, zf), PA_RGBA(80, 84, 120, 40));
-    quad(c, proj(H, 0, zn), proj(H + 0.9f, 0, zn), proj(H + 0.9f, 0, zf), proj(H, 0, zf), PA_RGBA(80, 84, 120, 40));
-    /* slab side faces */
-    quad(c, proj(-H - 0.35f, 0.0f, zn), proj(-H - 0.35f, 0.0f, zf), proj(-H - 0.35f, 0.32f, zf), proj(-H - 0.35f, 0.32f, zn), PA_RGB(150, 152, 168));
+static void draw_cactus(PA_Canvas *c, float x, float z, float s) {
+    float k = ss(z);
+    PA_Vec2 b = proj(x, 0.0f, z);
+    float h = 2.6f * s * k * VK, w = 0.36f * s * k;
+    pa_shadow(c, b.x + w * 1.5f, b.y, w * 2.6f, w * 0.6f, 0.45f);
+    PA_Color g0 = PA_RGB(92, 168, 92), g1 = PA_RGB(56, 122, 70);
+    pa_round_rect(c, b.x - w * 0.5f, b.y - h, w, h, w * 0.5f, g1);
+    pa_round_rect(c, b.x - w * 0.5f, b.y - h, w * 0.55f, h, w * 0.3f, g0);
+    for (int sd = -1; sd <= 1; sd += 2) {
+        float ay = b.y - h * (sd < 0 ? 0.55f : 0.68f), ax = b.x + (float)sd * w * 1.15f;
+        pa_round_rect(c, ax - w * 0.32f, ay - h * 0.28f, w * 0.64f, h * 0.32f, w * 0.32f, sd < 0 ? g0 : g1);
+        pa_round_rect(c, fminf(ax, b.x), ay - w * 0.3f, fabsf(ax - b.x), w * 0.6f, w * 0.3f, sd < 0 ? g0 : g1);
+    }
+}
+
+static void draw_container(PA_Canvas *c, float x, float z, float s, int tint) {
+    static const uint32_t TINT[5] = { 0xD9473E, 0x2F6FD0, 0xF09A2A, 0x2AA39A, 0x8A57C8 };
+    PA_Color base = pa_hex(TINT[tint % 5]);
+    float len = 2.6f * s, wid = 1.1f, hgt = 1.15f;
+    float stack = (tint % 3 == 0) ? 2.0f : 1.0f;
+    pa_shadow(c, sx(x, z), sy(z), ss(z) * len * 0.8f, ss(z) * 0.5f, 0.5f);
+    for (int i = 0; i < (int)stack; i++) {
+        PA_Color b2 = i ? pa_hex(TINT[(tint + 2) % 5]) : base;
+        float y0 = hgt * (float)i, y1 = y0 + hgt;
+        float x0 = x - wid * 0.5f, x1 = x + wid * 0.5f;
+        if (x1 < 0.0f) quad(c, proj(x1, y0, z), proj(x1, y0, z + len), proj(x1, y1, z + len), proj(x1, y1, z), pa_shade(b2, -0.05f));
+        if (x0 > 0.0f) quad(c, proj(x0, y0, z), proj(x0, y0, z + len), proj(x0, y1, z + len), proj(x0, y1, z), pa_shade(b2, -0.3f));
+        quad(c, proj(x0, y1, z), proj(x1, y1, z), proj(x1, y1, z + len), proj(x0, y1, z + len), pa_shade(b2, 0.3f));
+        quad(c, proj(x0, y0, z), proj(x1, y0, z), proj(x1, y1, z), proj(x0, y1, z), pa_shade(b2, -0.15f));
+        /* corrugation */
+        for (int r = 1; r < 6; r++) {
+            float zz = z + len * (float)r / 6.0f;
+            float xs = x1 < 0.0f ? x1 : x0;
+            PA_Vec2 a = proj(xs, y0 + 0.08f, zz), bb = proj(xs, y1 - 0.08f, zz);
+            pa_line(c, a.x, a.y, bb.x, bb.y, fmaxf(1.0f, ss(zz) * 0.05f), PA_RGBA(0, 0, 0, 40));
+        }
+    }
+}
+
+static void draw_lamp(PA_Canvas *c, float x, float z, float s) {
+    float k = ss(z);
+    PA_Vec2 b = proj(x, 0.0f, z);
+    float h = 4.2f * s * k * VK;
+    pa_shadow(c, b.x, b.y, k * 0.5f, k * 0.15f, 0.4f);
+    pa_line(c, b.x, b.y, b.x, b.y - h, fmaxf(1.5f, k * 0.12f), PA_RGB(84, 90, 110));
+    float dir = x < 0.0f ? 1.0f : -1.0f;
+    pa_line(c, b.x, b.y - h, b.x + dir * k * 0.7f, b.y - h + k * 0.1f, fmaxf(1.5f, k * 0.1f), PA_RGB(84, 90, 110));
+    pa_fill_ellipse(c, b.x + dir * k * 0.75f, b.y - h + k * 0.18f, k * 0.28f, k * 0.12f, PA_RGB(250, 240, 200));
+}
+
+static void draw_horizon(PA_Canvas *c, const Theme *th, int theme) {
+    float hy = g_yh, w = g_w;
+    PA_Rng r; pa_rng_seed(&r, 777u + (uint32_t)theme);
+    if (theme == 0) {
+        /* two ranges of snowy mountains */
+        for (int layer = 0; layer < 2; layer++) {
+            PA_Color col = pa_hex(layer ? th->hill2 : th->hill);
+            float base = hy + (float)layer * g_h * 0.012f;
+            float x = -40.0f;
+            while (x < w + 40.0f) {
+                float pw = pa_rng_range(&r, 70.0f, 150.0f) * g_u, ph = pa_rng_range(&r, 0.035f, 0.075f) * g_h * (layer ? 0.75f : 1.0f);
+                PA_Vec2 m[3] = { { x, base + 2.0f }, { x + pw * 0.5f, base - ph }, { x + pw, base + 2.0f } };
+                pa_fill_poly(c, m, 3, col);
+                PA_Vec2 cap[3] = { { x + pw * 0.5f, base - ph }, { x + pw * 0.36f, base - ph * 0.62f }, { x + pw * 0.62f, base - ph * 0.66f } };
+                pa_fill_poly(c, cap, 3, PA_RGB(250, 252, 255));
+                x += pw * 0.62f;
+            }
+        }
+    } else if (theme == 1) {
+        /* mesas in the haze */
+        for (int layer = 0; layer < 2; layer++) {
+            PA_Color col = pa_hex(layer ? th->hill2 : th->hill);
+            float x = pa_rng_range(&r, -60.0f, 0.0f);
+            while (x < w + 40.0f) {
+                float pw = pa_rng_range(&r, 60.0f, 160.0f) * g_u, ph = pa_rng_range(&r, 0.025f, 0.06f) * g_h;
+                float base = hy + (float)layer * g_h * 0.01f + 2.0f;
+                PA_Vec2 m[4] = { { x, base }, { x + pw * 0.15f, base - ph }, { x + pw * 0.85f, base - ph }, { x + pw, base } };
+                pa_fill_poly(c, m, 4, col);
+                pa_fill_rect(c, x + pw * 0.15f, base - ph, pw * 0.7f, ph * 0.12f, pa_shade(col, 0.15f));
+                x += pw + pa_rng_range(&r, 20.0f, 120.0f) * g_u;
+            }
+        }
+    } else {
+        /* a hazy skyline with cranes */
+        float x = -20.0f;
+        while (x < w + 20.0f) {
+            float bw = pa_rng_range(&r, 24.0f, 60.0f) * g_u, bh = pa_rng_range(&r, 0.02f, 0.08f) * g_h;
+            PA_Color col = pa_mix(pa_hex(th->hill), pa_hex(th->hill2), pa_rng_next(&r));
+            pa_fill_rect(c, x, hy - bh, bw, bh + 3.0f, col);
+            for (float wy = hy - bh + 6.0f; wy < hy - 4.0f; wy += 8.0f * g_u)
+                pa_fill_rect(c, x + 4.0f, wy, bw - 8.0f, 2.0f * g_u, PA_RGBA(255, 255, 255, 40));
+            x += bw + pa_rng_range(&r, 0.0f, 10.0f);
+        }
+        for (int i = 0; i < 3; i++) {
+            float cx = w * (0.15f + 0.35f * (float)i), ch = g_h * 0.09f;
+            PA_Color cc = PA_RGB(214, 120, 60);
+            pa_line(c, cx, hy, cx, hy - ch, 3.0f * g_u, cc);
+            pa_line(c, cx - ch * 0.3f, hy - ch, cx + ch * 0.6f, hy - ch, 3.0f * g_u, cc);
+            pa_line(c, cx + ch * 0.5f, hy - ch, cx + ch * 0.5f, hy - ch * 0.6f, 1.0f, cc);
+        }
+    }
+}
+
+static void bg_build(void) {
+    PA_Canvas *c = &g_bg;
+    const Theme *th = &THEMES[G.theme];
+    float H = TRACK_HALF;
+    /* sky down to the vanishing line, ground from there */
+    PA_Paint sky = pa_linear(0, 0, 0, g_yh);
+    pa_stop(&sky, 0.0f, pa_hex(th->sky0)); pa_stop(&sky, 1.0f, pa_hex(th->sky1));
+    pa_fill_rect_paint(c, 0, 0, g_w, g_yh + 1.0f, &sky);
+    PA_Paint gr = pa_linear(0, g_yh, 0, g_h);
+    pa_stop(&gr, 0.0f, pa_hex(th->gfar)); pa_stop(&gr, 1.0f, pa_hex(th->gnear));
+    pa_fill_rect_paint(c, 0, g_yh, g_w, g_h - g_yh, &gr);
+    draw_horizon(c, th, G.theme);
+    PA_Paint hz = pa_linear(0, g_yh - g_h * 0.02f, 0, g_yh + g_h * 0.07f);
+    pa_stop(&hz, 0.0f, pa_alpha(pa_hex(th->haze), 0.0f)); pa_stop(&hz, 0.35f, pa_alpha(pa_hex(th->haze), 0.75f));
+    pa_stop(&hz, 1.0f, pa_alpha(pa_hex(th->haze), 0.0f));
+    pa_fill_rect_paint(c, 0, g_yh - g_h * 0.02f, g_w, g_h * 0.09f, &hz);
+
+    /* ground grain: sparkles, sand ripples or yard seams */
+    PA_Rng r; pa_rng_seed(&r, 9001u + (uint32_t)G.built_level);
+    for (int i = 0; i < 700; i++) {
+        float z = pa_rng_range(&r, -6.0f, 120.0f), x = pa_rng_range(&r, -34.0f, 34.0f);
+        if (fabsf(x) < H + 0.6f) continue;
+        PA_Vec2 p = proj(x, 0, z);
+        float k = ss(z);
+        if (G.theme == 1) pa_fill_ellipse(c, p.x, p.y, k * 0.9f, k * 0.08f, PA_RGBA(PA_R(pa_hex(th->speck)), PA_G(pa_hex(th->speck)), PA_B(pa_hex(th->speck)), 50));
+        else if (G.theme == 0) pa_fill_ellipse(c, p.x, p.y, fmaxf(0.8f, k * 0.08f), fmaxf(0.5f, k * 0.04f), PA_RGBA(255, 255, 255, 170));
+        else pa_fill_ellipse(c, p.x, p.y, k * 0.5f, k * 0.12f, PA_RGBA(40, 46, 60, 26));
+    }
+    if (G.theme == 2) {
+        /* concrete slab seams */
+        for (float z = -6.0f; z < 90.0f; z += 4.0f) {
+            for (int sd = -1; sd <= 1; sd += 2) {
+                PA_Vec2 a = proj((float)sd * (H + 0.6f), 0, z), b = proj((float)sd * 40.0f, 0, z);
+                pa_line(c, a.x, a.y, b.x, b.y, fmaxf(1.0f, ss(z) * 0.05f), PA_RGBA(40, 46, 60, 40));
+            }
+        }
+        for (float x = H + 4.0f; x < 40.0f; x += 4.0f) for (int sd = -1; sd <= 1; sd += 2) {
+            PA_Vec2 a = proj((float)sd * x, 0, -6.0f), b = proj((float)sd * x, 0, 90.0f);
+            pa_line(c, a.x, a.y, b.x, b.y, 1.0f, PA_RGBA(40, 46, 60, 40));
+        }
+    }
+
+    /* props, far to near */
+    for (int i = 0; i < g_ndecor; i++) {
+        Decor *d = &g_decor[i];
+        if (G.theme == 0) { if (d->kind == 0) draw_pine(c, d->x, d->z, d->s); else draw_rock(c, d->x, d->z, d->s, PA_RGB(206, 210, 224), PA_RGB(150, 154, 174)); }
+        else if (G.theme == 1) { if (d->kind == 0) draw_cactus(c, d->x, d->z, d->s); else draw_rock(c, d->x, d->z, d->s * 1.4f, PA_RGB(232, 160, 104), PA_RGB(184, 108, 70)); }
+        else { if (d->kind == 0) draw_container(c, d->x, d->z, d->s, (int)(d->s * 97.0f)); else draw_lamp(c, d->x, d->z, d->s); }
+    }
+
+    /* the road slab */
+    float zn = -12.0f, zf = TRACK_LEN + 6.0f;
+    quad(c, proj(-H - 1.4f, 0, zn), proj(-H, 0, zn), proj(-H, 0, zf), proj(-H - 1.4f, 0, zf), PA_RGBA(30, 30, 60, 46));
+    quad(c, proj(H, 0, zn), proj(H + 1.4f, 0, zn), proj(H + 1.4f, 0, zf), proj(H, 0, zf), PA_RGBA(30, 30, 60, 46));
     PA_Vec2 a = proj(-H, 0, zn), b = proj(H, 0, zn), cc = proj(H, 0, zf), d = proj(-H, 0, zf);
     PA_Vec2 poly[4] = { a, b, cc, d };
-    PA_Paint p = pa_linear(0, d.y, 0, a.y);
-    pa_stop(&p, 0.0f, PA_RGB(226, 227, 233));
-    pa_stop(&p, 1.0f, PA_RGB(206, 207, 214));
-    pa_fill_poly_paint(c, poly, 4, &p);
-    /* scuffs */
-    for (int i = 0; i < MAX_SCUFF; i++) {
-        PA_Vec2 s = proj(g_scuff[i][0], 0, g_scuff[i][1]);
-        float k = ss(g_scuff[i][1]);
-        pa_fill_ellipse(c, s.x, s.y, g_scuff[i][2] * k * 0.6f, g_scuff[i][2] * k * 0.12f, PA_RGBA(120, 120, 140, 22));
+    PA_Paint rp = pa_linear(0, d.y, 0, a.y);
+    pa_stop(&rp, 0.0f, pa_hex(th->rfar)); pa_stop(&rp, 1.0f, pa_hex(th->rnear));
+    pa_fill_poly_paint(c, poly, 4, &rp);
+    /* asphalt grain and blotches, per pixel, in road space so they recede */
+    int y0 = (int)fmaxf(0.0f, d.y), y1 = (int)fminf(g_h, g_h);
+    for (int y = y0; y < y1; y++) {
+        float pz = ((float)y + 0.5f - g_yh) / (g_y0 - g_yh);
+        if (pz <= 0.01f) continue;
+        float z = CAM_D / pz - CAM_D;
+        float k = ss(z);
+        int xa = (int)fmaxf(0.0f, sx(-H, z)), xb = (int)fminf(g_w, sx(H, z));
+        uint32_t *row = c->px + (size_t)y * (size_t)c->w;
+        for (int x = xa; x < xb; x++) {
+            float wx = ((float)x - g_w * 0.5f) / k;
+            float blot = vnoise(wx * 0.7f + 3.0f, z * 0.7f) * 0.6f + vnoise(wx * 2.1f, z * 2.1f + 9.0f) * 0.4f;
+            int n = (int)((hashf(x, y) - 0.5f) * 14.0f + (blot - 0.5f) * 26.0f);
+            uint32_t v = row[x];
+            int rr = (int)((v >> 16) & 255) + n, gg = (int)((v >> 8) & 255) + n, bb = (int)(v & 255) + n;
+            rr = rr < 0 ? 0 : (rr > 255 ? 255 : rr); gg = gg < 0 ? 0 : (gg > 255 ? 255 : gg); bb = bb < 0 ? 0 : (bb > 255 ? 255 : bb);
+            row[x] = ((uint32_t)rr << 16) | ((uint32_t)gg << 8) | (uint32_t)bb;
+        }
     }
-    /* centre dashes */
-    for (float z = -6.0f; z < TRACK_LEN - 2.0f; z += 3.2f) {
-        quad(c, proj(-0.07f, 0, z), proj(0.07f, 0, z), proj(0.07f, 0, z + 1.5f), proj(-0.07f, 0, z + 1.5f), PA_RGBA(255, 255, 255, 200));
+    /* patches and cracks */
+    for (int i = 0; i < 9; i++) {
+        float z = pa_rng_range(&r, -2.0f, TRACK_LEN - 4.0f), x = pa_rng_range(&r, -H + 1.0f, H - 2.5f);
+        float l = pa_rng_range(&r, 1.0f, 3.0f), wd = pa_rng_range(&r, 0.8f, 1.8f);
+        quad(c, proj(x, 0, z), proj(x + wd, 0, z), proj(x + wd, 0, z + l), proj(x, 0, z + l), PA_RGBA(40, 40, 60, 22));
     }
-    /* lane lines */
-    for (int s = -1; s <= 1; s += 2) {
-        float x = (float)s * (H - 0.55f);
-        quad(c, proj(x - 0.05f, 0, zn), proj(x + 0.05f, 0, zn), proj(x + 0.05f, 0, zf), proj(x - 0.05f, 0, zf), PA_RGBA(255, 255, 255, 150));
+    for (int i = 0; i < 16; i++) {
+        float z = pa_rng_range(&r, -3.0f, TRACK_LEN - 2.0f), x = pa_rng_range(&r, -H + 0.5f, H - 0.5f);
+        PA_Vec2 pts[6]; int n = 0;
+        for (int j = 0; j < 5; j++) {
+            pts[n++] = proj(x, 0, z);
+            x += pa_rng_range(&r, -0.5f, 0.5f); z += pa_rng_range(&r, 0.2f, 0.7f);
+            if (fabsf(x) > H - 0.3f) break;
+        }
+        if (n > 1) pa_stroke_poly(c, pts, n, 0, fmaxf(1.0f, ss(z) * 0.035f), PA_RGBA(50, 50, 70, 70));
     }
-    /* raised curbs */
-    box(c, -H - 0.35f, -H + 0.05f, zn, zf, 0.0f, 0.32f, PA_RGB(240, 241, 246), PA_RGB(196, 198, 210), PA_RGB(176, 178, 194));
-    box(c, H - 0.05f, H + 0.35f, zn, zf, 0.0f, 0.32f, PA_RGB(240, 241, 246), PA_RGB(196, 198, 210), PA_RGB(176, 178, 194));
-    /* defence stripe: yellow and black chevrons across the track */
-    float z0 = DEFENCE_Z - 0.18f, z1 = DEFENCE_Z + 0.18f;
-    quad(c, proj(-H, 0, z0), proj(H, 0, z0), proj(H, 0, z1), proj(-H, 0, z1), PA_RGB(250, 206, 40));
-    for (float x = -H; x < H - 0.1f; x += 0.7f) {
-        float xb = fminf(x + 0.35f, H);
-        quad(c, proj(x, 0, z0), proj(xb, 0, z0), proj(fminf(xb + 0.2f, H), 0, z1), proj(fminf(x + 0.2f, H), 0, z1), PA_RGB(40, 40, 52));
+    /* paint: centre dashes, lane edges, forward chevrons */
+    for (float z = -8.0f; z < TRACK_LEN - 2.0f; z += 3.0f)
+        quad(c, proj(-0.09f, 0, z), proj(0.09f, 0, z), proj(0.09f, 0, z + 1.4f), proj(-0.09f, 0, z + 1.4f), PA_RGBA(255, 255, 255, 190));
+    for (int sd = -1; sd <= 1; sd += 2) {
+        float x = (float)sd * (H - 0.5f);
+        quad(c, proj(x - 0.07f, 0, zn), proj(x + 0.07f, 0, zn), proj(x + 0.07f, 0, zf - 6.0f), proj(x - 0.07f, 0, zf - 6.0f), PA_RGBA(255, 255, 255, 150));
     }
-    /* cannon rail */
-    quad(c, proj(-H + 0.6f, 0, CANNON_Z - 0.04f), proj(H - 0.6f, 0, CANNON_Z - 0.04f), proj(H - 0.6f, 0, CANNON_Z + 0.04f), proj(-H + 0.6f, 0, CANNON_Z + 0.04f), PA_RGBA(255, 255, 255, 230));
+    for (int i = 0; i < 2; i++) for (int sd = -1; sd <= 1; sd += 2) {
+        float z = 26.5f + 4.0f * (float)i, x = (float)sd * 2.5f;
+        PA_Vec2 ch[6] = { proj(x - 0.9f, 0, z), proj(x, 0, z + 0.9f), proj(x + 0.9f, 0, z), proj(x + 0.9f, 0, z + 0.5f),
+                          proj(x, 0, z + 1.4f), proj(x - 0.9f, 0, z + 0.5f) };
+        pa_fill_poly(c, ch, 6, PA_RGBA(255, 255, 255, 120));
+    }
+    /* curbs, and the soft occlusion they throw on the road */
+    for (int sd = -1; sd <= 1; sd += 2) {
+        float xi = (float)sd * H, xo = (float)sd * (H - 0.45f);
+        PA_Vec2 ao[4] = { proj(xi, 0, zn), proj(xo, 0, zn), proj(xo, 0, zf), proj(xi, 0, zf) };
+        PA_Paint ap = pa_linear(proj(xi, 0, 4.0f).x, 0, proj(xo, 0, 4.0f).x, 0);
+        pa_stop(&ap, 0.0f, PA_RGBA(20, 20, 50, 60)); pa_stop(&ap, 1.0f, PA_RGBA(20, 20, 50, 0));
+        pa_fill_poly_paint(c, ao, 4, &ap);
+    }
+    box(c, -H - 0.45f, -H + 0.05f, zn, zf, 0.0f, 0.38f, pa_hex(th->curb), pa_shade(pa_hex(th->curb), -0.12f), pa_hex(th->curb_side));
+    box(c, H - 0.05f, H + 0.45f, zn, zf, 0.0f, 0.38f, pa_hex(th->curb), pa_shade(pa_hex(th->curb), -0.12f), pa_hex(th->curb_side));
+    /* defence stripe and cannon rail */
+    float z0 = DEFENCE_Z - 0.22f, z1 = DEFENCE_Z + 0.22f;
+    quad(c, proj(-H, 0, z0), proj(H, 0, z0), proj(H, 0, z1), proj(-H, 0, z1), PA_RGB(250, 204, 36));
+    for (float x = -H; x < H - 0.1f; x += 0.8f) {
+        float xb = fminf(x + 0.4f, H);
+        quad(c, proj(x, 0, z0), proj(xb, 0, z0), proj(fminf(xb + 0.25f, H), 0, z1), proj(fminf(x + 0.25f, H), 0, z1), PA_RGB(38, 38, 50));
+    }
+    quad(c, proj(-H + 0.6f, 0, CANNON_Z - 0.05f), proj(H - 0.6f, 0, CANNON_Z - 0.05f), proj(H - 0.6f, 0, CANNON_Z + 0.05f), proj(-H + 0.6f, 0, CANNON_Z + 0.05f), PA_RGBA(255, 255, 255, 230));
+    /* the castle's footprint shadow */
+    pa_shadow(c, sx(0, TRACK_LEN + 1.5f), sy(TRACK_LEN + 0.6f), ss(TRACK_LEN) * 8.0f, ss(TRACK_LEN) * 1.6f, 0.6f);
+    pa_vignette(c, 0.18f);
 }
 
-/* ---- the enemy castle ---- */
+static void bg_blit(PA_Canvas *c, int dx, int dy) {
+    int key = G.built_level * 4 + G.theme;
+    if (!g_bg.px || g_bg_key != key || g_bg_w != c->w || g_bg_h != c->h) {
+        if (!g_bg.px) pa_canvas_init(&g_bg, c->w, c->h); else pa_canvas_resize(&g_bg, c->w, c->h);
+        float sx_ = g_shx, sy_ = g_shy;
+        g_shx = g_shy = 0.0f;
+        bg_build();
+        g_shx = sx_; g_shy = sy_;
+        g_bg_key = key; g_bg_w = c->w; g_bg_h = c->h;
+    }
+    for (int y = 0; y < c->h; y++) {
+        int syy = y - dy; syy = syy < 0 ? 0 : (syy >= c->h ? c->h - 1 : syy);
+        uint32_t *dst = c->px + (size_t)y * (size_t)c->w;
+        const uint32_t *src = g_bg.px + (size_t)syy * (size_t)c->w;
+        if (dx >= 0) {
+            memcpy(dst + dx, src, (size_t)(c->w - dx) * 4);
+            for (int x = 0; x < dx; x++) dst[x] = src[0];
+        } else {
+            memcpy(dst, src - dx, (size_t)(c->w + dx) * 4);
+            for (int x = c->w + dx; x < c->w; x++) dst[x] = src[c->w - 1];
+        }
+    }
+}
+
+/* ---- the enemy castle: lit from the upper left, sitting in its own shadow ---- */
+static void lbox(PA_Canvas *c, float x0, float x1, float z0, float z1, float y0, float y1, PA_Color base) {
+    box(c, x0, x1, z0, z1, y0, y1, pa_shade(base, 0.28f), base, pa_shade(base, -0.32f));
+    /* occlusion where it meets whatever it stands on */
+    float ao = fminf(0.6f, (y1 - y0) * 0.25f);
+    PA_Vec2 a = proj(x0, y0, z0), b = proj(x1, y0 + ao, z0);
+    PA_Paint p = pa_linear(0, b.y, 0, a.y);
+    pa_stop(&p, 0.0f, PA_RGBA(20, 10, 30, 0)); pa_stop(&p, 1.0f, PA_RGBA(20, 10, 30, 90));
+    pa_fill_rect_paint(c, a.x, b.y, b.x - a.x, a.y - b.y, &p);
+    /* bevel highlight along the top front edge */
+    PA_Vec2 e0 = proj(x0, y1, z0), e1 = proj(x1, y1, z0);
+    pa_line(c, e0.x, e0.y, e1.x, e1.y, fmaxf(1.0f, ss(z0) * 0.06f), PA_RGBA(255, 255, 255, 90));
+}
+
 static void draw_castle(PA_Canvas *c) {
     float L = TRACK_LEN;
     float fl = G.base_flash * 0.22f;
-    float sh = G.base_shake * 0.12f * sinf(G.clock * 60.0f);
-    float drop = G.collapse;            /* sinks into rubble after the win */
-    float hk = 1.32f * (1.0f - 0.85f * pa_smooth(drop));
-    PA_Color red = pa_mix(PA_RGB(226, 64, 64), PA_RGB(255, 255, 255), fl);
-    PA_Color redT = pa_mix(PA_RGB(250, 110, 100), PA_RGB(255, 255, 255), fl);
-    PA_Color redD = pa_mix(PA_RGB(168, 36, 48), PA_RGB(255, 255, 255), fl);
-    PA_Color wht = pa_mix(PA_RGB(246, 240, 236), PA_RGB(255, 255, 255), fl);
-    PA_Color whtD = PA_RGB(206, 196, 200);
-    PA_Color roof = PA_RGB(64, 54, 96);
+    float sh = G.base_shake * 0.15f * sinf(G.clock * 60.0f);
+    float hk = 1.0f - 0.85f * pa_smooth(G.collapse);
+    PA_Color red = pa_mix(PA_RGB(222, 58, 60), PA_RGB(255, 255, 255), fl);
+    PA_Color wht = pa_mix(PA_RGB(242, 236, 232), PA_RGB(255, 255, 255), fl);
+    PA_Color roof = PA_RGB(70, 58, 108);
+    float drop = G.collapse;
 
-    pa_shadow(c, sx(0, L + 1.5f), sy(L + 1.0f), ss(L) * 6.0f, ss(L) * 1.0f, 0.5f);
-    /* back keep */
-    box(c, -2.4f + sh, 2.4f + sh, L + 1.3f, L + 3.6f, 0.0f, 4.2f * hk, redT, red, redD);
-    box(c, -2.6f + sh, 2.6f + sh, L + 1.2f, L + 3.7f, 4.2f * hk, 4.6f * hk, wht, whtD, whtD);
+    /* keep */
+    lbox(c, -3.0f + sh, 3.0f + sh, L + 1.7f, L + 4.6f, 0.0f, 6.4f * hk, red);
+    lbox(c, -3.2f + sh, 3.2f + sh, L + 1.6f, L + 4.7f, 6.4f * hk, 7.0f * hk, wht);
     if (drop < 0.3f) {
-        /* keep roof and flag */
-        PA_Vec2 r0 = proj(-2.2f + sh, 4.6f * hk, L + 1.4f), r1 = proj(2.2f + sh, 4.6f * hk, L + 1.4f), r2 = proj(0.0f + sh, 6.4f * hk, L + 2.4f);
+        PA_Vec2 r0 = proj(-3.0f + sh, 7.0f, L + 1.8f), r1 = proj(3.0f + sh, 7.0f, L + 1.8f), r2 = proj(sh, 9.6f, L + 3.2f);
         PA_Vec2 tri[3] = { r0, r1, r2 };
         pa_fill_poly(c, tri, 3, roof);
-        PA_Vec2 pole0 = proj(0.0f + sh, 6.3f * hk, L + 2.4f), pole1 = proj(0.0f + sh, 6.3f * hk + 1.6f, L + 2.4f);
-        pa_line(c, pole0.x, pole0.y, pole1.x, pole1.y, fmaxf(1.5f, ss(L) * 0.08f), PA_RGB(70, 60, 80));
-        float wv = sinf(G.clock * 6.0f) * 0.1f;
-        PA_Vec2 fl3[3] = { pole1, proj(1.2f + sh, 6.3f * hk + 1.2f + wv, L + 2.4f), proj(0.0f + sh, 6.3f * hk + 0.8f, L + 2.4f) };
-        pa_fill_poly(c, fl3, 3, PA_RGB(240, 50, 60));
+        PA_Vec2 tl[3] = { r0, r2, proj(sh, 7.0f, L + 1.8f) };
+        pa_fill_poly(c, tl, 3, PA_RGB(104, 90, 150));
+        PA_Vec2 p0 = proj(sh, 9.5f, L + 3.2f), p1 = proj(sh, 11.8f, L + 3.2f);
+        pa_line(c, p0.x, p0.y, p1.x, p1.y, fmaxf(1.5f, ss(L) * 0.1f), PA_RGB(70, 60, 80));
+        float wv = sinf(G.clock * 6.0f) * 0.15f;
+        PA_Vec2 f3[3] = { p1, proj(1.7f + sh, 11.3f + wv, L + 3.2f), proj(sh, 10.7f, L + 3.2f) };
+        pa_fill_poly(c, f3, 3, PA_RGB(240, 50, 60));
+        /* lit windows */
+        for (int i = -1; i <= 1; i++) {
+            PA_Vec2 w0 = proj((float)i * 1.6f - 0.35f + sh, 4.6f * hk, L + 1.7f), w1 = proj((float)i * 1.6f + 0.35f + sh, 5.7f * hk, L + 1.7f);
+            pa_round_rect(c, w0.x, w1.y, w1.x - w0.x, w0.y - w1.y, (w1.x - w0.x) * 0.5f, PA_RGB(255, 214, 120));
+        }
     }
-    /* front wall */
-    box(c, -4.4f + sh, 4.4f + sh, L, L + 1.3f, 0.0f, 2.3f * hk, redT, red, redD);
-    for (int i = 0; i < 9; i++) {
-        float x = -4.4f + (float)i * 1.1f + sh;
-        if (drop < 0.5f) box(c, x, x + 0.6f, L, L + 0.6f, 2.3f * hk, 2.75f * hk, wht, whtD, whtD);
+    /* front wall with battlements */
+    lbox(c, -5.4f + sh, 5.4f + sh, L, L + 1.7f, 0.0f, 3.4f * hk, red);
+    if (drop < 0.5f) for (int i = 0; i < 9; i++) {
+        float x = -5.4f + (float)i * 1.3f + sh;
+        lbox(c, x, x + 0.7f, L, L + 0.7f, 3.4f * hk, 4.1f * hk, wht);
     }
-    /* white trim band */
-    quad(c, proj(-4.4f + sh, 1.7f * hk, L), proj(4.4f + sh, 1.7f * hk, L), proj(4.4f + sh, 1.95f * hk, L), proj(-4.4f + sh, 1.95f * hk, L), wht);
-    /* door the reds pour out of */
+    quad(c, proj(-5.4f + sh, 2.5f * hk, L), proj(5.4f + sh, 2.5f * hk, L), proj(5.4f + sh, 2.85f * hk, L), proj(-5.4f + sh, 2.85f * hk, L), wht);
     {
-        PA_Vec2 d0 = proj(-1.8f + sh, 0.0f, L), d1 = proj(1.8f + sh, 1.55f * hk, L);
-        pa_round_rect(c, d0.x, d1.y, d1.x - d0.x, d0.y - d1.y + 1.0f, (d1.x - d0.x) * 0.35f, PA_RGB(60, 20, 34));
-        pa_round_rect(c, d0.x + 3.0f, d1.y + 3.0f, d1.x - d0.x - 6.0f, (d0.y - d1.y) * 0.4f, (d1.x - d0.x) * 0.3f, PA_RGB(90, 30, 48));
+        PA_Vec2 d0 = proj(-2.3f + sh, 0.0f, L), d1 = proj(2.3f + sh, 2.1f * hk, L);
+        pa_round_rect(c, d0.x, d1.y, d1.x - d0.x, d0.y - d1.y + 1.0f, (d1.x - d0.x) * 0.4f, PA_RGB(56, 18, 32));
+        pa_round_rect(c, d0.x + 3.0f, d1.y + 3.0f, d1.x - d0.x - 6.0f, (d0.y - d1.y) * 0.35f, (d1.x - d0.x) * 0.3f, PA_RGB(96, 30, 50));
     }
     /* towers */
-    for (int s = -1; s <= 1; s += 2) {
-        float x0 = s < 0 ? -5.2f : 3.6f, x1 = x0 + 1.6f;
-        box(c, x0 + sh, x1 + sh, L - 0.4f, L + 1.4f, 0.0f, 3.5f * hk, redT, red, redD);
-        box(c, x0 - 0.15f + sh, x1 + 0.15f + sh, L - 0.55f, L + 1.55f, 3.5f * hk, 3.9f * hk, wht, whtD, whtD);
+    for (int sd = -1; sd <= 1; sd += 2) {
+        float x0 = sd < 0 ? -6.9f : 4.7f, x1 = x0 + 2.2f;
+        lbox(c, x0 + sh, x1 + sh, L - 0.5f, L + 1.9f, 0.0f, 5.4f * hk, red);
+        lbox(c, x0 - 0.2f + sh, x1 + 0.2f + sh, L - 0.7f, L + 2.1f, 5.4f * hk, 6.0f * hk, wht);
         if (drop < 0.3f) {
-            PA_Vec2 a = proj(x0 - 0.1f + sh, 3.9f * hk, L - 0.5f), b = proj(x1 + 0.1f + sh, 3.9f * hk, L - 0.5f), t = proj((x0 + x1) * 0.5f + sh, 5.6f * hk, L + 0.4f);
+            PA_Vec2 a = proj(x0 - 0.1f + sh, 6.0f, L - 0.6f), b = proj(x1 + 0.1f + sh, 6.0f, L - 0.6f), t = proj((x0 + x1) * 0.5f + sh, 8.6f, L + 0.7f);
             PA_Vec2 tri[3] = { a, b, t };
             pa_fill_poly(c, tri, 3, roof);
-            PA_Vec2 hl[3] = { a, t, proj((x0 + x1) * 0.5f + sh, 3.9f * hk, L - 0.5f) };
-            pa_fill_poly(c, hl, 3, PA_RGB(96, 84, 136));
+            PA_Vec2 hl[3] = { a, t, proj((x0 + x1) * 0.5f + sh, 6.0f, L - 0.6f) };
+            pa_fill_poly(c, hl, 3, PA_RGB(104, 90, 150));
         }
-        /* window */
-        PA_Vec2 w0 = proj(x0 + 0.55f + sh, 2.2f * hk, L - 0.4f), w1 = proj(x1 - 0.55f + sh, 2.9f * hk, L - 0.4f);
-        pa_round_rect(c, w0.x, w1.y, w1.x - w0.x, w0.y - w1.y, (w1.x - w0.x) * 0.5f, PA_RGB(70, 24, 40));
+        PA_Vec2 w0 = proj(x0 + 0.75f + sh, 3.3f * hk, L - 0.5f), w1 = proj(x1 - 0.75f + sh, 4.4f * hk, L - 0.5f);
+        pa_round_rect(c, w0.x, w1.y, w1.x - w0.x, w0.y - w1.y, (w1.x - w0.x) * 0.5f, drop < 0.3f ? PA_RGB(255, 214, 120) : PA_RGB(70, 24, 40));
     }
     if (drop > 0.0f) {
-        /* rubble and smoke */
-        for (int i = 0; i < 14; i++) {
-            float rx = -4.8f + (float)i * 0.72f, rz = L + 0.2f + (float)(i % 3) * 0.6f;
-            box(c, rx, rx + 0.55f, rz, rz + 0.5f, 0.0f, 0.4f + 0.3f * (float)(i % 2), redT, red, redD);
-        }
-        for (int i = 0; i < 6; i++) {
-            float t = fmodf(G.st * 0.6f + (float)i * 0.17f, 1.0f);
-            PA_Vec2 p = proj(-3.0f + (float)i * 1.2f, 1.0f + t * 4.0f, L + 1.0f);
-            pa_fill_circle(c, p.x, p.y, ss(L) * (0.7f + t * 1.1f), PA_RGBA(200, 200, 210, (int)(150.0f * (1.0f - t))));
+        for (int i = 0; i < 16; i++) {
+            float rx = -6.6f + (float)i * 0.82f, rz = L + 0.2f + (float)(i % 3) * 0.7f;
+            lbox(c, rx, rx + 0.7f, rz, rz + 0.6f, 0.0f, 0.5f + 0.4f * (float)(i % 2), i % 4 == 0 ? wht : red);
         }
     }
 }
@@ -1396,59 +1725,86 @@ static void draw_castle(PA_Canvas *c) {
 static void draw_castle_hp(PA_Canvas *c) {
     if (G.state == S_WIN || G.state == S_RESULT) return;
     float L = TRACK_LEN;
-    /* on the keep's face, above the battlements: clear of the HUD at any height */
-    PA_Vec2 p = proj(0.0f, 4.3f, L + 1.3f);
+    PA_Vec2 p = proj(0.0f, 5.3f, L + 1.7f);
     char buf[16]; snprintf(buf, sizeof(buf), "%d", (int)ceilf(G.base_hp));
-    float size = fminf(34.0f * g_u, ss(L) * 1.5f) * (1.0f + G.base_flash * 0.12f);
-    float bw = 120.0f * g_u, bh = 12.0f * g_u;
-    pa_round_rect(c, p.x - bw * 0.5f - 3.0f, p.y + size * 0.62f - 3.0f, bw + 6.0f, bh + 6.0f, (bh + 6.0f) * 0.5f, C_INK);
-    pa_round_rect(c, p.x - bw * 0.5f, p.y + size * 0.62f, bw, bh, bh * 0.5f, PA_RGB(255, 255, 255));
+    float size = fminf(30.0f * g_u, ss(L) * 1.6f) * (1.0f + G.base_flash * 0.12f);
+    float bw = fminf(130.0f * g_u, ss(L) * 5.4f), bh = 11.0f * g_u;
+    float by = p.y + size * 0.62f;
+    pa_round_rect(c, p.x - bw * 0.5f - 3.0f, by - 3.0f, bw + 6.0f, bh + 6.0f, (bh + 6.0f) * 0.5f, C_INK);
+    pa_round_rect(c, p.x - bw * 0.5f, by, bw, bh, bh * 0.5f, PA_RGB(255, 255, 255));
     float f = pa_clamp01(G.base_hp / fmaxf(1.0f, G.base_max));
-    if (f > 0.0f) pa_round_rect(c, p.x - bw * 0.5f, p.y + size * 0.62f, fmaxf(bh, bw * f), bh, bh * 0.5f, PA_RGB(236, 50, 56));
+    if (f > 0.0f) pa_round_rect(c, p.x - bw * 0.5f, by, fmaxf(bh, bw * f), bh, bh * 0.5f, PA_RGB(236, 50, 56));
     txt(c, buf, p.x, p.y, size, PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 1.6f);
 }
 
-/* ---- gates ---- */
+/* ---- gates: chunky bevelled frames round a tinted glass panel ---- */
+enum { PANEL_BLUE, PANEL_MAGENTA, PANEL_RED };
+
+static void draw_panel(PA_Canvas *c, float x0, float x1, float z, float ht, int kind, const char *label,
+                       float pulse, int dim, float label_scale) {
+    PA_Color glass, glassB, frame;
+    if (kind == PANEL_MAGENTA) { glass = pa_hex(0xE58BF0); glassB = pa_hex(0xD23CE0); frame = pa_hex(0xA21FB8); }
+    else if (kind == PANEL_RED) { glass = pa_hex(0xFF9AA6); glassB = pa_hex(0xF0354E); frame = pa_hex(0xC21C36); }
+    else { glass = pa_hex(0xA9D6FF); glassB = pa_hex(0x6FB8FF); frame = pa_hex(0x1E5BD8); }
+    float k = ss(z);
+    float pw = 0.30f, depth = 0.3f;
+    /* contact occlusion and a coloured glow on the road */
+    pa_shadow(c, sx((x0 + x1) * 0.5f, z), sy(z), (x1 - x0) * 0.62f * k, k * 0.45f, 0.5f);
+    quad(c, proj(x0, 0, z - 0.25f), proj(x1, 0, z - 0.25f), proj(x1, 0, z + 0.25f), proj(x0, 0, z + 0.25f), pa_alpha(glassB, 0.35f));
+    /* glass */
+    PA_Vec2 g0 = proj(x0, 0.12f, z), g1 = proj(x1, ht, z);
+    float ga = dim ? 0.28f : 0.62f;
+    PA_Paint gp = pa_linear(0, g1.y, 0, g0.y);
+    pa_stop(&gp, 0.0f, pa_alpha(pa_mix(glass, PA_RGB(255, 255, 255), pulse * 0.5f), ga));
+    pa_stop(&gp, 1.0f, pa_alpha(pa_mix(glassB, PA_RGB(255, 255, 255), pulse * 0.4f), ga * 0.8f));
+    pa_fill_rect_paint(c, g0.x, g1.y, g1.x - g0.x, g0.y - g1.y, &gp);
+    /* diagonal sheen */
+    float gw = g1.x - g0.x, gh = g0.y - g1.y;
+    PA_Vec2 sh4[4] = { { g0.x + gw * 0.08f, g0.y }, { g0.x + gw * 0.22f, g0.y }, { g0.x + gw * 0.42f, g1.y }, { g0.x + gw * 0.28f, g1.y } };
+    pa_fill_poly(c, sh4, 4, PA_RGBA(255, 255, 255, dim ? 16 : 46));
+    (void)gh;
+    /* frame: posts, sill and a heavy top beam, each a lit box */
+    PA_Color fT = pa_shade(frame, 0.45f), fS = pa_shade(frame, -0.4f);
+    box(c, x0 - pw, x0 + pw * 0.2f, z - depth, z + depth, 0.0f, ht + 0.1f, fT, frame, fS);
+    box(c, x1 - pw * 0.2f, x1 + pw, z - depth, z + depth, 0.0f, ht + 0.1f, fT, frame, fS);
+    box(c, x0 - pw, x1 + pw, z - depth, z + depth, 0.0f, 0.14f, fT, fS, fS);
+    box(c, x0 - pw - 0.05f, x1 + pw + 0.05f, z - depth - 0.05f, z + depth, ht - 0.05f, ht + 0.42f, fT, frame, fS);
+    /* bevel lights on the front faces */
+    PA_Vec2 b0 = proj(x0 - pw, ht + 0.40f, z - depth - 0.05f), b1 = proj(x1 + pw, ht + 0.40f, z - depth - 0.05f);
+    pa_line(c, b0.x, b0.y, b1.x, b1.y, fmaxf(1.5f, k * 0.07f), pa_alpha(PA_RGB(255, 255, 255), 0.55f));
+    PA_Vec2 v0 = proj(x0 - pw + 0.04f, 0.15f, z - depth), v1 = proj(x0 - pw + 0.04f, ht, z - depth);
+    pa_line(c, v0.x, v0.y, v1.x, v1.y, fmaxf(1.0f, k * 0.05f), pa_alpha(PA_RGB(255, 255, 255), 0.45f));
+    PA_Vec2 e0 = proj(x0 - pw, 0.0f, z - depth), e1 = proj(x1 + pw, 0.0f, z - depth);
+    pa_line(c, e0.x, e0.y, e1.x, e1.y, fmaxf(1.0f, k * 0.05f), PA_RGBA(0, 0, 0, 70));
+    if (pulse > 0.05f) {
+        PA_Vec2 q0 = proj(x0, 0.0f, z), q1 = proj(x1, ht, z);
+        pa_stroke_rect(c, q0.x, q1.y, q1.x - q0.x, q0.y - q1.y, fmaxf(2.0f, k * 0.12f * pulse), PA_RGBA(255, 255, 255, (int)(200.0f * pulse)));
+    }
+    /* numerals */
+    float size = k * 1.05f * label_scale * (1.0f + pulse * 0.14f);
+    PA_TextStyle ts = pa_text_style(PA_FACE_DISPLAY, dim ? PA_RGB(225, 228, 240) : PA_RGB(255, 255, 255));
+    ts.fill_bottom = dim ? PA_RGB(200, 204, 220) : pa_mix(glass, PA_RGB(255, 255, 255), 0.55f);
+    ts.outline = fmaxf(1.5f, size * 0.10f); ts.outline_col = pa_shade(frame, -0.55f);
+    ts.shadow_dy = fmaxf(1.0f, size * 0.08f); ts.shadow_col = pa_alpha(pa_shade(frame, -0.6f), 0.9f);
+    ts.align = PA_ALIGN_CENTER;
+    PA_Vec2 m = proj((x0 + x1) * 0.5f, ht * 0.5f, z);
+    pa_text_ex(c, label, m.x, m.y - size * 0.5f, size, &ts);
+}
+
 static void gate_label(const Gate *g, char *buf, size_t n) {
-    if (g->type == G_MUL) snprintf(buf, n, "X%d", g->val);
+    if (g->type == G_MUL) snprintf(buf, n, "x%d", g->val);
     else if (g->type == G_ADD) snprintf(buf, n, "+%d", g->val);
     else snprintf(buf, n, "-%d", g->val);
 }
 
 static void draw_gate(PA_Canvas *c, const Gate *g) {
-    float x0 = g->x - g->w * 0.5f, x1 = g->x + g->w * 0.5f, z = g->z;
-    float ht = 1.45f + g->pulse * 0.12f;
-    PA_Color fill, frame, frameD;
-    if (g->type == G_SUB) { fill = PA_RGBA(255, 70, 96, 120); frame = PA_RGB(255, 96, 120); frameD = PA_RGB(186, 40, 70); }
-    else if (g->type == G_MUL && g->val >= 3) { fill = PA_RGBA(176, 72, 244, 130); frame = PA_RGB(196, 110, 255); frameD = PA_RGB(120, 50, 196); }
-    else { fill = PA_RGBA(60, 150, 255, 120); frame = PA_RGB(96, 180, 255); frameD = PA_RGB(30, 104, 220); }
-    int dim = g->cool > 0.0f;
-    if (dim) fill = pa_alpha(pa_mix(fill, PA_RGB(160, 160, 180), 0.6f), 0.25f);
-    if (g->pulse > 0.0f) fill = pa_alpha(pa_mix(fill, PA_RGB(255, 255, 255), g->pulse * 0.45f), (float)PA_A(fill) / 255.0f + g->pulse * 0.2f);
-    /* ground glow strip */
-    quad(c, proj(x0, 0, z - 0.2f), proj(x1, 0, z - 0.2f), proj(x1, 0, z + 0.2f), proj(x0, 0, z + 0.2f), pa_alpha(frame, 0.45f));
-    /* translucent panel */
-    quad(c, proj(x0, 0.0f, z), proj(x1, 0.0f, z), proj(x1, ht, z), proj(x0, ht, z), fill);
-    /* inner sheen */
-    quad(c, proj(x0 + 0.15f, ht * 0.62f, z), proj(x1 - 0.15f, ht * 0.62f, z), proj(x1 - 0.15f, ht * 0.9f, z), proj(x0 + 0.15f, ht * 0.9f, z), PA_RGBA(255, 255, 255, dim ? 14 : 40));
-    /* frame: posts and top rail */
-    float pw = 0.16f;
-    box(c, x0 - pw, x0 + pw * 0.3f, z - 0.12f, z + 0.12f, 0.0f, ht + 0.1f, frame, frameD, frameD);
-    box(c, x1 - pw * 0.3f, x1 + pw, z - 0.12f, z + 0.12f, 0.0f, ht + 0.1f, frame, frameD, frameD);
-    box(c, x0 - pw, x1 + pw, z - 0.12f, z + 0.12f, ht - 0.08f, ht + 0.14f, pa_shade(frame, 0.3f), frame, frameD);
-    /* label */
     char buf[12]; gate_label(g, buf, sizeof(buf));
-    float k = ss(z);
-    float size = k * 0.82f * (1.0f + g->pulse * 0.15f);
-    PA_Vec2 m = proj(g->x, ht * 0.48f, z);
-    PA_Color tc = dim ? PA_RGB(220, 220, 236) : PA_RGB(255, 255, 255);
-    if (buf[0] == '-') {
-        /* a lone dash in the outlined face reads as '=', so it gets a fatter stroke */
-        float tr = size * 0.05f, adv = size * 0.72f + tr;
-        float w = pa_text_width(buf, size, tr), x0 = m.x - w * 0.5f;
-        txt(c, "-", x0 + adv * 0.5f - tr, m.y, size * 1.35f, tc, PA_ALIGN_CENTER, 2.2f);
-        txt(c, buf + 1, x0 + adv, m.y, size, tc, PA_ALIGN_LEFT, 1.5f);
-    } else txt(c, buf, m.x, m.y, size, tc, PA_ALIGN_CENTER, 1.5f);
+    int kind = g->type == G_SUB ? PANEL_RED : (g->type == G_MUL && g->val >= 3 ? PANEL_MAGENTA : PANEL_BLUE);
+    draw_panel(c, g->x - g->w * 0.5f, g->x + g->w * 0.5f, g->z, 2.2f + g->pulse * 0.1f, kind, buf, g->pulse, g->cool > 0.0f, 1.0f);
+}
+
+static void draw_ladder(PA_Canvas *c, const Ladder *l) {
+    draw_panel(c, l->x - l->w * 0.5f, l->x + l->w * 0.5f, l->z, 1.3f, PANEL_BLUE, "+1", l->pulse, 0, 0.62f);
 }
 
 /* ---- brutes: enemy giants (yellow, red bands, facing us) and our champion ---- */
@@ -1457,17 +1813,20 @@ static void draw_brute(PA_Canvas *c, const Brute *b, int enemy) {
     PA_Vec2 f = proj(b->x, 0.0f, b->z);
     float u = k * VK;
     float sw = sinf(b->ph);
-    PA_Color body = enemy ? PA_RGB(255, 210, 40) : PA_RGB(70, 170, 255);
-    PA_Color bodyL = enemy ? PA_RGB(255, 236, 130) : PA_RGB(160, 220, 255);
-    PA_Color bodyD = enemy ? PA_RGB(220, 150, 20) : PA_RGB(30, 100, 220);
-    PA_Color band = enemy ? PA_RGB(230, 40, 40) : PA_RGB(255, 210, 50);
+    PA_Color body = enemy ? PA_RGB(255, 206, 36) : PA_RGB(64, 160, 255);
+    PA_Color bodyL = enemy ? PA_RGB(255, 240, 150) : PA_RGB(170, 224, 255);
+    PA_Color bodyD = enemy ? PA_RGB(214, 136, 16) : PA_RGB(24, 86, 210);
+    PA_Color rim = enemy ? PA_RGB(255, 250, 220) : PA_RGB(214, 242, 255);
+    PA_Color band = enemy ? PA_RGB(228, 36, 40) : PA_RGB(255, 206, 40);
     if (b->flash > 0.0f) {
-        body = pa_mix(body, PA_RGB(255, 255, 255), b->flash * 0.6f);
-        bodyL = pa_mix(bodyL, PA_RGB(255, 255, 255), b->flash * 0.6f);
-        bodyD = pa_mix(bodyD, PA_RGB(255, 255, 255), b->flash * 0.5f);
+        float t = b->flash * 0.45f;
+        body = pa_mix(body, PA_RGB(255, 255, 255), t); bodyL = pa_mix(bodyL, PA_RGB(255, 255, 255), t);
+        bodyD = pa_mix(bodyD, PA_RGB(255, 255, 255), t * 0.8f); band = pa_mix(band, PA_RGB(255, 255, 255), t * 0.6f);
     }
-    float bob = fabsf(sw) * u * 0.06f;
-    pa_shadow(c, f.x, f.y, k * 1.0f, k * 0.3f, 0.55f);
+    /* idle breathing on top of the stride */
+    float bob = fabsf(sw) * u * 0.06f + sinf(G.clock * 2.4f + b->x) * u * 0.03f;
+    pa_shadow(c, f.x + k * 0.15f, f.y, k * 1.25f, k * 0.36f, 0.7f);
+    pa_fill_ellipse(c, f.x, f.y - k * 0.02f, k * 0.8f, k * 0.18f, PA_RGBA(0, 0, 0, 70));
     /* legs */
     pa_round_rect(c, f.x - k * 0.42f, f.y - u * 0.55f + sw * u * 0.05f, k * 0.32f, u * 0.55f, k * 0.14f, bodyD);
     pa_round_rect(c, f.x + k * 0.10f, f.y - u * 0.55f - sw * u * 0.05f, k * 0.32f, u * 0.55f, k * 0.14f, bodyD);
@@ -1475,21 +1834,22 @@ static void draw_brute(PA_Canvas *c, const Brute *b, int enemy) {
     /* arms behind the torso */
     for (int s = -1; s <= 1; s += 2) {
         float ax = f.x + (float)s * k * 0.78f, ay = ty - u * 1.15f + (float)s * sw * u * 0.08f;
+        pa_round_rect(c, ax - k * 0.25f, ay - k * 0.02f, k * 0.54f, u * 1.05f, k * 0.26f, rim);
         PA_Paint pa = pa_linear(ax - k * 0.25f, ay, ax + k * 0.25f, ay);
         pa_stop(&pa, 0.0f, s < 0 ? bodyL : body); pa_stop(&pa, 1.0f, s < 0 ? body : bodyD);
-        pa_round_rect_paint(c, ax - k * 0.27f, ay, k * 0.54f, u * 1.05f, k * 0.26f, &pa);
-        pa_round_rect(c, ax - k * 0.29f, ay + u * 0.62f, k * 0.58f, u * 0.17f, k * 0.06f, band);
-        pa_fill_circle(c, ax, ay + u * 1.0f, k * 0.27f, body);
+        pa_round_rect_paint(c, ax - k * 0.29f, ay, k * 0.54f, u * 1.05f, k * 0.26f, &pa);
+        pa_round_rect(c, ax - k * 0.31f, ay + u * 0.62f, k * 0.58f, u * 0.17f, k * 0.06f, band);
+        pa_fill_circle(c, ax - k * 0.02f, ay + u * 1.0f, k * 0.27f, s < 0 ? body : pa_mix(body, bodyD, 0.4f));
     }
-    /* torso */
-    PA_Paint pt = pa_linear(f.x - k * 0.6f, ty - u * 1.4f, f.x + k * 0.6f, ty);
-    pa_stop(&pt, 0.0f, bodyL); pa_stop(&pt, 0.5f, body); pa_stop(&pt, 1.0f, bodyD);
-    pa_round_rect_paint(c, f.x - k * 0.62f, ty - u * 1.42f, k * 1.24f, u * 1.32f, k * 0.42f, &pt);
-    /* shoulders */
-    pa_fill_circle(c, f.x - k * 0.55f, ty - u * 1.18f, k * 0.3f, body);
-    pa_fill_circle(c, f.x + k * 0.55f, ty - u * 1.18f, k * 0.3f, pa_mix(body, bodyD, 0.5f));
+    /* torso with a rim on the right and a glossy key light */
+    pa_round_rect(c, f.x - k * 0.58f, ty - u * 1.45f, k * 1.24f, u * 1.32f, k * 0.42f, rim);
+    PA_Paint pt = pa_radial(f.x - k * 0.3f, ty - u * 1.15f, 0.0f, k * 1.3f);
+    pa_stop(&pt, 0.0f, bodyL); pa_stop(&pt, 0.45f, body); pa_stop(&pt, 1.0f, bodyD);
+    pa_round_rect_paint(c, f.x - k * 0.64f, ty - u * 1.42f, k * 1.24f, u * 1.32f, k * 0.42f, &pt);
+    pa_fill_circle(c, f.x - k * 0.58f, ty - u * 1.18f, k * 0.3f, body);
+    pa_fill_circle(c, f.x + k * 0.52f, ty - u * 1.18f, k * 0.3f, pa_mix(body, bodyD, 0.5f));
+    pa_fill_ellipse(c, f.x - k * 0.34f, ty - u * 1.22f, k * 0.16f, k * 0.08f, PA_RGBA(255, 255, 255, 150));
     if (enemy) {
-        /* red star on the chest */
         PA_Vec2 st[10];
         float cx = f.x, cy = ty - u * 0.72f, R = k * 0.32f;
         for (int i = 0; i < 10; i++) {
@@ -1497,7 +1857,6 @@ static void draw_brute(PA_Canvas *c, const Brute *b, int enemy) {
             st[i].x = cx + cosf(a) * r; st[i].y = cy + sinf(a) * r * 0.9f;
         }
         pa_fill_poly(c, st, 10, band);
-        /* head with a red crest and angry eyes */
         float hx = f.x, hy = ty - u * 1.48f;
         pa_fill_circle(c, hx, hy, k * 0.26f, body);
         PA_Vec2 cr[3] = { { hx - k * 0.12f, hy - k * 0.18f }, { hx + k * 0.05f, hy - k * 0.48f }, { hx + k * 0.16f, hy - k * 0.14f } };
@@ -1507,23 +1866,25 @@ static void draw_brute(PA_Canvas *c, const Brute *b, int enemy) {
         pa_line(c, hx - k * 0.16f, hy - k * 0.10f, hx - k * 0.03f, hy - k * 0.05f, fmaxf(1.0f, k * 0.04f), PA_RGB(40, 20, 20));
         pa_line(c, hx + k * 0.16f, hy - k * 0.10f, hx + k * 0.03f, hy - k * 0.05f, fmaxf(1.0f, k * 0.04f), PA_RGB(40, 20, 20));
     } else {
-        /* back view: spine shading, a gold lightning crest */
         float hx = f.x, hy = ty - u * 1.46f;
         pa_fill_circle(c, hx, hy, k * 0.25f, pa_mix(body, bodyD, 0.25f));
         PA_Vec2 bolt[6] = { { f.x + k * 0.06f, ty - u * 1.05f }, { f.x - k * 0.14f, ty - u * 0.68f }, { f.x - k * 0.01f, ty - u * 0.68f },
                             { f.x - k * 0.08f, ty - u * 0.32f }, { f.x + k * 0.15f, ty - u * 0.76f }, { f.x + k * 0.02f, ty - u * 0.76f } };
         pa_fill_poly(c, bolt, 6, band);
-        pa_fill_ellipse(c, hx - k * 0.08f, hy - k * 0.1f, k * 0.09f, k * 0.05f, PA_RGBA(255, 255, 255, 140));
+        pa_fill_ellipse(c, hx - k * 0.08f, hy - k * 0.1f, k * 0.09f, k * 0.05f, PA_RGBA(255, 255, 255, 160));
     }
-    /* HP number */
+    /* HP: the boss gets a broad bar, 0.3 of the screen, over its head */
     char buf[12]; snprintf(buf, sizeof(buf), "%d", (int)ceilf(b->hp));
-    float ts = fmaxf(16.0f * g_u, k * 0.42f);
-    float hy = ty - u * 1.95f;
-    float bw = fmaxf(46.0f * g_u, k * 1.3f), bh = fmaxf(6.0f, k * 0.1f);
-    pa_round_rect(c, f.x - bw * 0.5f - 2.0f, hy + ts * 0.62f - 2.0f, bw + 4.0f, bh + 4.0f, bh, C_INK);
-    pa_round_rect(c, f.x - bw * 0.5f, hy + ts * 0.62f, bw, bh, bh * 0.5f, PA_RGB(255, 255, 255));
+    float ts = b->boss ? 30.0f * g_u : fmaxf(16.0f * g_u, fminf(28.0f * g_u, k * 0.42f));
+    float hy = ty - u * 1.95f - ts * 0.4f;
+    if (hy < 96.0f * g_u) hy = 96.0f * g_u;
+    float bw = b->boss ? g_w * 0.30f : fmaxf(46.0f * g_u, fminf(120.0f * g_u, k * 1.3f));
+    float bh = b->boss ? 14.0f * g_u : fmaxf(6.0f, fminf(10.0f * g_u, k * 0.1f));
+    float by = hy + ts * 0.62f;
+    pa_round_rect(c, f.x - bw * 0.5f - 3.0f, by - 3.0f, bw + 6.0f, bh + 6.0f, bh, C_INK);
+    pa_round_rect(c, f.x - bw * 0.5f, by, bw, bh, bh * 0.5f, PA_RGB(255, 255, 255));
     float fr = pa_clamp01(b->hp / b->maxhp);
-    pa_round_rect(c, f.x - bw * 0.5f, hy + ts * 0.62f, fmaxf(bh, bw * fr), bh, bh * 0.5f, enemy ? PA_RGB(236, 50, 56) : PA_RGB(60, 210, 90));
+    pa_round_rect(c, f.x - bw * 0.5f, by, fmaxf(bh, bw * fr), bh, bh * 0.5f, enemy ? PA_RGB(236, 50, 56) : PA_RGB(60, 210, 90));
     txt(c, buf, f.x, hy, ts, PA_RGB(255, 255, 255), PA_ALIGN_CENTER, 1.3f);
 }
 
@@ -1619,8 +1980,14 @@ static void draw_parts(PA_Canvas *c) {
             pa_fill_circle(c, s.x - r * 0.2f, s.y - r * 0.2f, r * 0.5f, pa_alpha(PA_RGB(255, 255, 255), 0.6f * t));
             break; }
         case PK_BIT: {
-            float r = p->size * k;
-            pa_fill_rect(c, s.x - r * 0.5f, s.y - r * 0.5f, r, r * 0.8f, pa_alpha(p->col, fminf(1.0f, t * 2.0f)));
+            /* a tumbling chunk: lit top half, shaded bottom half */
+            float r = p->size * k, a = p->life * 9.0f + (float)i;
+            float ca = cosf(a) * r * 0.5f, sa = sinf(a) * r * 0.5f;
+            PA_Vec2 q[4] = { { s.x - ca + sa, s.y - sa - ca }, { s.x + ca + sa, s.y + sa - ca }, { s.x + ca - sa, s.y + sa + ca }, { s.x - ca - sa, s.y - sa + ca } };
+            float al = fminf(1.0f, t * 2.5f);
+            pa_fill_poly(c, q, 4, pa_alpha(pa_shade(p->col, -0.25f), al));
+            PA_Vec2 h[3] = { q[0], q[1], { s.x, s.y } };
+            pa_fill_poly(c, h, 3, pa_alpha(pa_shade(p->col, 0.25f), al));
             break; }
         case PK_RING: {
             float e = 1.0f - t;
@@ -1630,6 +1997,17 @@ static void draw_parts(PA_Canvas *c) {
                 pts[j].x = s.x + cosf(a) * k * p->size * (0.3f + e); pts[j].y = s.y + sinf(a) * k * p->size * (0.3f + e) * 0.38f;
             }
             pa_stroke_poly(c, pts, 32, 1, fmaxf(2.0f, k * 0.14f * t), pa_alpha(p->col, t));
+            break; }
+        case PK_FLASH: {
+            /* screen-space white ring, out to p->size pixels */
+            float e = 1.0f - t, r = p->size * g_u * (0.25f + 0.75f * pa_smooth(e));
+            if (e < 0.25f) pa_fill_circle(c, s.x, s.y, r * 0.8f, PA_RGBA(255, 255, 255, (int)(200.0f * (1.0f - e * 4.0f))));
+            pa_stroke_circle(c, s.x, s.y, r, fmaxf(2.0f, 9.0f * g_u * t), pa_alpha(PA_RGB(255, 255, 255), t));
+            break; }
+        case PK_DUST: {
+            float e = 1.0f - t, r = p->size * k * (0.6f + 0.9f * e);
+            pa_fill_circle(c, s.x, s.y, r, pa_alpha(p->col, 0.75f * t));
+            pa_fill_circle(c, s.x - r * 0.25f, s.y - r * 0.3f, r * 0.55f, pa_alpha(pa_shade(p->col, 0.3f), 0.6f * t));
             break; }
         default: {
             float r = fmaxf(1.5f, p->size * k);
@@ -1649,7 +2027,7 @@ static void draw_floats(PA_Canvas *c) {
         if (f->t > 0.8f) pop *= 1.0f - (f->t - 0.8f) / 0.3f;
         if (pop < 0.2f) continue;
         PA_Vec2 s = proj(f->x, f->y + f->t * 1.2f, f->z);
-        float size = fmaxf(18.0f * g_u, ss(f->z) * 0.75f) * f->size * pop;
+        float size = fminf(fmaxf(18.0f * g_u, ss(f->z) * 0.75f), 34.0f * g_u) * f->size * pop;
         pa_text_bold(c, f->text, s.x, s.y - size * 0.5f, size, f->col, C_INK, PA_ALIGN_CENTER, size * 0.05f, 1.5f);
     }
 }
@@ -1675,19 +2053,9 @@ static void draw_bin_units(PA_Canvas *c, int b) {
 }
 
 static void draw_world(PA_Canvas *c) {
-    draw_ground(c);
-    for (int i = 0; i < g_ndecor; i++) {
-        if (g_decor[i].z < TRACK_LEN + 4.0f) continue;
-        if (g_decor[i].kind == 0) draw_pine(c, g_decor[i].x, g_decor[i].z, g_decor[i].s);
-        else draw_rock(c, g_decor[i].x, g_decor[i].z, g_decor[i].s);
-    }
-    draw_track(c);
-    for (int i = 0; i < g_ndecor; i++) {
-        if (g_decor[i].z >= TRACK_LEN + 4.0f) continue;
-        if (g_decor[i].kind == 0) draw_pine(c, g_decor[i].x, g_decor[i].z, g_decor[i].s);
-        else draw_rock(c, g_decor[i].x, g_decor[i].z, g_decor[i].s);
-    }
+    bg_blit(c, (int)g_shx, (int)g_shy);
     draw_castle(c);
+    draw_castle_hp(c);
 
     /* bucket the crowds by depth */
     for (int b = 0; b < ZBINS; b++) { g_zb_head[0][b] = -1; g_zb_head[1][b] = -1; }
@@ -1695,7 +2063,7 @@ static void draw_world(PA_Canvas *c) {
     for (int i = 0; i < g_nred; i++) { int b = zbin(g_red[i].z); g_zb_next[1][i] = g_zb_head[1][b]; g_zb_head[1][b] = (short)i; }
 
     /* the large things, in depth order */
-    int done_g[MAX_GATES] = { 0 }, done_b[MAX_BRUTES] = { 0 }, done_c[MAX_CHAMPS] = { 0 };
+    int done_g[MAX_GATES] = { 0 }, done_b[MAX_BRUTES] = { 0 }, done_c[MAX_CHAMPS] = { 0 }, done_l[MAX_LADDER] = { 0 };
     int cannon_done = 0;
     for (int b = ZBINS - 1; b >= 0; b--) {
         float zlo = -4.0f + (float)b * CELL;
@@ -1703,11 +2071,13 @@ static void draw_world(PA_Canvas *c) {
             /* the farthest undrawn big object at or beyond this bin */
             float bz = -1e9f; int kind = -1, idx = -1;
             for (int i = 0; i < g_ngate; i++) if (!done_g[i] && g_gate[i].z >= zlo && g_gate[i].z > bz) { bz = g_gate[i].z; kind = 0; idx = i; }
+            for (int i = 0; i < g_nlad; i++) if (!done_l[i] && g_lad[i].z >= zlo && g_lad[i].z > bz) { bz = g_lad[i].z; kind = 4; idx = i; }
             for (int i = 0; i < g_nbrute; i++) if (!done_b[i] && g_brute[i].z >= zlo && g_brute[i].z > bz) { bz = g_brute[i].z; kind = 1; idx = i; }
             for (int i = 0; i < g_nchamp; i++) if (!done_c[i] && g_champ[i].z >= zlo && g_champ[i].z > bz) { bz = g_champ[i].z; kind = 2; idx = i; }
             if (!cannon_done && CANNON_Z >= zlo && CANNON_Z > bz) { bz = CANNON_Z; kind = 3; }
             if (kind < 0) break;
             if (kind == 0) { draw_gate(c, &g_gate[idx]); done_g[idx] = 1; }
+            else if (kind == 4) { draw_ladder(c, &g_lad[idx]); done_l[idx] = 1; }
             else if (kind == 1) { draw_brute(c, &g_brute[idx], 1); done_b[idx] = 1; }
             else if (kind == 2) { draw_brute(c, &g_champ[idx], 0); done_c[idx] = 1; }
             else { draw_cannon(c); cannon_done = 1; }
@@ -1716,7 +2086,6 @@ static void draw_world(PA_Canvas *c) {
     }
     if (!cannon_done) draw_cannon(c);
     draw_parts(c);
-    draw_castle_hp(c);
     draw_floats(c);
 }
 
@@ -1970,7 +2339,7 @@ static void draw_shop(PA_Canvas *c) {
     float mid = (last + pl.y) * 0.5f;
     if (pl.y - last > 150.0f * u) {
         float H = 34.0f * u;
-        int idx = (int)((H - 8.0f) * 0.5f);
+        int idx = (int)((H - 8.0f) / 3.0f);
         idx = idx < 0 ? 0 : (idx >= NSPR ? NSPR - 1 : idx);
         pa_fill_ellipse(c, g_w * 0.5f, mid + 40.0f * u, 200.0f * u, 34.0f * u, PA_RGBA(30, 16, 90, 90));
         for (int i = 0; i < 26; i++) {

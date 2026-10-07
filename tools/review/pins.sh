@@ -22,12 +22,13 @@ grab 01_first_screen     1   1.15   # level 1: the hand shows which pin to pull
 grab 02_early_pour       1   2.25   # first pin out, balls pouring into the cup
 grab 03_busy_mid_game   10   5.00   # two wells of fresh colour pour into the cup
 grab 04_colour_wave      9   2.05   # grey balls take colour on contact, a wave through the pile
-grab 05_bomb_blast     221   5.25   # wrong order: colour reaches the bomb
-grab 06_level_complete   1   4.70   # cup full, confetti, NEXT
-grab 07_level_failed   203   3.10   # grey ball reached the cup
+grab 05_bombs_overhead    8   2.30   # bombs with lit sparks while the balls drain out beneath them
+grab 06_bomb_blast      217   2.08   # wrong order: colour lands on the bombs, the first one blows
+grab 07_level_complete    1   4.70   # cup full, confetti, NEXT
+grab 08_level_failed    203   3.10   # grey ball reached the cup
 
 # motion strip: six frames 0.08 s apart while the pegs scatter the pour
 python3 "$shots" render pins "$work/strip" --shots 2.00,2.08,2.16,2.24,2.32,2.40 --demo 5 > /dev/null
-python3 "$shots" sheet "$out/08_motion_strip.png" "$work"/strip/pins_0*.png --height 1170 > /dev/null
+python3 "$shots" sheet "$out/09_motion_strip.png" "$work"/strip/pins_0*.png --height 1170 > /dev/null
 
 ls "$out"
