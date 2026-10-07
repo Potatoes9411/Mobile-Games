@@ -6,7 +6,9 @@
   "Hub: per-game pause button, pause sheet, Android back button; phone renders at a 540-wide logical canvas.",
   "Wave 1 started: 6 native ports, engine typography, blind baseline reviews of the 6 existing games.",
   "Blind round 0: all six existing native games lost to their references. Six re-pass builders started on the critics' ranked gap lists.",
-  "Block Storm re-pass merged; round 1 blind review started."
+  "Block Storm re-pass merged; round 1 blind review started.",
+  "Block Storm round 1: reference wins only slightly (was overwhelming); ours now wins on effects and juice. Round 2 started.",
+  "Helix Drop re-pass merged; round 1 blind review started."
  ],
  "engine": [
   {
@@ -44,19 +46,19 @@
    "id": "blockstorm",
    "name": "Block Storm",
    "ref": "Block Blast",
-   "phase": "review",
-   "round": 0,
-   "verdict": "Reference wins, overwhelming",
-   "gap": "Re-pass landed (ghost preview, clear beams, combos, results flow). Round 1 blind review running."
+   "phase": "fixing",
+   "round": 1,
+   "verdict": "Reference wins, slight",
+   "gap": "Font (kerning, doubled outlines), tray pieces overflow slots, combo banner covers the board, red/orange too close. Ours already wins on juice."
   },
   {
    "id": "helix",
    "name": "Helix Drop",
    "ref": "Helix Jump",
-   "phase": "building",
+   "phase": "review",
    "round": 0,
    "verdict": "Reference wins, clear",
-   "gap": "No platform shatter or fireball combo, broken score text, one theme, flat materials."
+   "gap": "Re-pass landed (shatter, fireball, 4 themes, boss levels, results flow). Round 1 blind review running."
   },
   {
    "id": "splat",
