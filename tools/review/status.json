@@ -1,29 +1,142 @@
 {
-  "updated": "",
-  "log": [
-    "Fresh container: toolchain, Android SDK and all 138 reference screenshots restored.",
-    "Headless review harness, blind A/B tool and critic protocol in place.",
-    "Hub: per-game pause button, pause sheet, Android back button; phone renders at a 540-wide logical canvas.",
-    "Wave 1 started: 6 native ports, engine typography, blind baseline reviews of the 6 existing games."
-  ],
-  "engine": [
-    {"name": "Review harness", "state": "done", "note": "Headless renderer, scripted touches, demo mode, blind A/B pairs."},
-    {"name": "Typography", "state": "building", "note": "Filled TrueType display + UI faces replacing the stroke font."},
-    {"name": "Hub & shell", "state": "partial", "note": "Pause sheet done. Home screen, meta progression and transitions still to rebuild."},
-    {"name": "Android APK", "state": "partial", "note": "Builds and installs; logical-resolution fix and back button pending a device build."}
-  ],
-  "games": [
-    {"id":"roadhopper","name":"Road Hopper","ref":"Crossy Road","phase":"review","round":0,"verdict":"","gap":"Awaiting blind baseline review."},
-    {"id":"blockstorm","name":"Block Storm","ref":"Block Blast","phase":"review","round":0,"verdict":"","gap":"Awaiting blind baseline review."},
-    {"id":"helix","name":"Helix Drop","ref":"Helix Jump","phase":"review","round":0,"verdict":"","gap":"Awaiting blind baseline review."},
-    {"id":"splat","name":"Roller Splat","ref":"Roller Splat!","phase":"review","round":0,"verdict":"","gap":"Awaiting blind baseline review."},
-    {"id":"voidmuncher","name":"Void Muncher","ref":"Hole.io","phase":"review","round":0,"verdict":"","gap":"Awaiting blind baseline review."},
-    {"id":"chromerush","name":"Chrome Rush","ref":"Dashy Crashy GO!","phase":"review","round":0,"verdict":"","gap":"Awaiting blind baseline review."},
-    {"id":"mobclash","name":"Mob Clash: Gate Siege","ref":"Mob Control","phase":"building","round":0,"verdict":"","gap":"Native port in progress (was web-only)."},
-    {"id":"paper","name":"Paper Territory","ref":"Paper.io 2","phase":"building","round":0,"verdict":"","gap":"Native port in progress (was web-only)."},
-    {"id":"pins","name":"Pin Rescue","ref":"Pull the Pin","phase":"building","round":0,"verdict":"","gap":"Native port in progress (was web-only)."},
-    {"id":"runner","name":"Rooftop Run","ref":"Subway Surfers","phase":"building","round":0,"verdict":"","gap":"Native port in progress (was web-only)."},
-    {"id":"horde","name":"Horde Arena","ref":"Survivor!.io","phase":"building","round":0,"verdict":"","gap":"Native port in progress (was web-only)."},
-    {"id":"avian","name":"Avian Artillery","ref":"Angry Birds 2","phase":"building","round":0,"verdict":"","gap":"Native port in progress (was web-only); landscape."}
-  ]
+ "updated": "",
+ "log": [
+  "Fresh container: toolchain, Android SDK and all 138 reference screenshots restored.",
+  "Headless review harness, blind A/B tool and critic protocol in place.",
+  "Hub: per-game pause button, pause sheet, Android back button; phone renders at a 540-wide logical canvas.",
+  "Wave 1 started: 6 native ports, engine typography, blind baseline reviews of the 6 existing games.",
+  "Blind round 0: all six existing native games lost to their references. Six re-pass builders started on the critics' ranked gap lists."
+ ],
+ "engine": [
+  {
+   "name": "Review harness",
+   "state": "done",
+   "note": "Headless renderer, scripted touches, demo mode, blind A/B pairs."
+  },
+  {
+   "name": "Typography",
+   "state": "building",
+   "note": "Filled TrueType display + UI faces replacing the stroke font."
+  },
+  {
+   "name": "Hub & shell",
+   "state": "partial",
+   "note": "Pause sheet done. Home screen, meta progression and transitions still to rebuild."
+  },
+  {
+   "name": "Android APK",
+   "state": "partial",
+   "note": "Builds and installs; logical-resolution fix and back button pending a device build."
+  }
+ ],
+ "games": [
+  {
+   "id": "roadhopper",
+   "name": "Road Hopper",
+   "ref": "Crossy Road",
+   "phase": "building",
+   "round": 0,
+   "verdict": "Reference wins, overwhelming",
+   "gap": "Flat prop-free world, box vehicles, dead death screen, coin counter hidden by pause."
+  },
+  {
+   "id": "blockstorm",
+   "name": "Block Storm",
+   "ref": "Block Blast",
+   "phase": "building",
+   "round": 0,
+   "verdict": "Reference wins, overwhelming",
+   "gap": "No line-clear payoff, no ghost preview, broken best-score HUD, empty lower third."
+  },
+  {
+   "id": "helix",
+   "name": "Helix Drop",
+   "ref": "Helix Jump",
+   "phase": "building",
+   "round": 0,
+   "verdict": "Reference wins, clear",
+   "gap": "No platform shatter or fireball combo, broken score text, one theme, flat materials."
+  },
+  {
+   "id": "splat",
+   "name": "Roller Splat",
+   "ref": "Roller Splat!",
+   "phase": "building",
+   "round": 0,
+   "verdict": "Reference wins, overwhelming",
+   "gap": "Board small and flat-on, no paint spatter, no win celebration, shallow walls."
+  },
+  {
+   "id": "voidmuncher",
+   "name": "Void Muncher",
+   "ref": "Hole.io",
+   "phase": "building",
+   "round": 0,
+   "verdict": "Reference wins, overwhelming",
+   "gap": "No swallow juice, flat lighting, hole reads as a sticker, weak HUD, sparse props."
+  },
+  {
+   "id": "chromerush",
+   "name": "Chrome Rush",
+   "ref": "Dashy Crashy GO!",
+   "phase": "building",
+   "round": 0,
+   "verdict": "Reference wins, overwhelming",
+   "gap": "Static crash, single daytime biome, empty lower screen, primitive cars."
+  },
+  {
+   "id": "mobclash",
+   "name": "Mob Clash: Gate Siege",
+   "ref": "Mob Control",
+   "phase": "building",
+   "round": 0,
+   "verdict": "",
+   "gap": "Native port in progress (was web-only)."
+  },
+  {
+   "id": "paper",
+   "name": "Paper Territory",
+   "ref": "Paper.io 2",
+   "phase": "building",
+   "round": 0,
+   "verdict": "",
+   "gap": "Native port in progress (was web-only)."
+  },
+  {
+   "id": "pins",
+   "name": "Pin Rescue",
+   "ref": "Pull the Pin",
+   "phase": "building",
+   "round": 0,
+   "verdict": "",
+   "gap": "Native port in progress (was web-only)."
+  },
+  {
+   "id": "runner",
+   "name": "Rooftop Run",
+   "ref": "Subway Surfers",
+   "phase": "building",
+   "round": 0,
+   "verdict": "",
+   "gap": "Native port in progress (was web-only)."
+  },
+  {
+   "id": "horde",
+   "name": "Horde Arena",
+   "ref": "Survivor!.io",
+   "phase": "building",
+   "round": 0,
+   "verdict": "",
+   "gap": "Native port in progress (was web-only)."
+  },
+  {
+   "id": "avian",
+   "name": "Avian Artillery",
+   "ref": "Angry Birds 2",
+   "phase": "building",
+   "round": 0,
+   "verdict": "",
+   "gap": "Native port in progress (was web-only); landscape."
+  }
+ ]
 }
